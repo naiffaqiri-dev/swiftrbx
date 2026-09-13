@@ -28,7 +28,7 @@ export function UserPanel() {
           <div className="rounded-xl border border-border/60 bg-card/40 p-6 text-center">
             <p className="mb-3 text-sm text-muted-foreground">ابدأ أول عملية شراء روبوكس الآن</p>
             <Button asChild>
-              <Link href="/">اشترِ روبوكس</Link>
+              <Link href="/market">اشترِ روبوكس</Link>
             </Button>
           </div>
         </div>

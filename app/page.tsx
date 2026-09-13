@@ -56,10 +56,10 @@ export default function HomePage() {
                   asChild
                   className="gap-2 shadow-[0_0_28px_-6px_var(--primary)]"
                 >
-                  <Link href="/register">ابدأ الآن</Link>
+                  <Link href="/market">اشترِ روبوكس الآن</Link>
                 </Button>
                 <Button size="lg" variant="secondary" asChild>
-                  <Link href="/login">لديّ حساب</Link>
+                  <Link href="/register">إنشاء حساب</Link>
                 </Button>
               </div>
             </div>

@@ -24,6 +24,11 @@ export function SiteHeader() {
           {ready && user ? (
             <div className="flex items-center gap-3">
               <Button variant="ghost" asChild className="gap-2">
+                <Link href="/market">
+                  <span className="hidden sm:inline">السوق</span>
+                </Link>
+              </Button>
+              <Button variant="ghost" asChild className="gap-2">
                 <Link href="/dashboard">
                   <LayoutDashboard className="size-4" />
                   <span className="hidden sm:inline">لوحة التحكم</span>
