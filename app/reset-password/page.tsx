@@ -20,12 +20,30 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     const supabase = createClient()
+    let settled = false
+    let graceTimer: ReturnType<typeof setTimeout> | undefined
 
-    // يُطلق عند اكتشاف رمز الاستعادة في hash الرابط (التدفق الضمني)
+    // نعتبر الجلسة صالحة فور توفّرها ونوقف أي مهلة انتظار
+    function markSessionReady() {
+      if (settled) return
+      settled = true
+      if (graceTimer) clearTimeout(graceTimer)
+      setHasSession(true)
+      setReady(true)
+    }
+
+    // لا نُظهر الخطأ إلا بعد اكتمال كل المحاولات وانقضاء مهلة السماح
+    function markInvalid() {
+      if (settled) return
+      settled = true
+      setHasSession(false)
+      setReady(true)
+    }
+
+    // Supabase قد يُطلق PASSWORD_RECOVERY بعد فتح الرابط بلحظات (التدفق الضمني/hash)
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY' || session) {
-        setHasSession(true)
-        setReady(true)
+      if (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN' || session) {
+        markSessionReady()
       }
     })
 
@@ -34,14 +52,18 @@ export default function ResetPasswordPage() {
       const code = url.searchParams.get('code')
       const tokenHash = url.searchParams.get('token_hash')
       const type = url.searchParams.get('type')
+      // الرمز قد يصل داخل hash fragment: #access_token=...&type=recovery
+      const hash = window.location.hash.startsWith('#')
+        ? new URLSearchParams(window.location.hash.slice(1))
+        : null
+      const hasRecoveryHash = !!hash?.get('access_token') || hash?.get('type') === 'recovery'
 
       try {
         if (code) {
           // تدفق PKCE: نبادل الرمز بجلسة
           const { error } = await supabase.auth.exchangeCodeForSession(code)
           if (!error) {
-            setHasSession(true)
-            setReady(true)
+            markSessionReady()
             return
           }
         } else if (tokenHash && type) {
@@ -51,24 +73,37 @@ export default function ResetPasswordPage() {
             token_hash: tokenHash,
           })
           if (!error) {
-            setHasSession(true)
-            setReady(true)
+            markSessionReady()
             return
           }
         }
       } catch {
-        // نتجاهل ونعتمد على الجلسة الحالية أدناه
+        // نتجاهل ونعتمد على الجلسة الحالية أو حدث الاستعادة أدناه
       }
 
-      // احتياطياً: التدفق الضمني (hash) يُعالَج تلقائياً بواسطة العميل
+      // قد تكون الجلسة قد تأسّست بالفعل (من hash أو من محاولة سابقة)
       const { data } = await supabase.auth.getSession()
-      setHasSession(!!data.session)
-      setReady(true)
+      if (data.session) {
+        markSessionReady()
+        return
+      }
+
+      // إن وُجد رمز استعادة في الـ hash، ننتظر onAuthStateChange بدل الحكم فوراً
+      if (hasRecoveryHash) {
+        graceTimer = setTimeout(markInvalid, 5000)
+        return
+      }
+
+      // لا يوجد رمز ولا جلسة: نمنح مهلة قصيرة لأي حدث متأخّر ثم نحكم
+      graceTimer = setTimeout(markInvalid, 2500)
     }
 
     establishSession()
 
-    return () => listener.subscription.unsubscribe()
+    return () => {
+      if (graceTimer) clearTimeout(graceTimer)
+      listener.subscription.unsubscribe()
+    }
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {
