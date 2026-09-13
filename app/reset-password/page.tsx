@@ -20,10 +20,55 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     const supabase = createClient()
-    supabase.auth.getSession().then(({ data }) => {
+
+    // يُطلق عند اكتشاف رمز الاستعادة في hash الرابط (التدفق الضمني)
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY' || session) {
+        setHasSession(true)
+        setReady(true)
+      }
+    })
+
+    async function establishSession() {
+      const url = new URL(window.location.href)
+      const code = url.searchParams.get('code')
+      const tokenHash = url.searchParams.get('token_hash')
+      const type = url.searchParams.get('type')
+
+      try {
+        if (code) {
+          // تدفق PKCE: نبادل الرمز بجلسة
+          const { error } = await supabase.auth.exchangeCodeForSession(code)
+          if (!error) {
+            setHasSession(true)
+            setReady(true)
+            return
+          }
+        } else if (tokenHash && type) {
+          // تدفق token_hash: نتحقّق من الرمز مباشرةً
+          const { error } = await supabase.auth.verifyOtp({
+            type: type as 'recovery',
+            token_hash: tokenHash,
+          })
+          if (!error) {
+            setHasSession(true)
+            setReady(true)
+            return
+          }
+        }
+      } catch {
+        // نتجاهل ونعتمد على الجلسة الحالية أدناه
+      }
+
+      // احتياطياً: التدفق الضمني (hash) يُعالَج تلقائياً بواسطة العميل
+      const { data } = await supabase.auth.getSession()
       setHasSession(!!data.session)
       setReady(true)
-    })
+    }
+
+    establishSession()
+
+    return () => listener.subscription.unsubscribe()
   }, [])
 
   async function handleSubmit(e: React.FormEvent) {

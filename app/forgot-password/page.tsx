@@ -29,7 +29,7 @@ export default function ForgotPasswordPage() {
     const supabase = createClient()
 
     const { error } = await supabase.auth.resetPasswordForEmail(email.toLowerCase(), {
-      redirectTo: 'https://www.swiftrbx.site/auth/callback?next=/reset-password',
+      redirectTo: 'https://www.swiftrbx.site/reset-password',
     })
     setLoading(false)
 
