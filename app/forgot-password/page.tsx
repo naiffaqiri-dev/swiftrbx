@@ -27,12 +27,9 @@ export default function ForgotPasswordPage() {
 
     setLoading(true)
     const supabase = createClient()
-    const redirectTo =
-      process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ??
-      `${window.location.origin}/auth/callback?next=/reset-password`
 
     const { error } = await supabase.auth.resetPasswordForEmail(email.toLowerCase(), {
-      redirectTo,
+      redirectTo: 'https://www.swiftrbx.site/reset-password',
     })
     setLoading(false)
 
@@ -40,7 +37,7 @@ export default function ForgotPasswordPage() {
       setError('تعذّر إرسال رابط الاستعادة، حاول مرة أخرى لاحقاً')
       return
     }
-    // نعرض نفس الرسالة دائماً لمنع كشف الحسابات المسجّلة
+    // نعرض رسالة نجاح موحّدة دائماً لمنع كشف الحسابات المسجّلة
     setSent(true)
   }
 
