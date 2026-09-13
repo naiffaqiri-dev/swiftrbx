@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { LayoutDashboard, LogOut, Wallet } from 'lucide-react'
+import { LayoutDashboard, LogOut, Wallet, Ticket } from 'lucide-react'
 import { BrandLogo } from '@/components/brand-logo'
 import { useAuth, ROLE_LABELS } from '@/components/auth/mock-auth'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,17 @@ export function SiteHeader() {
           {ready && user ? (
             <div className="flex items-center gap-3">
               <Button variant="ghost" asChild className="gap-2">
+                <Link href="/market">
+                  <span className="hidden sm:inline">السوق</span>
+                </Link>
+              </Button>
+              <Button variant="ghost" asChild className="gap-2">
+                <Link href="/tickets">
+                  <Ticket className="size-4" />
+                  <span className="hidden sm:inline">التذاكر</span>
+                </Link>
+              </Button>
+              <Button variant="ghost" asChild className="gap-2">
                 <Link href="/dashboard">
                   <LayoutDashboard className="size-4" />
                   <span className="hidden sm:inline">لوحة التحكم</span>
@@ -33,7 +44,7 @@ export function SiteHeader() {
                 <Wallet className="size-4" />
                 {user.balance.toFixed(2)} $
               </span>
-              <div className="flex items-center gap-2">
+              <Link href="/account" className="flex items-center gap-2 rounded-full transition-opacity hover:opacity-80">
                 <span className="flex size-9 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">
                   {user.username.slice(0, 2).toUpperCase()}
                 </span>
@@ -43,7 +54,7 @@ export function SiteHeader() {
                     {ROLE_LABELS[user.role]}
                   </span>
                 </span>
-              </div>
+              </Link>
               <Button
                 variant="ghost"
                 size="icon"

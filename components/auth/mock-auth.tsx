@@ -8,6 +8,7 @@ import {
   useMemo,
   useState,
 } from 'react'
+import { createClient } from '@/lib/supabase/client'
 
 export type Role = 'owner' | 'seller' | 'support' | 'user'
 
@@ -19,6 +20,10 @@ export type ManagedUser = {
   balance: number
   active: boolean
   createdAt: number
+  ratingSum?: number
+  ratingCount?: number
+  totalSales?: number
+  commission?: number
 }
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -28,140 +33,221 @@ export const ROLE_LABELS: Record<Role, string> = {
   user: 'مستخدم',
 }
 
-const OWNER_USERNAMES = ['dego']
-
-const STORAGE_SESSION = 'swiftrbx.session.v2'
-const STORAGE_USERS = 'swiftrbx.users.v2'
-
-function roleFor(username: string): Role {
-  return OWNER_USERNAMES.includes(username.trim().toLowerCase()) ? 'owner' : 'user'
+type ProfileRow = {
+  id: string
+  username: string
+  email: string | null
+  role: Role
+  balance: string | number
+  active: boolean
+  rating: string | number
+  rating_count: number
+  sales: number
+  commission: string | number
+  created_at: string
 }
 
-function seedUsers(): ManagedUser[] {
-  const now = Date.now()
-  const day = 1000 * 60 * 60 * 24
-  return [
-    { id: 'u_owner', username: 'dego', email: 'dego@swiftrbx.site', role: 'owner', balance: 0.08, active: true, createdAt: now - day * 30 },
-    { id: 'u_seller1', username: 'ahmad_store', email: 'ahmad@swiftrbx.site', role: 'seller', balance: 1240, active: true, createdAt: now - day * 12 },
-    { id: 'u_seller2', username: 'layla_robux', email: 'layla@swiftrbx.site', role: 'seller', balance: 860, active: true, createdAt: now - day * 6 },
-    { id: 'u_support1', username: 'omar_support', email: 'omar@swiftrbx.site', role: 'support', balance: 0, active: true, createdAt: now - day * 9 },
-    { id: 'u_support2', username: 'sara_help', email: 'sara@swiftrbx.site', role: 'support', balance: 0, active: false, createdAt: now - day * 3 },
-    { id: 'u_user1', username: 'khalid', email: 'khalid@example.com', role: 'user', balance: 15, active: true, createdAt: now - day * 2 },
-  ]
+function mapRow(r: ProfileRow): ManagedUser {
+  const count = r.rating_count ?? 0
+  const avg = Number(r.rating ?? 0)
+  return {
+    id: r.id,
+    username: r.username,
+    email: r.email ?? undefined,
+    role: r.role,
+    balance: Number(r.balance ?? 0),
+    active: r.active,
+    createdAt: Date.parse(r.created_at) || Date.now(),
+    ratingCount: count,
+    ratingSum: Math.round(avg * count),
+    totalSales: r.sales ?? 0,
+    commission: Number(r.commission ?? 0),
+  }
+}
+
+export function ratingOf(u?: ManagedUser | null): { avg: number; count: number } {
+  if (!u || !u.ratingCount) return { avg: 0, count: 0 }
+  return { avg: +(u.ratingSum! / u.ratingCount).toFixed(1), count: u.ratingCount }
 }
 
 type AuthContextValue = {
   user: ManagedUser | null
   users: ManagedUser[]
   ready: boolean
-  login: (username: string, email?: string) => void
-  register: (username: string, email?: string) => void
-  logout: () => void
-  addStaff: (data: { username: string; email?: string; role: Role }) => void
-  updateUser: (id: string, patch: Partial<ManagedUser>) => void
-  removeUser: (id: string) => void
+  login: (identifier: string, password: string) => Promise<{ error?: string }>
+  register: (data: {
+    username: string
+    email?: string
+    password: string
+  }) => Promise<{ error?: string }>
+  logout: () => Promise<void>
+  addStaff: (data: {
+    username: string
+    email?: string
+    role: Role
+  }) => Promise<{ error?: string; tempPassword?: string; email?: string }>
+  updateUser: (id: string, patch: Partial<ManagedUser>) => Promise<void>
+  removeUser: (id: string) => Promise<void>
+  rateUser: (username: string, stars: number) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
 
+const PROFILE_COLUMNS =
+  'id, username, email, role, balance, active, rating, rating_count, sales, commission, created_at'
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const supabase = useMemo(() => createClient(), [])
   const [users, setUsers] = useState<ManagedUser[]>([])
   const [userId, setUserId] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
 
+  const refreshUsers = useCallback(async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select(PROFILE_COLUMNS)
+      .order('created_at', { ascending: true })
+    if (data) setUsers((data as ProfileRow[]).map(mapRow))
+  }, [supabase])
+
   useEffect(() => {
-    try {
-      const rawUsers = localStorage.getItem(STORAGE_USERS)
-      setUsers(rawUsers ? (JSON.parse(rawUsers) as ManagedUser[]) : seedUsers())
-      const session = localStorage.getItem(STORAGE_SESSION)
-      if (session) setUserId(session)
-    } catch {
-      setUsers(seedUsers())
-    }
-    setReady(true)
-  }, [])
+    let activeSub = true
 
-  const persistUsers = useCallback((next: ManagedUser[]) => {
-    setUsers(next)
-    try {
-      localStorage.setItem(STORAGE_USERS, JSON.stringify(next))
-    } catch {
-      // تجاهل
+    async function boot() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser()
+      if (!activeSub) return
+      setUserId(user?.id ?? null)
+      if (user) await refreshUsers()
+      setReady(true)
     }
-  }, [])
+    boot()
 
-  const persistSession = useCallback((id: string | null) => {
-    setUserId(id)
-    try {
-      if (id) localStorage.setItem(STORAGE_SESSION, id)
-      else localStorage.removeItem(STORAGE_SESSION)
-    } catch {
-      // تجاهل
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user?.id ?? null)
+      if (session?.user) {
+        refreshUsers()
+      } else {
+        setUsers([])
+      }
+    })
+
+    return () => {
+      activeSub = false
+      subscription.unsubscribe()
     }
-  }, [])
+  }, [supabase, refreshUsers])
 
-  const upsertAndLogin = useCallback(
-    (username: string, email?: string) => {
-      const uname = username.trim()
-      setUsers((prev) => {
-        const existing = prev.find((u) => u.username.toLowerCase() === uname.toLowerCase())
-        if (existing) {
-          persistSession(existing.id)
-          return prev
-        }
-        const created: ManagedUser = {
-          id: `u_${Date.now()}`,
-          username: uname,
-          email,
-          role: roleFor(uname),
-          balance: 0,
-          active: true,
-          createdAt: Date.now(),
-        }
-        const next = [...prev, created]
-        try {
-          localStorage.setItem(STORAGE_USERS, JSON.stringify(next))
-        } catch {
-          // تجاهل
-        }
-        persistSession(created.id)
-        return next
+  const login = useCallback(
+    async (identifier: string, password: string) => {
+      const id = identifier.trim()
+      if (!id || !password) return { error: 'يرجى إدخال البيانات كاملة' }
+
+      // تحويل اسم المستخدم إلى البريد المرتبط به
+      let email = id
+      if (!id.includes('@')) {
+        const res = await fetch('/api/auth/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: id }),
+        })
+        if (!res.ok) return { error: 'اسم المستخدم أو كلمة المرور غير صحيحة' }
+        const json = await res.json()
+        email = json.email
+      }
+
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.toLowerCase(),
+        password,
       })
+      if (error) return { error: 'اسم المستخدم أو كلمة المرور غير صحيحة' }
+
+      await refreshUsers()
+      return {}
     },
-    [persistSession],
+    [supabase, refreshUsers],
   )
 
-  const logout = useCallback(() => persistSession(null), [persistSession])
+  const register = useCallback(
+    async (data: { username: string; email?: string; password: string }) => {
+      const res = await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      const json = await res.json()
+      if (!res.ok) return { error: json.error ?? 'تعذّر إنشاء الحساب' }
+
+      // تسجيل الدخول مباشرة بعد الإنشاء (الحساب مؤكّد البريد)
+      const { error } = await supabase.auth.signInWithPassword({
+        email: json.email,
+        password: data.password,
+      })
+      if (error) return { error: 'تم إنشاء الحساب، لكن تعذّر تسجيل الدخول التلقائي' }
+
+      await refreshUsers()
+      return {}
+    },
+    [supabase, refreshUsers],
+  )
+
+  const logout = useCallback(async () => {
+    await supabase.auth.signOut()
+    setUserId(null)
+    setUsers([])
+  }, [supabase])
 
   const addStaff = useCallback(
-    (data: { username: string; email?: string; role: Role }) => {
-      const created: ManagedUser = {
-        id: `u_${Date.now()}`,
-        username: data.username.trim(),
-        email: data.email,
-        role: data.role,
-        balance: 0,
-        active: true,
-        createdAt: Date.now(),
-      }
-      persistUsers([...users, created])
+    async (data: { username: string; email?: string; role: Role }) => {
+      const res = await fetch('/api/admin/staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      const json = await res.json()
+      if (!res.ok) return { error: json.error ?? 'تعذّر إضافة الموظف' }
+      await refreshUsers()
+      return { tempPassword: json.tempPassword, email: json.email }
     },
-    [users, persistUsers],
+    [refreshUsers],
   )
 
   const updateUser = useCallback(
-    (id: string, patch: Partial<ManagedUser>) => {
-      persistUsers(users.map((u) => (u.id === id ? { ...u, ...patch } : u)))
+    async (id: string, patch: Partial<ManagedUser>) => {
+      const dbPatch: Record<string, unknown> = {}
+      if (patch.email !== undefined) dbPatch.email = patch.email
+      if (patch.active !== undefined) dbPatch.active = patch.active
+      if (patch.role !== undefined) dbPatch.role = patch.role
+      if (patch.balance !== undefined) dbPatch.balance = patch.balance
+      if (Object.keys(dbPatch).length === 0) return
+
+      // تحديث فوري متفائل
+      setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)))
+      await supabase.from('profiles').update(dbPatch).eq('id', id)
+      await refreshUsers()
     },
-    [users, persistUsers],
+    [supabase, refreshUsers],
   )
 
   const removeUser = useCallback(
-    (id: string) => {
-      persistUsers(users.filter((u) => u.id !== id))
-      if (userId === id) persistSession(null)
+    async (id: string) => {
+      setUsers((prev) => prev.filter((u) => u.id !== id))
+      await supabase.from('profiles').delete().eq('id', id)
+      await refreshUsers()
     },
-    [users, persistUsers, userId, persistSession],
+    [supabase, refreshUsers],
+  )
+
+  const rateUser = useCallback(
+    async (username: string, stars: number) => {
+      const clamped = Math.max(1, Math.min(5, Math.round(stars)))
+      await supabase.rpc('rate_user', { p_username: username, p_stars: clamped })
+      await refreshUsers()
+    },
+    [supabase, refreshUsers],
   )
 
   const user = users.find((u) => u.id === userId) ?? null
@@ -171,14 +257,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       users,
       ready,
-      login: upsertAndLogin,
-      register: upsertAndLogin,
+      login,
+      register,
       logout,
       addStaff,
       updateUser,
       removeUser,
+      rateUser,
     }),
-    [user, users, ready, upsertAndLogin, logout, addStaff, updateUser, removeUser],
+    [user, users, ready, login, register, logout, addStaff, updateUser, removeUser, rateUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
