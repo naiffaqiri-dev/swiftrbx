@@ -17,22 +17,27 @@ export default function RegisterPage() {
   const { register } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
+    setError(null)
     const form = e.currentTarget as HTMLFormElement
     const username =
-      (form.elements.namedItem('username') as HTMLInputElement)?.value.trim() ||
-      'مستخدم'
+      (form.elements.namedItem('username') as HTMLInputElement)?.value.trim() ?? ''
     const email =
-      (form.elements.namedItem('email') as HTMLInputElement)?.value.trim() ||
-      undefined
-    // جلسة تجريبية — بعد الإنشاء يتم تسجيل الدخول مباشرة
-    setTimeout(() => {
-      register(username, email)
-      router.push('/dashboard')
-    }, 700)
+      (form.elements.namedItem('email') as HTMLInputElement)?.value.trim() || undefined
+    const password =
+      (form.elements.namedItem('password') as HTMLInputElement)?.value ?? ''
+
+    setLoading(true)
+    const { error } = await register({ username, email, password })
+    if (error) {
+      setError(error)
+      setLoading(false)
+      return
+    }
+    router.push('/dashboard')
   }
 
   return (
@@ -52,6 +57,14 @@ export default function RegisterPage() {
       }
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+        {error && (
+          <p
+            role="alert"
+            className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {error}
+          </p>
+        )}
         <div className="flex flex-col gap-2">
           <Label htmlFor="username">اسم المستخدم</Label>
           <Input

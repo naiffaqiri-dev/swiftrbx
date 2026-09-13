@@ -136,6 +136,10 @@ export function OwnerPanel() {
     email: '',
     role: 'seller',
   })
+  const [staffMsg, setStaffMsg] = useState<
+    { type: 'success'; email: string; tempPassword?: string } | { type: 'error'; text: string } | null
+  >(null)
+  const [submitting, setSubmitting] = useState(false)
 
   const sellers = useMemo(() => users.filter((u) => u.role === 'seller'), [users])
   const support = useMemo(() => users.filter((u) => u.role === 'support'), [users])
@@ -146,12 +150,23 @@ export function OwnerPanel() {
   const changeRole = (u: ManagedUser, role: Role) => updateUser(u.id, { role })
   const remove = (u: ManagedUser) => removeUser(u.id)
 
-  const submitStaff = (e: React.FormEvent) => {
+  const submitStaff = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!form.username.trim()) return
-    addStaff({ username: form.username, email: form.email || undefined, role: form.role })
+    if (!form.username.trim() || submitting) return
+    setSubmitting(true)
+    setStaffMsg(null)
+    const result = await addStaff({
+      username: form.username,
+      email: form.email || undefined,
+      role: form.role,
+    })
+    setSubmitting(false)
+    if (result.error) {
+      setStaffMsg({ type: 'error', text: result.error })
+      return
+    }
+    setStaffMsg({ type: 'success', email: result.email ?? '', tempPassword: result.tempPassword })
     setForm({ username: '', email: '', role: 'seller' })
-    setActive(form.role === 'support' ? 'support' : 'sellers')
   }
 
   return (
@@ -239,9 +254,35 @@ export function OwnerPanel() {
                 <option value="user">مستخدم</option>
               </select>
             </div>
-            <Button type="submit" className="w-full">
-              إضافة الموظف
+            <Button type="submit" className="w-full" disabled={submitting}>
+              {submitting ? 'جارٍ الإضافة…' : 'إضافة الموظف'}
             </Button>
+
+            {staffMsg?.type === 'error' && (
+              <p
+                role="alert"
+                className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+              >
+                {staffMsg.text}
+              </p>
+            )}
+            {staffMsg?.type === 'success' && (
+              <div className="space-y-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2.5 text-xs">
+                <p className="font-semibold text-primary">تم إنشاء الحساب بنجاح</p>
+                <p className="text-muted-foreground">
+                  البريد للدخول: <span className="font-mono text-foreground">{staffMsg.email}</span>
+                </p>
+                {staffMsg.tempPassword && (
+                  <p className="text-muted-foreground">
+                    كلمة المرور المؤقتة:{' '}
+                    <span className="font-mono text-foreground">{staffMsg.tempPassword}</span>
+                  </p>
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  شارك هذه البيانات مع الموظف — لن تظهر كلمة المرور مرة أخرى.
+                </p>
+              </div>
+            )}
           </form>
 
           <div className="space-y-4">

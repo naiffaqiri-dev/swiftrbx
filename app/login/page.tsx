@@ -17,22 +17,25 @@ export default function LoginPage() {
   const { login } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    setLoading(true)
+    setError(null)
     const form = e.currentTarget as HTMLFormElement
     const identifier =
-      (form.elements.namedItem('identifier') as HTMLInputElement)?.value.trim() ||
-      'dego'
-    // جلسة تجريبية — سيتم ربطها بقاعدة البيانات لاحقاً
-    setTimeout(() => {
-      login(
-        identifier.includes('@') ? identifier.split('@')[0] : identifier,
-        identifier.includes('@') ? identifier : undefined,
-      )
-      router.push('/dashboard')
-    }, 700)
+      (form.elements.namedItem('identifier') as HTMLInputElement)?.value.trim() ?? ''
+    const password =
+      (form.elements.namedItem('password') as HTMLInputElement)?.value ?? ''
+
+    setLoading(true)
+    const { error } = await login(identifier, password)
+    if (error) {
+      setError(error)
+      setLoading(false)
+      return
+    }
+    router.push('/dashboard')
   }
 
   return (
@@ -52,6 +55,14 @@ export default function LoginPage() {
       }
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+        {error && (
+          <p
+            role="alert"
+            className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {error}
+          </p>
+        )}
         <div className="flex flex-col gap-2">
           <Label htmlFor="identifier">اسم المستخدم أو البريد الإلكتروني</Label>
           <Input
