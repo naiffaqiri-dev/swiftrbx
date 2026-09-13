@@ -34,24 +34,30 @@ export function SocialButtons() {
     setError(null)
     setPending(provider)
     const supabase = createClient()
+    // يمرّ عبر /auth/callback لتبادل الرمز بجلسة ثم يوجّه إلى لوحة المتجر الرسمية.
     const redirectTo =
       process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ??
-      `${window.location.origin}/auth/callback?next=/dashboard`
+      'https://www.swiftrbx.site/auth/callback?next=/dashboard'
 
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo },
-    })
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: { redirectTo },
+      })
 
-    if (error) {
+      if (error) {
+        setPending(null)
+        setError(
+          provider === 'google'
+            ? 'تعذّر بدء الدخول عبر Google. حاول مرة أخرى بعد قليل.'
+            : 'تعذّر بدء الدخول عبر Discord. حاول مرة أخرى بعد قليل.',
+        )
+      }
+      // On success the browser is redirected away, so no further handling needed.
+    } catch {
       setPending(null)
-      setError(
-        provider === 'google'
-          ? 'تعذّر بدء الدخول عبر Google. تأكد من تفعيل المزوّد في إعدادات Supabase.'
-          : 'تعذّر بدء الدخول عبر Discord. تأكد من تفعيل المزوّد في إعدادات Supabase.',
-      )
+      setError('تعذّر الاتصال بمزوّد الدخول، تحقق من اتصالك وحاول مجدداً.')
     }
-    // On success the browser is redirected away, so no further handling needed.
   }
 
   return (

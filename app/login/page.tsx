@@ -29,13 +29,18 @@ export default function LoginPage() {
       (form.elements.namedItem('password') as HTMLInputElement)?.value ?? ''
 
     setLoading(true)
-    const { error } = await login(identifier, password)
-    if (error) {
-      setError(error)
+    try {
+      const { error } = await login(identifier, password)
+      if (error) {
+        setError(error)
+        setLoading(false)
+        return
+      }
+      router.push('/dashboard')
+    } catch {
+      setError('حدث خطأ غير متوقع، يرجى المحاولة مرة أخرى بعد قليل.')
       setLoading(false)
-      return
     }
-    router.push('/dashboard')
   }
 
   return (
