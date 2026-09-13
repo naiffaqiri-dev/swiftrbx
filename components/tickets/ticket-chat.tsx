@@ -4,9 +4,10 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth, ROLE_LABELS } from '@/components/auth/mock-auth'
 import { useTickets } from '@/components/tickets/tickets-provider'
+import { StarInput } from '@/components/reviews/star-rating'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ArrowRight, Send, Lock, Unlock, Store, User as UserIcon } from 'lucide-react'
+import { ArrowRight, Send, Lock, Unlock, Store, User as UserIcon, CheckCircle2 } from 'lucide-react'
 
 function timeAgo(at: number) {
   const diff = Math.floor((Date.now() - at) / 60000)
@@ -21,7 +22,10 @@ export function TicketChat({ ticketId }: { ticketId: string }) {
   const router = useRouter()
   const { user, ready: authReady } = useAuth()
   const { tickets, ready, addMessage, setStatus } = useTickets()
+  const { rateUser } = useAuth()
   const [body, setBody] = useState('')
+  const [myStars, setMyStars] = useState(0)
+  const [rated, setRated] = useState(false)
   const endRef = useRef<HTMLDivElement>(null)
 
   const ticket = tickets.find((t) => t.id === ticketId)
@@ -57,6 +61,18 @@ export function TicketChat({ ticketId }: { ticketId: string }) {
     if (!body.trim() || !user) return
     addMessage(ticket.id, { author: user.username, role: user.role, body: body.trim() })
     setBody('')
+  }
+
+  const isBuyer = user?.username === ticket.buyer
+  const isSeller = user?.username === ticket.seller
+  const target = isBuyer ? ticket.seller : ticket.buyer
+  const targetLabel = isBuyer ? 'البائع' : 'المشتري'
+  const canRate = ticket.status === 'closed' && (isBuyer || isSeller)
+
+  function submitRating() {
+    if (!myStars) return
+    rateUser(target, myStars)
+    setRated(true)
   }
 
   return (
@@ -136,6 +152,28 @@ export function TicketChat({ ticketId }: { ticketId: string }) {
         })}
         <div ref={endRef} />
       </div>
+
+      {/* لوحة التقييم المزدوج بعد إغلاق التذكرة */}
+      {canRate && (
+        <div className="border-x border-border/60 bg-primary/5 p-5">
+          {rated ? (
+            <div className="flex items-center justify-center gap-2 text-sm text-primary">
+              <CheckCircle2 className="h-4 w-4" />
+              شكراً! تم تسجيل تقييمك لـ {target}.
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 text-center">
+              <p className="text-sm font-medium">
+                قيّم تعاملك مع {targetLabel} <span className="text-primary">{target}</span>
+              </p>
+              <StarInput value={myStars} onChange={setMyStars} />
+              <Button size="sm" disabled={!myStars} onClick={submitRating}>
+                إرسال التقييم
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* إدخال الرسالة */}
       <form onSubmit={send} className="flex gap-2 rounded-b-2xl border border-t-0 border-border/60 bg-card/40 p-4">

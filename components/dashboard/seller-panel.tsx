@@ -1,32 +1,47 @@
 'use client'
 
 import { useState } from 'react'
-import { useAuth } from '@/components/auth/mock-auth'
+import { useAuth, ratingOf } from '@/components/auth/mock-auth'
 import { DashboardShell, StatCard } from './dashboard-shell'
+import { StarDisplay } from '@/components/reviews/star-rating'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { LayoutDashboard, Package, Wallet, CheckCircle2, TrendingUp } from 'lucide-react'
+import { LayoutDashboard, Package, Wallet, CheckCircle2, TrendingUp, Star, Percent } from 'lucide-react'
 
 const NAV = [
   { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard className="h-4 w-4" /> },
   { key: 'stock', label: 'المخزون والحدود', icon: <Package className="h-4 w-4" /> },
-  { key: 'wallet', label: 'المحفظة', icon: <Wallet className="h-4 w-4" /> },
+  { key: 'wallet', label: 'المحفظة والعمولة', icon: <Wallet className="h-4 w-4" /> },
 ]
 
 export function SellerPanel() {
   const { user } = useAuth()
   const [active, setActive] = useState('overview')
   const [stock, setStock] = useState({ available: 50000, min: 1000, max: 20000 })
+  const rating = ratingOf(user)
 
   return (
     <DashboardShell title="لوحة المورد" nav={NAV} active={active} onNavigate={setActive}>
       {active === 'overview' && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="الرصيد الحالي" value={`${(user?.balance ?? 0).toLocaleString()} $`} accent icon={<Wallet className="h-5 w-5" />} />
-          <StatCard label="عمليات ناجحة" value={0} icon={<CheckCircle2 className="h-5 w-5" />} />
-          <StatCard label="المبالغ المحصلة" value="0 $" icon={<TrendingUp className="h-5 w-5" />} />
-          <StatCard label="روبوكس متاح" value={stock.available.toLocaleString()} icon={<Package className="h-5 w-5" />} />
+        <div className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="الرصيد الحالي" value={`${(user?.balance ?? 0).toLocaleString()} $`} accent icon={<Wallet className="h-5 w-5" />} />
+            <StatCard label="عمليات ناجحة" value={user?.totalSales ?? 0} icon={<CheckCircle2 className="h-5 w-5" />} />
+            <StatCard label="العمولة المستحقة" value={`${(user?.commission ?? 0).toLocaleString()} $`} icon={<Percent className="h-5 w-5" />} />
+            <StatCard label="روبوكس متاح" value={stock.available.toLocaleString()} icon={<Package className="h-5 w-5" />} />
+          </div>
+          <div className="rounded-xl border border-border/60 bg-card/40 p-5">
+            <h2 className="mb-3 flex items-center gap-2 text-sm font-bold">
+              <Star className="h-4 w-4 text-primary" />
+              تقييمك كمورد
+            </h2>
+            <div className="flex items-center gap-3">
+              <StarDisplay value={rating.avg} size={22} />
+              <span className="text-lg font-bold">{rating.avg || '—'}</span>
+              <span className="text-sm text-muted-foreground">({rating.count} تقييم)</span>
+            </div>
+          </div>
         </div>
       )}
 

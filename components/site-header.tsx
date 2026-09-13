@@ -44,7 +44,7 @@ export function SiteHeader() {
                 <Wallet className="size-4" />
                 {user.balance.toFixed(2)} $
               </span>
-              <div className="flex items-center gap-2">
+              <Link href="/account" className="flex items-center gap-2 rounded-full transition-opacity hover:opacity-80">
                 <span className="flex size-9 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">
                   {user.username.slice(0, 2).toUpperCase()}
                 </span>
@@ -54,7 +54,7 @@ export function SiteHeader() {
                     {ROLE_LABELS[user.role]}
                   </span>
                 </span>
-              </div>
+              </Link>
               <Button
                 variant="ghost"
                 size="icon"
