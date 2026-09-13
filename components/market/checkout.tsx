@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/components/auth/mock-auth'
+import { useTickets } from '@/components/tickets/tickets-provider'
 import {
   DELIVERY_LABELS,
   SUPPLIERS,
@@ -19,6 +20,8 @@ export function Checkout() {
   const router = useRouter()
   const params = useSearchParams()
   const { user } = useAuth()
+  const { createTicket } = useTickets()
+  const [ticketId, setTicketId] = useState<string | null>(null)
 
   const amount = Number(params.get('amount') ?? 0)
   const delivery = (params.get('delivery') ?? 'group') as DeliveryType
@@ -54,7 +57,23 @@ export function Checkout() {
   }
 
   function pay() {
-    // في المرحلة القادمة: يفتح تذكرة في الموقع والديسكورد
+    if (!supplier) return
+    const ticket = createTicket({
+      subject: `طلب ${amount.toLocaleString()} روبوكس`,
+      buyer: user?.username ?? 'زائر',
+      seller: supplier.name,
+      amount,
+      delivery: DELIVERY_LABELS[delivery],
+      price: subtotal,
+      firstMessage: {
+        id: 'init',
+        author: 'النظام',
+        role: 'system',
+        body: `تم إنشاء الطلب. الكمية ${amount.toLocaleString()} R$ عبر ${DELIVERY_LABELS[delivery]}.`,
+        at: Date.now(),
+      },
+    })
+    setTicketId(ticket.id)
     setDone(true)
   }
 
@@ -79,9 +98,9 @@ export function Checkout() {
           لمتابعة التسليم مع الدعم لحظة بلحظة.
         </p>
         <div className="mt-6 flex flex-col gap-2">
-          <Button onClick={() => router.push('/dashboard')} className="gap-2">
+          <Button onClick={() => router.push(ticketId ? `/tickets/${ticketId}` : '/tickets')} className="gap-2">
             <Ticket className="h-4 w-4" />
-            متابعة الطلب من لوحتي
+            فتح تذكرة المتابعة
           </Button>
           <Button variant="secondary" onClick={() => router.push('/market')}>
             طلب جديد

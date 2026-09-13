@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { LayoutDashboard, LogOut, Wallet } from 'lucide-react'
+import { LayoutDashboard, LogOut, Wallet, Ticket } from 'lucide-react'
 import { BrandLogo } from '@/components/brand-logo'
 import { useAuth, ROLE_LABELS } from '@/components/auth/mock-auth'
 import { Button } from '@/components/ui/button'
@@ -26,6 +26,12 @@ export function SiteHeader() {
               <Button variant="ghost" asChild className="gap-2">
                 <Link href="/market">
                   <span className="hidden sm:inline">السوق</span>
+                </Link>
+              </Button>
+              <Button variant="ghost" asChild className="gap-2">
+                <Link href="/tickets">
+                  <Ticket className="size-4" />
+                  <span className="hidden sm:inline">التذاكر</span>
                 </Link>
               </Button>
               <Button variant="ghost" asChild className="gap-2">

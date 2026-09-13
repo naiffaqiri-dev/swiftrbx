@@ -2,6 +2,7 @@ import { Analytics } from '@vercel/analytics/next'
 import type { Metadata, Viewport } from 'next'
 import { Cairo } from 'next/font/google'
 import { AuthProvider } from '@/components/auth/mock-auth'
+import { TicketsProvider } from '@/components/tickets/tickets-provider'
 import './globals.css'
 
 const cairo = Cairo({
@@ -29,7 +30,9 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl" className={`dark ${cairo.variable} bg-background`}>
       <body className="font-sans antialiased">
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          <TicketsProvider>{children}</TicketsProvider>
+        </AuthProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>
