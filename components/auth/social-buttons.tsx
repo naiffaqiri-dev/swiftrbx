@@ -1,5 +1,8 @@
 'use client'
 
+import { useState } from 'react'
+import { Loader2 } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 
 function GoogleIcon() {
@@ -21,27 +24,76 @@ function DiscordIcon() {
   )
 }
 
+type Provider = 'google' | 'discord'
+
 export function SocialButtons() {
+  const [pending, setPending] = useState<Provider | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  async function signInWith(provider: Provider) {
+    setError(null)
+    setPending(provider)
+    const supabase = createClient()
+    const redirectTo =
+      process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ??
+      `${window.location.origin}/auth/callback?next=/dashboard`
+
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo },
+    })
+
+    if (error) {
+      setPending(null)
+      setError(
+        provider === 'google'
+          ? 'تعذّر بدء الدخول عبر Google. تأكد من تفعيل المزوّد في إعدادات Supabase.'
+          : 'تعذّر بدء الدخول عبر Discord. تأكد من تفعيل المزوّد في إعدادات Supabase.',
+      )
+    }
+    // On success the browser is redirected away, so no further handling needed.
+  }
+
   return (
-    <div className="grid grid-cols-2 gap-3">
-      <Button
-        type="button"
-        variant="secondary"
-        className="gap-2"
-        onClick={() => alert('سيتم تفعيل الدخول عبر Google لاحقاً')}
-      >
-        <GoogleIcon />
-        Google
-      </Button>
-      <Button
-        type="button"
-        variant="secondary"
-        className="gap-2"
-        onClick={() => alert('سيتم تفعيل الدخول عبر Discord لاحقاً')}
-      >
-        <DiscordIcon />
-        Discord
-      </Button>
+    <div className="flex flex-col gap-3">
+      {error && (
+        <p
+          role="alert"
+          className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {error}
+        </p>
+      )}
+      <div className="grid grid-cols-2 gap-3">
+        <Button
+          type="button"
+          variant="secondary"
+          className="gap-2"
+          disabled={pending !== null}
+          onClick={() => signInWith('google')}
+        >
+          {pending === 'google' ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <GoogleIcon />
+          )}
+          Google
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="gap-2"
+          disabled={pending !== null}
+          onClick={() => signInWith('discord')}
+        >
+          {pending === 'discord' ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <DiscordIcon />
+          )}
+          Discord
+        </Button>
+      </div>
     </div>
   )
 }
