@@ -3,6 +3,8 @@
 import { useMemo, useState } from 'react'
 import { useAuth, ROLE_LABELS, type Role, type ManagedUser } from '@/components/auth/mock-auth'
 import { DashboardShell, StatCard } from './dashboard-shell'
+import { AdminVerifyPanel } from './admin-verify-panel'
+import { TicketsList } from './tickets-list'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -16,10 +18,14 @@ import {
   ShieldCheck,
   Trash2,
   CircleDot,
+  Receipt,
+  Ticket,
 } from 'lucide-react'
 
 const NAV = [
   { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard className="h-4 w-4" /> },
+  { key: 'verify', label: 'مراجعة التحويلات', icon: <Receipt className="h-4 w-4" /> },
+  { key: 'tickets', label: 'التذاكر والنزاعات', icon: <Ticket className="h-4 w-4" /> },
   { key: 'sellers', label: 'الموردون', icon: <Store className="h-4 w-4" /> },
   { key: 'support', label: 'الدعم الفني', icon: <Headphones className="h-4 w-4" /> },
   { key: 'staff', label: 'إدارة الموظفين', icon: <Users className="h-4 w-4" /> },
@@ -197,6 +203,10 @@ export function OwnerPanel() {
           </div>
         </div>
       )}
+
+      {active === 'verify' && <AdminVerifyPanel />}
+
+      {active === 'tickets' && <TicketsList role="admin" />}
 
       {active === 'sellers' && (
         <div className="space-y-4">
