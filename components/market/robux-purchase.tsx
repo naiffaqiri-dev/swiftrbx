@@ -1,25 +1,42 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   DELIVERY_LABELS,
   DELIVERY_NOTES,
-  matchSuppliers,
+  matchOffers,
+  type ActiveOffer,
   type DeliveryType,
 } from '@/lib/mock-data'
+import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Star, Package, Truck, Zap, CheckCircle2 } from 'lucide-react'
+import { Loader2, Star, Package, Truck, Zap, CheckCircle2 } from 'lucide-react'
 
 export function RobuxPurchase() {
   const router = useRouter()
   const [amount, setAmount] = useState<number>(5000)
   const [delivery, setDelivery] = useState<DeliveryType>('group')
   const [selected, setSelected] = useState<string | null>(null)
+  const [offers, setOffers] = useState<ActiveOffer[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const matched = useMemo(() => matchSuppliers(amount, delivery), [amount, delivery])
+  useEffect(() => {
+    let active = true
+    const supabase = createClient()
+    supabase.rpc('active_offers').then(({ data }) => {
+      if (!active) return
+      setOffers((data ?? []) as ActiveOffer[])
+      setLoading(false)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const matched = useMemo(() => matchOffers(offers, amount, delivery), [offers, amount, delivery])
   const chosen = matched.find((s) => s.id === selected) ?? matched[0] ?? null
 
   function proceed() {
@@ -27,7 +44,8 @@ export function RobuxPurchase() {
     const params = new URLSearchParams({
       amount: String(amount),
       delivery,
-      supplier: chosen.id,
+      offer: chosen.id,
+      seller: chosen.username,
       price: String(chosen.price),
     })
     router.push(`/checkout?${params.toString()}`)
@@ -101,9 +119,14 @@ export function RobuxPurchase() {
             <span className="text-sm text-muted-foreground">{matched.length} بائع مطابق</span>
           </div>
 
-          {matched.length === 0 ? (
+          {loading ? (
+            <div className="flex items-center justify-center gap-2 rounded-xl border border-border/60 bg-card/40 p-8 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              جارٍ تحميل البائعين…
+            </div>
+          ) : matched.length === 0 ? (
             <p className="rounded-xl border border-border/60 bg-card/40 p-8 text-center text-sm text-muted-foreground">
-              لا يوجد بائع يطابق هذه الكمية ونوع التسليم. جرّب كمية مختلفة.
+              لا يوجد بائع يطابق هذه الكمية ونوع التسليم حالياً. جرّب كمية مختلفة.
             </p>
           ) : (
             matched.map((s) => {
@@ -118,22 +141,22 @@ export function RobuxPurchase() {
                 >
                   <div className="flex items-center gap-3">
                     <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">
-                      {s.name.slice(0, 2).toUpperCase()}
+                      {s.username.slice(0, 2).toUpperCase()}
                     </span>
                     <div>
                       <div className="flex items-center gap-1.5 font-medium">
-                        {s.name}
+                        {s.username}
                         {isSel && <CheckCircle2 className="h-4 w-4 text-primary" />}
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <span className="flex items-center gap-0.5">
                           <Star className="h-3 w-3 fill-primary text-primary" />
-                          {s.rating}
+                          {Number(s.rating).toFixed(1)}
                         </span>
-                        <span>({s.reviews} تقييم)</span>
+                        <span>({s.rating_count} تقييم)</span>
                         <span className="flex items-center gap-0.5">
                           <Package className="h-3 w-3" />
-                          {s.stock.toLocaleString()}
+                          {Number(s.available).toLocaleString()}
                         </span>
                       </div>
                     </div>
@@ -163,7 +186,7 @@ export function RobuxPurchase() {
           </div>
           <div className="flex justify-between">
             <dt className="text-muted-foreground">البائع</dt>
-            <dd className="font-medium">{chosen?.name ?? '—'}</dd>
+            <dd className="font-medium">{chosen?.username ?? '—'}</dd>
           </div>
         </dl>
         <div className="border-t border-border/60 pt-3">
