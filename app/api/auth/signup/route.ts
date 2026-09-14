@@ -1,9 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-function synthEmail(username: string) {
-  return `${username.toLowerCase()}@users.swiftrbx.site`
-}
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(req: Request) {
   let body: { username?: string; email?: string; password?: string }
@@ -15,10 +13,16 @@ export async function POST(req: Request) {
 
   const username = String(body.username ?? '').trim()
   const password = String(body.password ?? '')
-  const rawEmail = String(body.email ?? '').trim().toLowerCase()
+  const email = String(body.email ?? '').trim().toLowerCase()
 
-  if (username.length < 2) {
-    return NextResponse.json({ error: 'اسم المستخدم يجب ألا يقل عن حرفين' }, { status: 400 })
+  if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) {
+    return NextResponse.json(
+      { error: 'اسم المستخدم بالإنجليزية فقط (أحرف وأرقام و _)، من 3 إلى 20 خانة' },
+      { status: 400 },
+    )
+  }
+  if (!EMAIL_RE.test(email)) {
+    return NextResponse.json({ error: 'البريد الإلكتروني مطلوب وصالح' }, { status: 400 })
   }
   if (password.length < 6) {
     return NextResponse.json({ error: 'كلمة المرور يجب ألا تقل عن 6 أحرف' }, { status: 400 })
@@ -35,8 +39,6 @@ export async function POST(req: Request) {
   if (taken) {
     return NextResponse.json({ error: 'اسم المستخدم مستخدم بالفعل' }, { status: 409 })
   }
-
-  const email = rawEmail || synthEmail(username)
 
   const { error } = await admin.auth.admin.createUser({
     email,

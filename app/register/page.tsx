@@ -26,9 +26,18 @@ export default function RegisterPage() {
     const username =
       (form.elements.namedItem('username') as HTMLInputElement)?.value.trim() ?? ''
     const email =
-      (form.elements.namedItem('email') as HTMLInputElement)?.value.trim() || undefined
+      (form.elements.namedItem('email') as HTMLInputElement)?.value.trim() ?? ''
     const password =
       (form.elements.namedItem('password') as HTMLInputElement)?.value ?? ''
+
+    if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) {
+      setError('اسم المستخدم بالإنجليزية فقط (أحرف وأرقام و _)، من 3 إلى 20 خانة')
+      return
+    }
+    if (!email) {
+      setError('البريد الإلكتروني مطلوب')
+      return
+    }
 
     setLoading(true)
     const { error } = await register({ username, email, password })
@@ -43,7 +52,7 @@ export default function RegisterPage() {
   return (
     <AuthShell
       title="إنشاء حساب"
-      subtitle="انضم إلى SwiftRBX وابدأ الشراء خلال دقائق. البريد الإلكتروني اختياري."
+      subtitle="انضم إلى SwiftRBX وابدأ الشراء خلال دقائق."
       footer={
         <>
           لديك حساب بالفعل؟{' '}
@@ -70,26 +79,31 @@ export default function RegisterPage() {
           <Input
             id="username"
             name="username"
-            placeholder="اختر اسم مستخدم"
+            placeholder="username"
             required
+            dir="ltr"
+            pattern="[A-Za-z0-9_]{3,20}"
+            title="بالإنجليزية فقط: أحرف وأرقام و _ ، من 3 إلى 20 خانة"
             autoComplete="username"
           />
+          <p className="text-xs text-muted-foreground">
+            بالإنجليزية فقط (أحرف وأرقام و _).
+          </p>
         </div>
 
         <div className="flex flex-col gap-2">
-          <Label htmlFor="email">
-            البريد الإلكتروني{' '}
-            <span className="text-xs text-muted-foreground">(اختياري)</span>
-          </Label>
+          <Label htmlFor="email">البريد الإلكتروني</Label>
           <Input
             id="email"
             name="email"
             type="email"
             placeholder="you@example.com"
+            required
+            dir="ltr"
             autoComplete="email"
           />
           <p className="text-xs text-muted-foreground">
-            إن أضفت بريداً، سنرسل لك رسالة تحقق لتأمين حسابك.
+            نستخدمه لاستعادة كلمة المرور والتحقق بخطوتين.
           </p>
         </div>
 

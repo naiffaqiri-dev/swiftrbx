@@ -1,10 +1,12 @@
 import Image from 'next/image'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { Music2, ShieldCheck, Users, Zap } from 'lucide-react'
 import { BrandLogo } from '@/components/brand-logo'
 import { SiteHeader } from '@/components/site-header'
 import { SupportButton } from '@/components/support-button'
 import { Button } from '@/components/ui/button'
+import { createClient } from '@/lib/supabase/server'
 
 const features = [
   {
@@ -24,13 +26,30 @@ const features = [
   },
 ]
 
-const stats = [
-  { value: '619,615', label: 'روبكس متاح الآن' },
-  { value: '24/7', label: 'دعم مباشر' },
-  { value: '+50', label: 'بائع نشط' },
-]
+type OfferRow = { seller_id: string; available: number | string }
 
-export default function HomePage() {
+export default async function HomePage() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  // المستخدم المسجّل لا يرى واجهة الهبوط الترويجية — نوجّهه للوحته مباشرة
+  if (user) {
+    redirect('/dashboard')
+  }
+
+  const { data: offers } = await supabase.rpc('active_offers')
+  const rows = (offers ?? []) as OfferRow[]
+  const totalRobux = rows.reduce((sum, o) => sum + Number(o.available ?? 0), 0)
+  const activeSellers = new Set(rows.map((o) => o.seller_id)).size
+
+  const stats = [
+    { value: totalRobux.toLocaleString('en-US'), label: 'روبكس متاح الآن' },
+    { value: '24/7', label: 'دعم مباشر' },
+    { value: activeSellers.toLocaleString('en-US'), label: 'بائع نشط' },
+  ]
+
   return (
     <div className="flex min-h-svh flex-col">
       <SiteHeader />
@@ -116,7 +135,7 @@ export default function HomePage() {
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
           <BrandLogo />
           <div className="flex items-center gap-3">
-            <SocialIcon label="Discord" href="https://discord.gg/swifrbx">
+            <SocialIcon label="Discord" href="https://discord.gg/swiftrbx">
               <svg viewBox="0 0 24 24" className="size-5 fill-current" aria-hidden="true">
                 <path d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.24.5a13.7 13.7 0 0 1 4.34 2.2 13.5 13.5 0 0 0-11.02 0A13.7 13.7 0 0 1 12.82 3.5L12.58 3A19.8 19.8 0 0 0 7.7 4.4C4.6 9 3.77 13.5 4.18 17.9a19.9 19.9 0 0 0 6.04 3.05l.48-.66a13 13 0 0 1-2.06-.98l.5-.38a14.2 14.2 0 0 0 11.72 0l.5.38c-.65.38-1.34.71-2.06.98l.48.66a19.9 19.9 0 0 0 6.05-3.05c.48-5.11-.82-9.57-3.53-13.5ZM9.68 15.2c-1.18 0-2.15-1.08-2.15-2.4s.95-2.41 2.15-2.41 2.17 1.09 2.15 2.41c0 1.32-.96 2.4-2.15 2.4Zm5.28 0c-1.18 0-2.15-1.08-2.15-2.4s.95-2.41 2.15-2.41 2.17 1.09 2.15 2.41c0 1.32-.95 2.4-2.15 2.4Z" />
               </svg>

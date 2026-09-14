@@ -24,6 +24,8 @@ export type ManagedUser = {
   ratingCount?: number
   totalSales?: number
   commission?: number
+  referralCode?: string
+  twoFactorEnabled?: boolean
 }
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -44,6 +46,8 @@ type ProfileRow = {
   rating_count: number
   sales: number
   commission: string | number
+  referral_code: string | null
+  two_factor_enabled: boolean | null
   created_at: string
 }
 
@@ -62,6 +66,8 @@ function mapRow(r: ProfileRow): ManagedUser {
     ratingSum: Math.round(avg * count),
     totalSales: r.sales ?? 0,
     commission: Number(r.commission ?? 0),
+    referralCode: r.referral_code ?? undefined,
+    twoFactorEnabled: !!r.two_factor_enabled,
   }
 }
 
@@ -94,7 +100,7 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 const PROFILE_COLUMNS =
-  'id, username, email, role, balance, active, rating, rating_count, sales, commission, created_at'
+  'id, username, email, role, balance, active, rating, rating_count, sales, commission, referral_code, two_factor_enabled, created_at'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = useMemo(() => createClient(), [])
@@ -217,6 +223,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateUser = useCallback(
     async (id: string, patch: Partial<ManagedUser>) => {
+      // تحديث فوري متفائل لكل الحقول (بعضها يُكتب في قاعدة البيانات من الخادم)
+      setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)))
+
       const dbPatch: Record<string, unknown> = {}
       if (patch.email !== undefined) dbPatch.email = patch.email
       if (patch.active !== undefined) dbPatch.active = patch.active
@@ -224,8 +233,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (patch.balance !== undefined) dbPatch.balance = patch.balance
       if (Object.keys(dbPatch).length === 0) return
 
-      // تحديث فوري متفائل
-      setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)))
       await supabase.from('profiles').update(dbPatch).eq('id', id)
       await refreshUsers()
     },

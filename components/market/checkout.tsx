@@ -6,7 +6,6 @@ import { useAuth } from '@/components/auth/mock-auth'
 import { useTickets } from '@/components/tickets/tickets-provider'
 import {
   DELIVERY_LABELS,
-  SUPPLIERS,
   applyCoupon,
   type DeliveryType,
   type Coupon,
@@ -25,9 +24,8 @@ export function Checkout() {
 
   const amount = Number(params.get('amount') ?? 0)
   const delivery = (params.get('delivery') ?? 'group') as DeliveryType
-  const supplierId = params.get('supplier') ?? ''
+  const sellerName = params.get('seller') ?? ''
   const subtotal = Number(params.get('price') ?? 0)
-  const supplier = SUPPLIERS.find((s) => s.id === supplierId)
 
   const [useBalance, setUseBalance] = useState(true)
   const [couponInput, setCouponInput] = useState('')
@@ -57,11 +55,11 @@ export function Checkout() {
   }
 
   function pay() {
-    if (!supplier) return
+    if (!sellerName) return
     const ticket = createTicket({
       subject: `طلب ${amount.toLocaleString()} روبوكس`,
       buyer: user?.username ?? 'زائر',
-      seller: supplier.name,
+      seller: sellerName,
       amount,
       delivery: DELIVERY_LABELS[delivery],
       price: subtotal,
@@ -77,7 +75,7 @@ export function Checkout() {
     setDone(true)
   }
 
-  if (!amount || !supplier) {
+  if (!amount || !sellerName) {
     return (
       <div className="rounded-2xl border border-border/60 bg-card/40 p-10 text-center">
         <p className="text-muted-foreground">لا يوجد طلب. ابدأ من صفحة الشراء.</p>
@@ -94,7 +92,7 @@ export function Checkout() {
         <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-primary" />
         <h2 className="text-2xl font-bold">تم استلام طلبك</h2>
         <p className="mt-2 text-muted-foreground">
-          تم إنشاء طلبك بنجاح مع البائع <span className="text-foreground">{supplier.name}</span>. تُفتح تذكرة
+          تم إنشاء طلبك بنجاح مع البائع <span className="text-foreground">{sellerName}</span>. تُفتح تذكرة
           لمتابعة التسليم مع الدعم لحظة بلحظة.
         </p>
         <div className="mt-6 flex flex-col gap-2">
@@ -176,7 +174,7 @@ export function Checkout() {
           </div>
           <div className="flex justify-between">
             <dt className="text-muted-foreground">البائع</dt>
-            <dd className="font-medium">{supplier.name}</dd>
+            <dd className="font-medium">{sellerName}</dd>
           </div>
           <div className="flex justify-between border-t border-border/60 pt-2.5">
             <dt className="text-muted-foreground">المجموع الفرعي</dt>
