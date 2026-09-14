@@ -10,12 +10,13 @@ import { TicketsList } from './tickets-list'
 import { createClient } from '@/lib/supabase/client'
 import { formatSar, formatUsd, sarToUsd } from '@/lib/currency'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, ShoppingBag, Ticket, Wallet, Plus } from 'lucide-react'
+import { LayoutDashboard, ShoppingBag, Ticket, Wallet, Plus, Headphones } from 'lucide-react'
 
 const NAV = [
   { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard className="h-4 w-4" /> },
   { key: 'orders', label: 'طلباتي', icon: <ShoppingBag className="h-4 w-4" /> },
   { key: 'tickets', label: 'تذاكري', icon: <Ticket className="h-4 w-4" /> },
+  { key: 'support', label: 'الدعم الفني', icon: <Headphones className="h-4 w-4" /> },
 ]
 
 export function UserPanel() {
@@ -78,7 +79,16 @@ export function UserPanel() {
 
       {active === 'orders' && <OrdersList orders={orders} />}
 
-      {active === 'tickets' && <TicketsList role="buyer" />}
+      {active === 'tickets' && <TicketsList role="buyer" types={['order', 'dispute']} />}
+
+      {active === 'support' && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-border/60 bg-card/40 p-4 text-sm text-muted-foreground">
+            هل تحتاج مساعدة؟ افتح تذكرة دعم جديدة وسيتواصل معك فريق الدعم الفني مباشرة من هنا.
+          </div>
+          <TicketsList role="buyer" types={['support']} allowCreate />
+        </div>
+      )}
 
       {topUpOpen && <TopUpDialog onClose={() => setTopUpOpen(false)} />}
     </DashboardShell>

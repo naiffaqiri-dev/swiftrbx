@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { useAuth, ROLE_LABELS } from '@/components/auth/mock-auth'
 import { BrandLogo } from '@/components/brand-logo'
-import { LogOut, Home } from 'lucide-react'
+import { LogOut, Home, User as UserIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 export function DashboardShell({
@@ -71,17 +71,31 @@ export function DashboardShell({
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2 md:hidden">
-            {nav.map((item) => (
-              <button
-                key={item.key}
-                onClick={() => onNavigate(item.key)}
-                aria-label={item.label}
-                className={`rounded-lg p-2 ${active === item.key ? 'bg-primary/15 text-primary' : 'text-muted-foreground'}`}
-              >
-                {item.icon}
-              </button>
-            ))}
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 md:hidden">
+              {nav.map((item) => (
+                <button
+                  key={item.key}
+                  onClick={() => onNavigate(item.key)}
+                  aria-label={item.label}
+                  className={`rounded-lg p-2 ${active === item.key ? 'bg-primary/15 text-primary' : 'text-muted-foreground'}`}
+                >
+                  {item.icon}
+                </button>
+              ))}
+            </div>
+            <Link
+              href="/account"
+              aria-label="الملف الشخصي والإعدادات"
+              title="الملف الشخصي والإعدادات"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-primary/15 text-sm font-bold text-primary transition-colors hover:border-primary/60 hover:bg-primary/25"
+            >
+              {user?.username ? (
+                user.username.slice(0, 2).toUpperCase()
+              ) : (
+                <UserIcon className="h-5 w-5" />
+              )}
+            </Link>
           </div>
         </header>
         <div className="p-5">{children}</div>
