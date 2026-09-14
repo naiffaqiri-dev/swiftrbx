@@ -4,15 +4,17 @@ import { useEffect, useState } from 'react'
 import { useAuth, ratingOf } from '@/components/auth/mock-auth'
 import { createClient } from '@/lib/supabase/client'
 import { DashboardShell, StatCard } from './dashboard-shell'
+import { TicketsList } from './tickets-list'
 import { StarDisplay } from '@/components/reviews/star-rating'
 import { DELIVERY_LABELS, type DeliveryType } from '@/lib/mock-data'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { LayoutDashboard, Package, Wallet, CheckCircle2, Star, Percent, Loader2, CheckCircle } from 'lucide-react'
+import { LayoutDashboard, Package, Wallet, CheckCircle2, Star, Percent, Loader2, CheckCircle, Ticket } from 'lucide-react'
 
 const NAV = [
   { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard className="h-4 w-4" /> },
+  { key: 'orders', label: 'التذاكر النشطة', icon: <Ticket className="h-4 w-4" /> },
   { key: 'stock', label: 'عرض البيع', icon: <Package className="h-4 w-4" /> },
   { key: 'wallet', label: 'المحفظة والعمولة', icon: <Wallet className="h-4 w-4" /> },
 ]
@@ -145,6 +147,15 @@ export function SellerPanel() {
               <span className="font-medium text-destructive">غير ظاهر — فعّل العرض وحدّد سعراً وكمية</span>
             )}
           </div>
+        </div>
+      )}
+
+      {active === 'orders' && (
+        <div className="space-y-4">
+          <div className="rounded-xl border border-border/60 bg-card/40 p-4 text-sm text-muted-foreground">
+            تظهر هنا تذاكر الطلبات بعد أن يختارك المشتري ويؤكد الإدارة تحويله. تواصل مع المشتري ثم اضغط «تأكيد التسليم».
+          </div>
+          <TicketsList role="seller" />
         </div>
       )}
 

@@ -1,10 +1,11 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { useTickets } from '@/components/tickets/tickets-provider'
+import { useCallback, useEffect, useState } from 'react'
+import { useAuth } from '@/components/auth/mock-auth'
+import { createClient } from '@/lib/supabase/client'
 import { DashboardShell, StatCard } from './dashboard-shell'
-import { LayoutDashboard, Ticket, MessageSquare, CheckCircle2, Clock, Store, User as UserIcon } from 'lucide-react'
+import { TicketsList } from './tickets-list'
+import { LayoutDashboard, Ticket, CheckCircle2, Clock, AlertTriangle } from 'lucide-react'
 
 const NAV = [
   { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard className="h-4 w-4" /> },
@@ -12,61 +13,40 @@ const NAV = [
 ]
 
 export function SupportPanel() {
-  const router = useRouter()
-  const { tickets } = useTickets()
+  const { user } = useAuth()
   const [active, setActive] = useState('overview')
-  const open = tickets.filter((t) => t.status === 'open').length
+  const [counts, setCounts] = useState({ open: 0, disputes: 0, total: 0 })
+
+  const load = useCallback(async () => {
+    if (!user) return
+    const supabase = createClient()
+    const [all, open, disputes] = await Promise.all([
+      supabase.from('tickets').select('id', { count: 'exact', head: true }).in('type', ['support', 'dispute']),
+      supabase
+        .from('tickets')
+        .select('id', { count: 'exact', head: true })
+        .in('type', ['support', 'dispute'])
+        .in('status', ['open', 'disputed']),
+      supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('type', 'dispute'),
+    ])
+    setCounts({ open: open.count ?? 0, disputes: disputes.count ?? 0, total: all.count ?? 0 })
+  }, [user])
+
+  useEffect(() => {
+    load()
+  }, [load])
 
   return (
     <DashboardShell title="لوحة الدعم الفني" nav={NAV} active={active} onNavigate={setActive}>
       {active === 'overview' && (
         <div className="grid gap-4 sm:grid-cols-3">
-          <StatCard label="تذاكر نشطة" value={open} accent icon={<Clock className="h-5 w-5" />} />
-          <StatCard label="تذاكر مغلقة" value={tickets.length - open} icon={<CheckCircle2 className="h-5 w-5" />} />
-          <StatCard label="إجمالي التذاكر" value={tickets.length} icon={<Ticket className="h-5 w-5" />} />
+          <StatCard label="تذاكر نشطة" value={counts.open} accent icon={<Clock className="h-5 w-5" />} />
+          <StatCard label="نزاعات" value={counts.disputes} icon={<AlertTriangle className="h-5 w-5" />} />
+          <StatCard label="إجمالي التذاكر" value={counts.total} icon={<CheckCircle2 className="h-5 w-5" />} />
         </div>
       )}
 
-      {active === 'tickets' && (
-        <div className="space-y-3">
-          {tickets.length === 0 && (
-            <p className="rounded-xl border border-border/60 bg-card/40 p-8 text-center text-sm text-muted-foreground">
-              لا توجد تذاكر.
-            </p>
-          )}
-          {tickets.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => router.push(`/tickets/${t.id}`)}
-              className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-card/40 p-4 text-right transition-colors hover:border-primary/40"
-            >
-              <div className="flex items-center gap-3">
-                <MessageSquare className="h-5 w-5 text-primary" />
-                <div>
-                  <div className="text-sm font-medium">
-                    {t.subject} <span className="text-xs text-muted-foreground">#{t.id}</span>
-                  </div>
-                  <div className="mt-0.5 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <UserIcon className="h-3 w-3" /> {t.buyer}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Store className="h-3 w-3" /> {t.seller}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              <span
-                className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                  t.status === 'open' ? 'bg-primary/15 text-primary' : 'bg-muted text-muted-foreground'
-                }`}
-              >
-                {t.status === 'open' ? 'مفتوحة' : 'مغلقة'}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      {active === 'tickets' && <TicketsList role="support" />}
     </DashboardShell>
   )
 }
