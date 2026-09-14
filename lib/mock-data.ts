@@ -1,13 +1,19 @@
-export type DeliveryType = 'group' | 'gamepass'
+export type DeliveryType = 'group' | 'gamepass' | 'gift' | 'plus'
+
+export const DELIVERY_TYPES: DeliveryType[] = ['group', 'gamepass', 'gift', 'plus']
 
 export const DELIVERY_LABELS: Record<DeliveryType, string> = {
   group: 'تسليم عبر المجموعة (Group Payout)',
   gamepass: 'تسليم عبر Gamepass',
+  gift: 'إهداء داخل اللعبة (In-Game Gifting)',
+  plus: 'تحويل بلس (Plus Transfer)',
 }
 
 export const DELIVERY_NOTES: Record<DeliveryType, string> = {
   group: 'يُستلم خلال 5–7 أيام حسب سياسة روبلوكس، بدون رسوم إضافية.',
   gamepass: 'تسليم أسرع لكن روبلوكس تخصم 30% من الكمية، احتسبناها في السعر.',
+  gift: 'إهداء العنصر مباشرة لحسابك داخل اللعبة، يتطلب توفر خاصية الإهداء.',
+  plus: 'تحويل عبر خدمة بلس، سريع ويتطلب تأكيد اسم المستخدم.',
 }
 
 // عرض بائع حقيقي قادم من دالة active_offers في قاعدة البيانات
