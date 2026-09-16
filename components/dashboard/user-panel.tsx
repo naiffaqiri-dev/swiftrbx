@@ -7,16 +7,18 @@ import { DashboardShell, StatCard } from './dashboard-shell'
 import { TopUpDialog } from './top-up-dialog'
 import { OrdersList, type OrderRow } from './orders-list'
 import { TicketsList } from './tickets-list'
+import { SiteReviews } from '@/components/reviews/site-reviews'
 import { createClient } from '@/lib/supabase/client'
 import { formatSar, formatUsd, sarToUsd } from '@/lib/currency'
 import { Button } from '@/components/ui/button'
-import { LayoutDashboard, ShoppingBag, Ticket, Wallet, Plus, Headphones } from 'lucide-react'
+import { LayoutDashboard, ShoppingBag, Ticket, Wallet, Plus, Headphones, MessageSquareQuote } from 'lucide-react'
 
 const NAV = [
   { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard className="h-4 w-4" /> },
   { key: 'orders', label: 'طلباتي', icon: <ShoppingBag className="h-4 w-4" /> },
   { key: 'tickets', label: 'تذاكري', icon: <Ticket className="h-4 w-4" /> },
   { key: 'support', label: 'الدعم الفني', icon: <Headphones className="h-4 w-4" /> },
+  { key: 'reviews', label: 'تقييم الموقع', icon: <MessageSquareQuote className="h-4 w-4" /> },
 ]
 
 export function UserPanel() {
@@ -89,6 +91,8 @@ export function UserPanel() {
           <TicketsList role="buyer" types={['support']} allowCreate />
         </div>
       )}
+
+      {active === 'reviews' && <SiteReviews />}
 
       {topUpOpen && <TopUpDialog onClose={() => setTopUpOpen(false)} />}
     </DashboardShell>

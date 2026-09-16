@@ -22,7 +22,8 @@ export async function POST(req: Request) {
       { error: ctx.error },
       { status: ctx.error === "unauthorized" ? 401 : 403 },
     )
-  const { admin } = ctx
+  const { admin, userId } = ctx
+  const CLOSE_REASON = "تم إغلاق التذكرة لعدم تطابق الحوالة البنكية / فشل عملية الدفع"
 
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: "طلب غير صالح" }, { status: 400 })
@@ -64,7 +65,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "تمت معالجة الطلب مسبقاً" }, { status: 409 })
 
   if (action === "reject") {
-    await admin.from("orders").update({ status: "rejected", updated_at: new Date().toISOString() }).eq("id", id)
+    const now = new Date().toISOString()
+    await admin.from("orders").update({ status: "rejected", close_reason: CLOSE_REASON, updated_at: now }).eq("id", id)
+    // إغلاق التذكرة المرتبطة تلقائياً مع توضيح السبب للمشتري والبائع
+    const { data: tk } = await admin.from("tickets").select("id").eq("order_id", id).maybeSingle()
+    if (tk) {
+      await admin.from("tickets").update({ status: "closed", close_reason: CLOSE_REASON, updated_at: now }).eq("id", tk.id)
+      await admin.from("ticket_messages").insert({ ticket_id: tk.id, sender_id: userId, body: CLOSE_REASON })
+    }
+    await notifyDiscord("orders", { title: "تم رفض تحويل طلب وإغلاق التذكرة" })
     return NextResponse.json({ ok: true })
   }
 

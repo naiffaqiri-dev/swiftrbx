@@ -5,6 +5,8 @@ import { useAuth, ROLE_LABELS, type Role, type ManagedUser } from '@/components/
 import { DashboardShell, StatCard } from './dashboard-shell'
 import { AdminVerifyPanel } from './admin-verify-panel'
 import { TicketsList } from './tickets-list'
+import { CouponManager } from './coupon-manager'
+import { ReviewsAdmin } from './reviews-admin'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -20,6 +22,7 @@ import {
   CircleDot,
   Receipt,
   Ticket,
+  MessageSquareQuote,
 } from 'lucide-react'
 
 const NAV = [
@@ -28,6 +31,8 @@ const NAV = [
   { key: 'tickets', label: 'التذاكر والنزاعات', icon: <Ticket className="h-4 w-4" /> },
   { key: 'sellers', label: 'الموردون', icon: <Store className="h-4 w-4" /> },
   { key: 'support', label: 'الدعم الفني', icon: <Headphones className="h-4 w-4" /> },
+  { key: 'coupons', label: 'الكوبونات والإحالة', icon: <Ticket className="h-4 w-4" /> },
+  { key: 'reviews', label: 'تقييمات الموقع', icon: <MessageSquareQuote className="h-4 w-4" /> },
   { key: 'staff', label: 'إدارة الموظفين', icon: <Users className="h-4 w-4" /> },
 ]
 
@@ -221,6 +226,10 @@ export function OwnerPanel() {
           <UserTable rows={support} onToggleActive={toggleActive} onChangeRole={changeRole} onRemove={remove} />
         </div>
       )}
+
+      {active === 'coupons' && <CouponManager />}
+
+      {active === 'reviews' && <ReviewsAdmin />}
 
       {active === 'staff' && (
         <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
