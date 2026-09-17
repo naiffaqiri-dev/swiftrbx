@@ -21,15 +21,23 @@ export function RobuxPurchase() {
   const [delivery, setDelivery] = useState<DeliveryType>('group')
   const [selected, setSelected] = useState<string | null>(null)
   const [offers, setOffers] = useState<ActiveOffer[]>([])
+  const [sales, setSales] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     let active = true
     const supabase = createClient()
-    supabase.rpc('active_offers').then(({ data }) => {
+    supabase.rpc('active_offers').then(async ({ data }) => {
       if (!active) return
-      setOffers((data ?? []) as ActiveOffer[])
+      const rows = (data ?? []) as ActiveOffer[]
+      setOffers(rows)
       setLoading(false)
+      const sellerIds = [...new Set(rows.map((o) => o.seller_id).filter(Boolean))]
+      if (sellerIds.length) {
+        const { data: profs } = await supabase.from('profiles').select('id, sales').in('id', sellerIds)
+        if (!active || !profs) return
+        setSales(Object.fromEntries(profs.map((p) => [p.id, Number(p.sales ?? 0)])))
+      }
     })
     return () => {
       active = false
@@ -157,6 +165,10 @@ export function RobuxPurchase() {
                         <span className="flex items-center gap-0.5">
                           <Package className="h-3 w-3" />
                           {Number(s.available).toLocaleString()}
+                        </span>
+                        <span className="flex items-center gap-0.5 text-emerald-400">
+                          <CheckCircle2 className="h-3 w-3" />
+                          {(sales[s.seller_id] ?? 0).toLocaleString()} عملية ناجحة
                         </span>
                       </div>
                     </div>

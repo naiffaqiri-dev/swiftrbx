@@ -5,6 +5,7 @@ import { Music2, ShieldCheck, Users, Zap } from 'lucide-react'
 import { BrandLogo } from '@/components/brand-logo'
 import { SiteHeader } from '@/components/site-header'
 import { SupportButton } from '@/components/support-button'
+import { SiteReviews } from '@/components/reviews/site-reviews'
 import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/server'
 
@@ -128,6 +129,11 @@ export default async function HomePage() {
               </div>
             ))}
           </div>
+        </section>
+
+        {/* Site reviews */}
+        <section className="mx-auto w-full max-w-6xl px-6 pb-16">
+          <SiteReviews compact />
         </section>
       </main>
 

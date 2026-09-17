@@ -29,6 +29,7 @@ type TicketRow = {
   buyer_id: string
   seller_id: string | null
   order_id: string | null
+  close_reason: string | null
   created_at: string
 }
 
@@ -45,6 +46,8 @@ type OrderRow = {
   robux_amount: number
   roblox_username: string
   seller_id: string | null
+  delivered_at: string | null
+  close_reason: string | null
 }
 
 const TICKET_STATUS: Record<string, { label: string; cls: string }> = {
@@ -249,7 +252,7 @@ function TicketThread({
   onClose: () => void
   onChanged: () => void
 }) {
-  const { user, rateUser } = useAuth()
+  const { user } = useAuth()
   const [messages, setMessages] = useState<MessageRow[]>([])
   const [ticket, setTicket] = useState<TicketRow | null>(null)
   const [order, setOrder] = useState<OrderRow | null>(null)
@@ -260,6 +263,7 @@ function TicketThread({
   const [acting, setActing] = useState(false)
   const [stars, setStars] = useState(0)
   const [showRating, setShowRating] = useState(false)
+  const [reviewComment, setReviewComment] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
@@ -274,10 +278,23 @@ function TicketThread({
     if (tk?.order_id) {
       const { data: o } = await supabase
         .from('orders')
-        .select('id, status, robux_amount, roblox_username, seller_id')
+        .select('id, status, robux_amount, roblox_username, seller_id, delivered_at, close_reason')
         .eq('id', tk.order_id)
         .single()
-      setOrder((o as OrderRow) ?? null)
+      const ord = (o as OrderRow) ?? null
+      setOrder(ord)
+      // إكمال تلقائي إذا مرّت 30 دقيقة على التسليم دون تأكيد المشتري
+      if (
+        ord?.status === 'delivered' &&
+        ord.delivered_at &&
+        Date.now() - Date.parse(ord.delivered_at) >= 30 * 60 * 1000
+      ) {
+        await fetch('/api/orders/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: ord.id, action: 'auto_complete' }),
+        }).catch(() => {})
+      }
     }
     if (tk?.seller_id) {
       const { data: s } = await supabase.from('profiles').select('username').eq('id', tk.seller_id).maybeSingle()
@@ -325,20 +342,29 @@ function TicketThread({
     await supabase.from('ticket_messages').insert({ ticket_id: ticketId, sender_id: user.id, body })
   }
 
-  // البائع: تأكيد تسليم الطلب
+  async function orderAction(action: string, extra?: Record<string, unknown>) {
+    if (!order) return
+    const res = await fetch('/api/orders/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId: order.id, action, ...extra }),
+    })
+    return res.ok
+  }
+
+  // البائع: تأكيد تسليم الطلب (يضيف الرصيد القابل للسحب للبائع فوراً على الخادم)
   async function markDelivered() {
     if (!order || acting) return
     setActing(true)
-    const supabase = createClient()
-    await supabase.from('orders').update({ status: 'delivered', updated_at: new Date().toISOString() }).eq('id', order.id)
-    await supabase.from('tickets').update({ status: 'delivered', updated_at: new Date().toISOString() }).eq('id', ticketId)
-    await postSystem(`قام البائع بتأكيد تسليم ${order.robux_amount.toLocaleString()} روبوكس إلى "${order.roblox_username}".`)
+    const ok = await orderAction('deliver')
+    if (ok)
+      await postSystem(`قام البائع بتأكيد تسليم ${order.robux_amount.toLocaleString()} روبوكس إلى "${order.roblox_username}".`)
     await load()
     onChanged()
     setActing(false)
   }
 
-  // المشتري: تأكيد الاستلام + التقييم
+  // المشتري: تأكيد الاستلام + التقييم المتبادل
   async function confirmReceipt() {
     if (!order || acting) return
     if (stars < 1) {
@@ -346,11 +372,8 @@ function TicketThread({
       return
     }
     setActing(true)
-    const supabase = createClient()
-    await supabase.from('orders').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', order.id)
-    await supabase.from('tickets').update({ status: 'completed', updated_at: new Date().toISOString() }).eq('id', ticketId)
-    if (sellerName) await rateUser(sellerName, stars)
-    await postSystem(`أكد المشتري استلام الطلب وقيّم البائع بـ ${stars} من 5.`)
+    const ok = await orderAction('confirm', { rating: stars, comment: reviewComment.trim() })
+    if (ok) await postSystem(`أكد المشتري استلام الطلب وقيّم البائع بـ ${stars} من 5.`)
     await load()
     onChanged()
     setActing(false)
@@ -359,17 +382,8 @@ function TicketThread({
   async function openDispute() {
     if (!ticket || acting) return
     setActing(true)
-    const supabase = createClient()
-    await supabase.from('tickets').update({ type: 'dispute', status: 'disputed' }).eq('id', ticketId)
-    await postSystem('فتح المشتري نزاعاً على هذا الطلب وتحويله لفريق الدعم.')
-    await fetch('/api/support', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        subject: `نزاع على تذكرة ${ticketId.slice(0, 8)}`,
-        message: `فتح المستخدم نزاعاً على الطلب ${ticket.order_id ?? '-'}.`,
-      }),
-    }).catch(() => {})
+    const ok = await orderAction('dispute')
+    if (ok) await postSystem('فتح المشتري نزاعاً على هذا الطلب وتحويله لفريق الدعم.')
     await load()
     onChanged()
     setActing(false)
@@ -428,6 +442,14 @@ function TicketThread({
         </div>
 
         <div className="space-y-2 border-t border-border/60 p-3">
+          {(ticket?.status === 'closed' || order?.status === 'rejected') &&
+            (ticket?.close_reason || order?.close_reason) && (
+              <div className="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>سبب الإغلاق: {ticket?.close_reason || order?.close_reason}</span>
+              </div>
+            )}
+
           {sellerCanDeliver && (
             <Button onClick={markDelivered} disabled={acting} className="w-full gap-2">
               {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
@@ -441,8 +463,15 @@ function TicketThread({
                 <Star className="h-3.5 w-3.5" /> استلمت طلبك؟ أكّد الاستلام وقيّم البائع
               </p>
               {(showRating || stars > 0) && (
-                <div className="flex justify-center py-1">
-                  <StarInput value={stars} onChange={setStars} />
+                <div className="space-y-2 py-1">
+                  <div className="flex justify-center">
+                    <StarInput value={stars} onChange={setStars} />
+                  </div>
+                  <Input
+                    value={reviewComment}
+                    onChange={(e) => setReviewComment(e.target.value)}
+                    placeholder="أضف تعليقاً على تجربتك مع البائع (اختياري)"
+                  />
                 </div>
               )}
               <Button onClick={confirmReceipt} disabled={acting} className="w-full gap-2">
