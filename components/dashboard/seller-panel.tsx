@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { DashboardShell, StatCard } from './dashboard-shell'
 import { TicketsList } from './tickets-list'
 import { StarDisplay } from '@/components/reviews/star-rating'
-import { DELIVERY_LABELS, type DeliveryType } from '@/lib/mock-data'
+import { DELIVERY_TYPES, DELIVERY_LABELS, DELIVERY_NOTES, type DeliveryType } from '@/lib/mock-data'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -19,28 +19,32 @@ const NAV = [
   { key: 'wallet', label: 'المحفظة والعمولة', icon: <Wallet className="h-4 w-4" /> },
 ]
 
-type OfferForm = {
+// عرض مستقل لكل نوع تسليم: كمية وسعر وحدود خاصة به
+type TypeOffer = {
   available: number
   min: number
   max: number
   rate: number
-  delivery: DeliveryType[]
   active: boolean
 }
 
-const DEFAULT_OFFER: OfferForm = {
-  available: 0,
-  min: 1000,
-  max: 20000,
-  rate: 4.2,
-  delivery: ['group'],
-  active: true,
+function defaultTypeOffer(): TypeOffer {
+  return { available: 0, min: 1000, max: 20000, rate: 4.2, active: false }
+}
+
+type OffersState = Record<DeliveryType, TypeOffer>
+
+function emptyOffers(): OffersState {
+  return DELIVERY_TYPES.reduce((acc, d) => {
+    acc[d] = defaultTypeOffer()
+    return acc
+  }, {} as OffersState)
 }
 
 export function SellerPanel() {
   const { user } = useAuth()
   const [active, setActive] = useState('overview')
-  const [offer, setOffer] = useState<OfferForm>(DEFAULT_OFFER)
+  const [offers, setOffers] = useState<OffersState>(emptyOffers)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -53,21 +57,23 @@ export function SellerPanel() {
     const supabase = createClient()
     supabase
       .from('offers')
-      .select('available, min_amount, max_amount, rate, delivery, active')
+      .select('available, min_amount, max_amount, rate, delivery, delivery_type, active')
       .eq('seller_id', user.id)
-      .maybeSingle()
       .then(({ data }) => {
         if (!alive) return
-        if (data) {
-          setOffer({
-            available: Number(data.available),
-            min: Number(data.min_amount),
-            max: Number(data.max_amount),
-            rate: Number(data.rate),
-            delivery: (data.delivery ?? ['group']) as DeliveryType[],
-            active: !!data.active,
-          })
+        const next = emptyOffers()
+        for (const row of data ?? []) {
+          const dt = (row.delivery_type ?? (Array.isArray(row.delivery) ? row.delivery[0] : null)) as DeliveryType | null
+          if (!dt || !next[dt]) continue
+          next[dt] = {
+            available: Number(row.available),
+            min: Number(row.min_amount),
+            max: Number(row.max_amount),
+            rate: Number(row.rate),
+            active: !!row.active,
+          }
         }
+        setOffers(next)
         setLoading(false)
       })
     return () => {
@@ -75,40 +81,42 @@ export function SellerPanel() {
     }
   }, [user])
 
-  function toggleDelivery(d: DeliveryType) {
-    setOffer((o) => {
-      const has = o.delivery.includes(d)
-      const next = has ? o.delivery.filter((x) => x !== d) : [...o.delivery, d]
-      return { ...o, delivery: next.length ? next : o.delivery }
-    })
+  function patchType(d: DeliveryType, patch: Partial<TypeOffer>) {
+    setOffers((o) => ({ ...o, [d]: { ...o[d], ...patch } }))
   }
 
-  async function saveOffer() {
+  async function saveOffers() {
     if (!user) return
     setError('')
-    if (offer.rate <= 0) {
-      setError('حدّد سعراً صحيحاً لكل 1000 روبوكس')
-      return
+    // تحقق من الأنواع المفعّلة فقط
+    for (const d of DELIVERY_TYPES) {
+      const t = offers[d]
+      if (!t.active) continue
+      if (t.rate <= 0) {
+        setError(`حدّد سعراً صحيحاً لـ «${DELIVERY_LABELS[d]}»`)
+        return
+      }
+      if (t.min <= 0 || t.max < t.min) {
+        setError(`تحقق من الحد الأدنى والأقصى لـ «${DELIVERY_LABELS[d]}»`)
+        return
+      }
     }
-    if (offer.min <= 0 || offer.max < offer.min) {
-      setError('تحقق من الحد الأدنى والأقصى')
-      return
-    }
+
     setSaving(true)
     const supabase = createClient()
-    const { error: err } = await supabase.from('offers').upsert(
-      {
-        seller_id: user.id,
-        available: offer.available,
-        min_amount: offer.min,
-        max_amount: offer.max,
-        rate: offer.rate,
-        delivery: offer.delivery,
-        active: offer.active,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'seller_id' },
-    )
+    const now = new Date().toISOString()
+    const rows = DELIVERY_TYPES.map((d) => ({
+      seller_id: user.id,
+      delivery_type: d,
+      delivery: [d],
+      available: offers[d].available,
+      min_amount: offers[d].min,
+      max_amount: offers[d].max,
+      rate: offers[d].rate,
+      active: offers[d].active,
+      updated_at: now,
+    }))
+    const { error: err } = await supabase.from('offers').upsert(rows, { onConflict: 'seller_id,delivery_type' })
     setSaving(false)
     if (err) {
       setError('تعذّر حفظ العرض، حاول مرة أخرى')
@@ -118,6 +126,9 @@ export function SellerPanel() {
     setTimeout(() => setSaved(false), 2500)
   }
 
+  const totalAvailable = DELIVERY_TYPES.reduce((sum, d) => sum + (offers[d].active ? offers[d].available : 0), 0)
+  const anyVisible = DELIVERY_TYPES.some((d) => offers[d].active && offers[d].rate > 0 && offers[d].available > 0)
+
   return (
     <DashboardShell title="لوحة المورد" nav={NAV} active={active} onNavigate={setActive}>
       {active === 'overview' && (
@@ -126,7 +137,7 @@ export function SellerPanel() {
             <StatCard label="الرصيد الحالي" value={`${(user?.balance ?? 0).toLocaleString()} $`} accent icon={<Wallet className="h-5 w-5" />} />
             <StatCard label="عمليات ناجحة" value={user?.totalSales ?? 0} icon={<CheckCircle2 className="h-5 w-5" />} />
             <StatCard label="العمولة المستحقة" value={`${(user?.commission ?? 0).toLocaleString()} $`} icon={<Percent className="h-5 w-5" />} />
-            <StatCard label="روبوكس متاح" value={offer.available.toLocaleString()} icon={<Package className="h-5 w-5" />} />
+            <StatCard label="إجمالي روبوكس متاح" value={totalAvailable.toLocaleString()} icon={<Package className="h-5 w-5" />} />
           </div>
           <div className="rounded-xl border border-border/60 bg-card/40 p-5">
             <h2 className="mb-3 flex items-center gap-2 text-sm font-bold">
@@ -141,10 +152,10 @@ export function SellerPanel() {
           </div>
           <div className="rounded-xl border border-border/60 bg-card/40 p-5 text-sm text-muted-foreground">
             حالة عرضك:{' '}
-            {offer.active && offer.rate > 0 && offer.available > 0 ? (
+            {anyVisible ? (
               <span className="font-medium text-primary">ظاهر للمشترين في السوق</span>
             ) : (
-              <span className="font-medium text-destructive">غير ظاهر — فعّل العرض وحدّد سعراً وكمية</span>
+              <span className="font-medium text-destructive">غير ظاهر — فعّل نوع تسليم واحداً على الأقل بسعر وكمية</span>
             )}
           </div>
         </div>
@@ -160,69 +171,99 @@ export function SellerPanel() {
       )}
 
       {active === 'stock' && (
-        <div className="max-w-md space-y-4 rounded-xl border border-border/60 bg-card/40 p-5">
-          <h2 className="text-sm font-bold">عرض البيع الخاص بك</h2>
-          <p className="text-xs text-muted-foreground">
-            يفرز الموقع البائعين تلقائياً حسب هذه القيم عند طلب المشتري لكمية معينة. لا يظهر عرضك إلا عند تفعيله وتحديد سعر وكمية.
-          </p>
+        <div className="space-y-4">
+          <div className="rounded-xl border border-border/60 bg-card/40 p-5">
+            <h2 className="text-sm font-bold">عروض البيع حسب نوع التسليم</h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              لكل نوع تسليم كمية وسعر وحدود مستقلة. مثال: فعّل «تحويل بلس» بكمية 7000 و«المجموعة» بكمية 7000 بسعرين مختلفين.
+              لا يظهر النوع في السوق إلا عند تفعيله وتحديد سعر وكمية.
+            </p>
+          </div>
 
           {loading ? (
             <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              جارٍ تحميل عرضك…
+              جارٍ تحميل عروضك…
             </div>
           ) : (
             <>
-              <div className="space-y-1.5">
-                <Label htmlFor="av">الكمية المتاحة (R$)</Label>
-                <Input id="av" type="number" value={offer.available} onChange={(e) => setOffer((s) => ({ ...s, available: +e.target.value }))} />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="rate">السعر لكل 1000 روبوكس ($)</Label>
-                <Input id="rate" type="number" step="0.1" value={offer.rate} onChange={(e) => setOffer((s) => ({ ...s, rate: +e.target.value }))} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="mn">الحد الأدنى</Label>
-                  <Input id="mn" type="number" value={offer.min} onChange={(e) => setOffer((s) => ({ ...s, min: +e.target.value }))} />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="mx">الحد الأقصى</Label>
-                  <Input id="mx" type="number" value={offer.max} onChange={(e) => setOffer((s) => ({ ...s, max: +e.target.value }))} />
-                </div>
-              </div>
+              <div className="grid gap-4 lg:grid-cols-2">
+                {DELIVERY_TYPES.map((d) => {
+                  const t = offers[d]
+                  return (
+                    <div
+                      key={d}
+                      className={`space-y-3 rounded-xl border p-4 transition-colors ${
+                        t.active ? 'border-primary/40 bg-primary/5' : 'border-border/60 bg-card/40'
+                      }`}
+                    >
+                      <label className="flex cursor-pointer items-start justify-between gap-3">
+                        <span>
+                          <span className="block text-sm font-bold">{DELIVERY_LABELS[d]}</span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">{DELIVERY_NOTES[d]}</span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={t.active}
+                          onChange={(e) => patchType(d, { active: e.target.checked })}
+                          className="mt-1 h-4 w-4 shrink-0 accent-primary"
+                        />
+                      </label>
 
-              <div className="space-y-2">
-                <Label>طرق التسليم المدعومة</Label>
-                <div className="grid gap-2">
-                  {(Object.keys(DELIVERY_LABELS) as DeliveryType[]).map((d) => (
-                    <label key={d} className="flex cursor-pointer items-center gap-2 rounded-lg border border-border/60 p-2.5 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={offer.delivery.includes(d)}
-                        onChange={() => toggleDelivery(d)}
-                        className="h-4 w-4 accent-primary"
-                      />
-                      {DELIVERY_LABELS[d]}
-                    </label>
-                  ))}
-                </div>
+                      <div className={t.active ? 'space-y-3' : 'space-y-3 opacity-50'}>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1.5">
+                            <Label htmlFor={`av-${d}`}>الكمية المتاحة (R$)</Label>
+                            <Input
+                              id={`av-${d}`}
+                              type="number"
+                              disabled={!t.active}
+                              value={t.available}
+                              onChange={(e) => patchType(d, { available: +e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor={`rate-${d}`}>السعر / 1000 ($)</Label>
+                            <Input
+                              id={`rate-${d}`}
+                              type="number"
+                              step="0.1"
+                              disabled={!t.active}
+                              value={t.rate}
+                              onChange={(e) => patchType(d, { rate: +e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor={`mn-${d}`}>الحد الأدنى</Label>
+                            <Input
+                              id={`mn-${d}`}
+                              type="number"
+                              disabled={!t.active}
+                              value={t.min}
+                              onChange={(e) => patchType(d, { min: +e.target.value })}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label htmlFor={`mx-${d}`}>الحد الأقصى</Label>
+                            <Input
+                              id={`mx-${d}`}
+                              type="number"
+                              disabled={!t.active}
+                              value={t.max}
+                              onChange={(e) => patchType(d, { max: +e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
-
-              <label className="flex cursor-pointer items-center justify-between rounded-lg border border-border/60 p-2.5 text-sm">
-                <span>تفعيل العرض (ظاهر في السوق)</span>
-                <input
-                  type="checkbox"
-                  checked={offer.active}
-                  onChange={(e) => setOffer((s) => ({ ...s, active: e.target.checked }))}
-                  className="h-4 w-4 accent-primary"
-                />
-              </label>
 
               {error && <p className="text-xs text-destructive">{error}</p>}
-              <Button className="w-full gap-2" onClick={saveOffer} disabled={saving}>
+              <Button className="w-full gap-2 sm:w-auto" onClick={saveOffers} disabled={saving}>
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <CheckCircle className="h-4 w-4" /> : null}
-                {saved ? 'تم الحفظ' : 'حفظ العرض'}
+                {saved ? 'تم الحفظ' : 'حفظ كل العروض'}
               </Button>
             </>
           )}

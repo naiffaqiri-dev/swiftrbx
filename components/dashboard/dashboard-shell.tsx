@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { useAuth, ROLE_LABELS } from '@/components/auth/mock-auth'
 import { BrandLogo } from '@/components/brand-logo'
 import { MessageNotifier } from './message-notifier'
+import { SupportButton } from '@/components/support-button'
+import { LanguageToggle, useLocale } from '@/components/i18n/locale-provider'
 import { LogOut, Home, User as UserIcon } from 'lucide-react'
 import type { ReactNode } from 'react'
 
@@ -25,6 +27,7 @@ export function DashboardShell({
   return (
     <div className="flex min-h-screen bg-background text-foreground">
       <MessageNotifier />
+      <SupportButton />
       <aside className="hidden w-64 shrink-0 flex-col border-l border-border/60 bg-card/40 p-4 md:flex">
         <div className="mb-6 px-2">
           <BrandLogo />
@@ -74,6 +77,7 @@ export function DashboardShell({
             )}
           </div>
           <div className="flex items-center gap-2">
+            <LanguageToggle />
             <div className="flex items-center gap-2 md:hidden">
               {nav.map((item) => (
                 <button
