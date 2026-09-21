@@ -6,6 +6,7 @@ import { LayoutDashboard, LogOut, Wallet, Ticket } from 'lucide-react'
 import { BrandLogo } from '@/components/brand-logo'
 import { useAuth, ROLE_LABELS } from '@/components/auth/mock-auth'
 import { Button } from '@/components/ui/button'
+import { LanguageToggle } from '@/components/i18n/locale-provider'
 
 export function SiteHeader() {
   const { user, ready, logout } = useAuth()
@@ -23,6 +24,7 @@ export function SiteHeader() {
         <nav className="flex items-center gap-2">
           {ready && user ? (
             <div className="flex items-center gap-3">
+              <LanguageToggle />
               <Button variant="ghost" asChild className="gap-2">
                 <Link href="/market">
                   <span className="hidden sm:inline">السوق</span>
@@ -66,6 +68,7 @@ export function SiteHeader() {
             </div>
           ) : (
             <>
+              <LanguageToggle />
               <Button variant="ghost" asChild>
                 <Link href="/login">تسجيل الدخول</Link>
               </Button>
