@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
+import { validatePassword } from '@/lib/password'
 
 export default function RegisterPage() {
   const router = useRouter()
@@ -25,22 +26,39 @@ export default function RegisterPage() {
     const form = e.currentTarget as HTMLFormElement
     const username =
       (form.elements.namedItem('username') as HTMLInputElement)?.value.trim() ?? ''
+    const displayName =
+      (form.elements.namedItem('displayName') as HTMLInputElement)?.value.trim() ?? ''
     const email =
       (form.elements.namedItem('email') as HTMLInputElement)?.value.trim() ?? ''
     const password =
       (form.elements.namedItem('password') as HTMLInputElement)?.value ?? ''
+    const confirm =
+      (form.elements.namedItem('confirm') as HTMLInputElement)?.value ?? ''
 
-    if (!/^[A-Za-z0-9_]{3,20}$/.test(username)) {
-      setError('اسم المستخدم بالإنجليزية فقط (أحرف وأرقام و _)، من 3 إلى 20 خانة')
+    if (!/^[A-Za-z0-9_]{2,16}$/.test(username)) {
+      setError('اسم المستخدم بالإنجليزية فقط (أحرف وأرقام و _)، من 2 إلى 16 خانة')
+      return
+    }
+    if (displayName.length < 2) {
+      setError('الاسم المستعار مطلوب (حرفان على الأقل)')
       return
     }
     if (!email) {
       setError('البريد الإلكتروني مطلوب')
       return
     }
+    const pwError = validatePassword(password)
+    if (pwError) {
+      setError(pwError)
+      return
+    }
+    if (password !== confirm) {
+      setError('كلمتا المرور غير متطابقتين')
+      return
+    }
 
     setLoading(true)
-    const { error } = await register({ username, email, password })
+    const { error } = await register({ username, displayName, email, password })
     if (error) {
       setError(error)
       setLoading(false)
@@ -75,6 +93,21 @@ export default function RegisterPage() {
           </p>
         )}
         <div className="flex flex-col gap-2">
+          <Label htmlFor="displayName">الاسم المستعار</Label>
+          <Input
+            id="displayName"
+            name="displayName"
+            placeholder="مثال: نايف"
+            required
+            maxLength={24}
+            autoComplete="nickname"
+          />
+          <p className="text-xs text-muted-foreground">
+            الاسم الظاهر للآخرين، ويمكن تغييره لاحقاً.
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2">
           <Label htmlFor="username">اسم المستخدم</Label>
           <Input
             id="username"
@@ -82,12 +115,12 @@ export default function RegisterPage() {
             placeholder="username"
             required
             dir="ltr"
-            pattern="[A-Za-z0-9_]{3,20}"
-            title="بالإنجليزية فقط: أحرف وأرقام و _ ، من 3 إلى 20 خانة"
+            pattern="[A-Za-z0-9_]{2,16}"
+            title="بالإنجليزية فقط: أحرف وأرقام و _ ، من 2 إلى 16 خانة"
             autoComplete="username"
           />
           <p className="text-xs text-muted-foreground">
-            بالإنجليزية فقط (أحرف وأرقام و _).
+            بالإنجليزية فقط (أحرف وأرقام و _)، من 2 إلى 16 خانة. لا يمكن استخدام اسم مأخوذ مسبقاً.
           </p>
         </div>
 
@@ -132,6 +165,21 @@ export default function RegisterPage() {
               )}
             </button>
           </div>
+          <p className="text-xs text-muted-foreground">
+            8 خانات على الأقل، وتحتوي على حروف وأرقام وعلامة واحدة على الأقل (مثل @ # ! _).
+          </p>
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="confirm">تأكيد كلمة المرور</Label>
+          <Input
+            id="confirm"
+            name="confirm"
+            type={showPassword ? 'text' : 'password'}
+            placeholder="••••••••"
+            required
+            autoComplete="new-password"
+          />
         </div>
 
         <Button

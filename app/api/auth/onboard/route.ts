@@ -1,10 +1,20 @@
 import { NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { USERNAME_RE, validatePassword } from '@/lib/password'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(req: Request) {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 })
+  }
+
   let body: { username?: string; displayName?: string; email?: string; password?: string }
   try {
     body = await req.json()
@@ -36,29 +46,44 @@ export async function POST(req: Request) {
 
   const admin = createAdminClient()
 
-  // التحقق من توفّر اسم المستخدم
+  // اسم المستخدم يجب ألا يكون مستخدماً من قبل شخص آخر
   const { data: taken } = await admin
     .from('profiles')
     .select('id')
     .ilike('username', username)
+    .neq('id', user.id)
     .maybeSingle()
   if (taken) {
     return NextResponse.json({ error: 'اسم المستخدم مستخدم بالفعل' }, { status: 409 })
   }
 
-  const { error } = await admin.auth.admin.createUser({
-    email,
+  // ضبط كلمة المرور والبريد على حساب المصادقة (يتيح تسجيل الدخول اليدوي لاحقاً)
+  const { error: authErr } = await admin.auth.admin.updateUserById(user.id, {
     password,
+    email,
     email_confirm: true,
-    user_metadata: { username, display_name: displayName },
+    user_metadata: { ...user.user_metadata, username, display_name: displayName },
   })
-
-  if (error) {
-    const msg = /already|registered|exists/i.test(error.message)
+  if (authErr) {
+    const msg = /already|registered|exists/i.test(authErr.message)
       ? 'البريد الإلكتروني مستخدم بالفعل'
-      : 'تعذّر إنشاء الحساب، حاول مرة أخرى'
+      : 'تعذّر حفظ البيانات، حاول مرة أخرى'
     return NextResponse.json({ error: msg }, { status: 400 })
   }
 
-  return NextResponse.json({ email })
+  const { error: profErr } = await admin
+    .from('profiles')
+    .update({
+      username,
+      display_name: displayName,
+      email,
+      onboarded: true,
+    })
+    .eq('id', user.id)
+
+  if (profErr) {
+    return NextResponse.json({ error: 'تعذّر حفظ الملف الشخصي' }, { status: 400 })
+  }
+
+  return NextResponse.json({ ok: true })
 }
