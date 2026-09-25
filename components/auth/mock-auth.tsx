@@ -98,6 +98,7 @@ type AuthContextValue = {
   login: (identifier: string, password: string) => Promise<{ error?: string }>
   register: (data: {
     username: string
+    displayName?: string
     email?: string
     password: string
   }) => Promise<{ error?: string }>
@@ -193,7 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 
   const register = useCallback(
-    async (data: { username: string; email?: string; password: string }) => {
+    async (data: { username: string; displayName?: string; email?: string; password: string }) => {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
