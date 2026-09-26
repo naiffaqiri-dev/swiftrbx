@@ -174,7 +174,7 @@ export function RobuxPurchase() {
                     </div>
                   </div>
                   <div className="text-left">
-                    <div className="text-lg font-bold text-primary">{s.price} $</div>
+                    <div className="text-lg font-bold text-primary">{formatMoney(s.price)}</div>
                     <div className="text-xs text-muted-foreground">لـ {amount.toLocaleString()} R$</div>
                   </div>
                 </button>
@@ -204,7 +204,7 @@ export function RobuxPurchase() {
         <div className="border-t border-border/60 pt-3">
           <div className="flex items-center justify-between">
             <span className="text-sm text-muted-foreground">الإجمالي</span>
-            <span className="text-2xl font-bold text-primary">{chosen?.price ?? 0} $</span>
+            <span className="text-2xl font-bold text-primary">{formatMoney(chosen?.price ?? 0)}</span>
           </div>
         </div>
         <Button className="w-full" size="lg" disabled={!chosen} onClick={proceed}>

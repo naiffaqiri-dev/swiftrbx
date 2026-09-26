@@ -10,6 +10,7 @@ import { ReviewsAdmin } from './reviews-admin'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { formatMoney } from '@/lib/currency'
 import {
   LayoutDashboard,
   Store,
@@ -114,7 +115,7 @@ function UserTable({
                   ))}
                 </select>
               </td>
-              <td className="p-3 font-medium">{u.balance.toLocaleString()} $</td>
+              <td className="p-3 font-medium">{formatMoney(u.balance)}</td>
               <td className="p-3">
                 <button onClick={() => onToggleActive(u)} disabled={u.role === 'owner'}>
                   <StatusDot active={u.active} />
@@ -190,7 +191,7 @@ export function OwnerPanel() {
             <StatCard label="إجمالي الموظفين" value={sellers.length + support.length} icon={<Users className="h-5 w-5" />} />
             <StatCard
               label="أرصدة الموردين"
-              value={`${sellers.reduce((s, u) => s + u.balance, 0).toLocaleString()} $`}
+              value={formatMoney(sellers.reduce((s, u) => s + u.balance, 0))}
               icon={<Wallet className="h-5 w-5" />}
             />
           </div>

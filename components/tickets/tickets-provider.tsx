@@ -141,7 +141,7 @@ export function TicketsProvider({ children }: { children: React.ReactNode }) {
       })
       notifyDiscord(
         'orders',
-        `**طلب جديد** ${id}\nالمشتري: ${data.buyer}\nالبائع: ${data.seller}\nالكمية: ${data.amount.toLocaleString()} R$\nالتسليم: ${data.delivery}\nالسعر: ${data.price}$`,
+        `**طلب جديد** ${id}\nالمشتري: ${data.buyer}\nالبائع: ${data.seller}\nالكمية: ${data.amount.toLocaleString()} R$\nالتسليم: ${data.delivery}\nالسعر: ${data.price} SAR`,
       )
       return ticket
     },

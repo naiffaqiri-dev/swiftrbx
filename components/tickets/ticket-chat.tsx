@@ -8,6 +8,7 @@ import { StarInput } from '@/components/reviews/star-rating'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { ArrowRight, Send, Lock, Unlock, Store, User as UserIcon, CheckCircle2 } from 'lucide-react'
+import { formatMoney } from '@/lib/currency'
 
 function timeAgo(at: number) {
   const diff = Math.floor((Date.now() - at) / 60000)
@@ -112,7 +113,7 @@ export function TicketChat({ ticketId }: { ticketId: string }) {
               <span className="flex items-center gap-1">
                 <Store className="h-3.5 w-3.5" /> {ticket.seller}
               </span>
-              <span>{ticket.amount.toLocaleString()} R$ · {ticket.price}$</span>
+              <span>{ticket.amount.toLocaleString()} R$ · {formatMoney(ticket.price)}</span>
             </div>
           </div>
           <span
