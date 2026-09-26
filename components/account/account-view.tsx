@@ -8,7 +8,8 @@ import { StarDisplay } from '@/components/reviews/star-rating'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { User as UserIcon, Shield, Wallet, Copy, Check, KeyRound, Smartphone, Loader2, Mail } from 'lucide-react'
+import { formatMoney } from '@/lib/currency'
+import { User as UserIcon, Shield, Wallet, Copy, Check, KeyRound, Smartphone, Loader2, Mail, Camera, AtSign, BadgeCheck } from 'lucide-react'
 
 function fallbackRef(seed: string) {
   let out = ''
@@ -40,6 +41,12 @@ export function AccountView() {
   const [pwBusy, setPwBusy] = useState(false)
   const [pwMsg, setPwMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
+  // تخصيص الملف الشخصي
+  const [displayName, setDisplayName] = useState('')
+  const [username, setUsername] = useState('')
+  const [profileBusy, setProfileBusy] = useState<'display' | 'username' | 'avatar' | null>(null)
+  const [profileMsg, setProfileMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+
   // التحقق بخطوتين
   const [twoFA, setTwoFA] = useState(false)
   const [faStage, setFaStage] = useState<'idle' | 'code'>('idle')
@@ -53,7 +60,11 @@ export function AccountView() {
   }, [ready, user, router])
 
   useEffect(() => {
-    if (user) setTwoFA(!!user.twoFactorEnabled)
+    if (user) {
+      setTwoFA(!!user.twoFactorEnabled)
+      setDisplayName(user.displayName ?? user.username)
+      setUsername(user.username)
+    }
   }, [user])
 
   if (!ready || !user) {
@@ -67,6 +78,78 @@ export function AccountView() {
     navigator.clipboard?.writeText(refCode)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  async function saveProfileField(action: 'displayName' | 'username', value: string) {
+    setProfileMsg(null)
+    setProfileBusy(action === 'displayName' ? 'display' : 'username')
+    try {
+      const res = await fetch('/api/account/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, value }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setProfileMsg({ type: 'err', text: data.error ?? 'تعذّر الحفظ' })
+        return
+      }
+      if (action === 'displayName') {
+        updateUser(user!.id, { displayName: value, displayNameChangedAt: data.changedAt })
+        setProfileMsg({ type: 'ok', text: 'تم تحديث الاسم المستعار بنجاح.' })
+      } else {
+        updateUser(user!.id, { username: value, usernameChangedAt: data.changedAt })
+        setProfileMsg({ type: 'ok', text: 'تم تحديث اسم المستخدم بنجاح.' })
+      }
+    } catch {
+      setProfileMsg({ type: 'err', text: 'تعذّر الاتصال، حاول لاحقاً' })
+    } finally {
+      setProfileBusy(null)
+    }
+  }
+
+  async function uploadAvatar(file: File) {
+    setProfileMsg(null)
+    if (!file.type.startsWith('image/')) {
+      setProfileMsg({ type: 'err', text: 'يرجى اختيار ملف صورة صالح' })
+      return
+    }
+    if (file.size > 3 * 1024 * 1024) {
+      setProfileMsg({ type: 'err', text: 'حجم الصورة يجب ألا يتجاوز 3 ميجابايت' })
+      return
+    }
+    setProfileBusy('avatar')
+    try {
+      const supabase = createClient()
+      const ext = file.name.split('.').pop() || 'png'
+      const path = `${user!.id}/${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, {
+        upsert: true,
+        contentType: file.type,
+      })
+      if (upErr) {
+        setProfileMsg({ type: 'err', text: 'تعذّر رفع الصورة، حاول مرة أخرى' })
+        return
+      }
+      const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path)
+      const avatarUrl = pub.publicUrl
+      const res = await fetch('/api/account/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'avatar', value: avatarUrl }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setProfileMsg({ type: 'err', text: data.error ?? 'تعذّر حفظ الصورة' })
+        return
+      }
+      updateUser(user!.id, { avatarUrl })
+      setProfileMsg({ type: 'ok', text: 'تم تحديث الصورة الشخصية بنجاح.' })
+    } catch {
+      setProfileMsg({ type: 'err', text: 'تعذّر الاتصال، حاول لاحقاً' })
+    } finally {
+      setProfileBusy(null)
+    }
   }
 
   async function requestEmailChange() {
@@ -202,12 +285,26 @@ export function AccountView() {
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-6 flex items-center gap-4 rounded-2xl border border-border/60 bg-card/40 p-6">
-        <span className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/15 text-xl font-bold text-primary">
-          {user.username.slice(0, 2).toUpperCase()}
-        </span>
-        <div>
-          <h1 className="text-xl font-bold">{user.username}</h1>
-          <p className="text-sm text-muted-foreground">{ROLE_LABELS[user.role]}</p>
+        {user.avatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={user.avatarUrl || "/placeholder.svg"}
+            alt={user.displayName ?? user.username}
+            className="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-primary/30"
+          />
+        ) : (
+          <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xl font-bold text-primary">
+            {(user.displayName ?? user.username).slice(0, 2).toUpperCase()}
+          </span>
+        )}
+        <div className="min-w-0">
+          <h1 className="truncate text-xl font-bold">{user.displayName ?? user.username}</h1>
+          <p className="flex items-center gap-1 text-sm text-muted-foreground">
+            <AtSign className="h-3.5 w-3.5" />
+            <span dir="ltr">{user.username}</span>
+            <span className="mx-1">·</span>
+            {ROLE_LABELS[user.role]}
+          </p>
           {user.role === 'seller' && (
             <div className="mt-1 flex items-center gap-2">
               <StarDisplay value={rating.avg} size={14} />
@@ -217,7 +314,7 @@ export function AccountView() {
         </div>
         <div className="ms-auto text-left">
           <div className="text-xs text-muted-foreground">الرصيد</div>
-          <div className="text-lg font-bold text-primary">{user.balance.toLocaleString()} $</div>
+          <div className="text-lg font-bold text-primary">{formatMoney(user.balance)}</div>
         </div>
       </div>
 
@@ -238,10 +335,112 @@ export function AccountView() {
 
       {tab === 'profile' && (
         <div className="space-y-5 rounded-2xl border border-border/60 bg-card/40 p-6">
-          <div className="space-y-1.5">
-            <Label htmlFor="p-username">اسم المستخدم</Label>
-            <Input id="p-username" value={user.username} disabled />
+          {profileMsg && (
+            <p className={`text-xs ${profileMsg.type === 'ok' ? 'text-primary' : 'text-destructive'}`}>
+              {profileMsg.text}
+            </p>
+          )}
+
+          {/* الصورة الشخصية */}
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              {user.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={user.avatarUrl || "/placeholder.svg"}
+                  alt={user.displayName ?? user.username}
+                  className="h-20 w-20 rounded-full object-cover ring-2 ring-primary/30"
+                />
+              ) : (
+                <span className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/15 text-2xl font-bold text-primary">
+                  {(user.displayName ?? user.username).slice(0, 2).toUpperCase()}
+                </span>
+              )}
+              {profileBusy === 'avatar' && (
+                <span className="absolute inset-0 flex items-center justify-center rounded-full bg-background/70">
+                  <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                </span>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="avatar-input" className="mb-1.5 block">الصورة الشخصية</Label>
+              <label
+                htmlFor="avatar-input"
+                className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border/60 bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
+              >
+                <Camera className="h-4 w-4 text-primary" />
+                تغيير الصورة
+              </label>
+              <input
+                id="avatar-input"
+                type="file"
+                accept="image/*"
+                className="sr-only"
+                disabled={profileBusy === 'avatar'}
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) uploadAvatar(f)
+                  e.target.value = ''
+                }}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">يمكنك تغييرها في أي وقت — بحد أقصى 3 ميجابايت.</p>
+            </div>
           </div>
+
+          {/* الاسم المستعار — مرة واحدة كل 3 أيام */}
+          <div className="space-y-1.5">
+            <Label htmlFor="p-display" className="flex items-center gap-1.5">
+              <BadgeCheck className="h-4 w-4 text-primary" />
+              الاسم المستعار
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                id="p-display"
+                value={displayName}
+                maxLength={24}
+                onChange={(e) => setDisplayName(e.target.value)}
+                placeholder="الاسم الظاهر للآخرين"
+              />
+              <Button
+                onClick={() => saveProfileField('displayName', displayName.trim())}
+                disabled={profileBusy === 'display' || displayName.trim() === (user.displayName ?? '')}
+                className="gap-2"
+              >
+                {profileBusy === 'display' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                حفظ
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">يمكن تغييره مرة واحدة كل 3 أيام كحد أقصى.</p>
+          </div>
+
+          {/* اسم المستخدم — مرة واحدة شهرياً */}
+          <div className="space-y-1.5">
+            <Label htmlFor="p-username" className="flex items-center gap-1.5">
+              <AtSign className="h-4 w-4 text-primary" />
+              اسم المستخدم
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                id="p-username"
+                value={username}
+                dir="ltr"
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="username"
+              />
+              <Button
+                onClick={() => saveProfileField('username', username.trim())}
+                disabled={profileBusy === 'username' || username.trim() === user.username}
+                className="gap-2"
+              >
+                {profileBusy === 'username' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                حفظ
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              بالإنجليزية فقط (أحرف وأرقام و _)، من 2 إلى 16 خانة. يمكن تغييره مرة واحدة شهرياً كحد أقصى.
+            </p>
+          </div>
+
           <div className="space-y-1.5">
             <Label>البريد الإلكتروني الحالي</Label>
             <Input value={user.email ?? ''} disabled />
@@ -376,7 +575,7 @@ export function AccountView() {
 
       {tab === 'affiliate' && (
         <div className="space-y-4 rounded-2xl border border-border/60 bg-card/40 p-6">
-          <h2 className="text-sm font-bold">برنامج الإحالة</h2>
+          <h2 className="text-sm font-bold">برنامج الإحا��ة</h2>
           <p className="text-sm text-muted-foreground">
             شارك كود الإحالة واحصل على عمولة من كل عملية شراء يقوم بها من تدعوهم.
           </p>
@@ -396,7 +595,7 @@ export function AccountView() {
             </div>
             <div className="rounded-xl border border-border/60 p-4">
               <div className="text-xs text-muted-foreground">عمولة محصلة</div>
-              <div className="text-xl font-bold text-primary">{(user.commission ?? 0).toLocaleString()} $</div>
+              <div className="text-sm font-bold text-primary">{formatMoney(user.commission ?? 0)}</div>
             </div>
             <div className="rounded-xl border border-border/60 p-4">
               <div className="text-xs text-muted-foreground">نسبة العمولة</div>

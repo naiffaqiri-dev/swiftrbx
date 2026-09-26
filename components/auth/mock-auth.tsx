@@ -15,6 +15,8 @@ export type Role = 'owner' | 'seller' | 'support' | 'user'
 export type ManagedUser = {
   id: string
   username: string
+  displayName?: string
+  avatarUrl?: string
   email?: string
   role: Role
   balance: number
@@ -26,6 +28,9 @@ export type ManagedUser = {
   commission?: number
   referralCode?: string
   twoFactorEnabled?: boolean
+  onboarded?: boolean
+  usernameChangedAt?: number | null
+  displayNameChangedAt?: number | null
 }
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -38,6 +43,8 @@ export const ROLE_LABELS: Record<Role, string> = {
 type ProfileRow = {
   id: string
   username: string
+  display_name: string | null
+  avatar_url: string | null
   email: string | null
   role: Role
   balance: string | number
@@ -48,6 +55,9 @@ type ProfileRow = {
   commission: string | number
   referral_code: string | null
   two_factor_enabled: boolean | null
+  onboarded: boolean | null
+  username_changed_at: string | null
+  display_name_changed_at: string | null
   created_at: string
 }
 
@@ -57,6 +67,8 @@ function mapRow(r: ProfileRow): ManagedUser {
   return {
     id: r.id,
     username: r.username,
+    displayName: r.display_name ?? undefined,
+    avatarUrl: r.avatar_url ?? undefined,
     email: r.email ?? undefined,
     role: r.role,
     balance: Number(r.balance ?? 0),
@@ -68,6 +80,9 @@ function mapRow(r: ProfileRow): ManagedUser {
     commission: Number(r.commission ?? 0),
     referralCode: r.referral_code ?? undefined,
     twoFactorEnabled: !!r.two_factor_enabled,
+    onboarded: r.onboarded ?? true,
+    usernameChangedAt: r.username_changed_at ? Date.parse(r.username_changed_at) : null,
+    displayNameChangedAt: r.display_name_changed_at ? Date.parse(r.display_name_changed_at) : null,
   }
 }
 
@@ -83,6 +98,7 @@ type AuthContextValue = {
   login: (identifier: string, password: string) => Promise<{ error?: string }>
   register: (data: {
     username: string
+    displayName?: string
     email?: string
     password: string
   }) => Promise<{ error?: string }>
@@ -100,7 +116,7 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 const PROFILE_COLUMNS =
-  'id, username, email, role, balance, active, rating, rating_count, sales, commission, referral_code, two_factor_enabled, created_at'
+  'id, username, display_name, avatar_url, email, role, balance, active, rating, rating_count, sales, commission, referral_code, two_factor_enabled, onboarded, username_changed_at, display_name_changed_at, created_at'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = useMemo(() => createClient(), [])
@@ -178,7 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 
   const register = useCallback(
-    async (data: { username: string; email?: string; password: string }) => {
+    async (data: { username: string; displayName?: string; email?: string; password: string }) => {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

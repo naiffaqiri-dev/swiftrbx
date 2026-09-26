@@ -1,21 +1,22 @@
 'use client'
 
-import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
-import { AuthShell } from '@/components/auth/auth-shell'
-import { SocialButtons } from '@/components/auth/social-buttons'
-import { useAuth } from '@/components/auth/mock-auth'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
 import { validatePassword } from '@/lib/password'
+import { BrandLogo } from '@/components/brand-logo'
 
-export default function RegisterPage() {
+export function OnboardingForm({
+  defaultEmail,
+  provider,
+}: {
+  defaultEmail: string
+  provider: string
+}) {
   const router = useRouter()
-  const { register } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -24,16 +25,11 @@ export default function RegisterPage() {
     e.preventDefault()
     setError(null)
     const form = e.currentTarget as HTMLFormElement
-    const username =
-      (form.elements.namedItem('username') as HTMLInputElement)?.value.trim() ?? ''
-    const displayName =
-      (form.elements.namedItem('displayName') as HTMLInputElement)?.value.trim() ?? ''
-    const email =
-      (form.elements.namedItem('email') as HTMLInputElement)?.value.trim() ?? ''
-    const password =
-      (form.elements.namedItem('password') as HTMLInputElement)?.value ?? ''
-    const confirm =
-      (form.elements.namedItem('confirm') as HTMLInputElement)?.value ?? ''
+    const username = (form.elements.namedItem('username') as HTMLInputElement)?.value.trim() ?? ''
+    const displayName = (form.elements.namedItem('displayName') as HTMLInputElement)?.value.trim() ?? ''
+    const email = (form.elements.namedItem('email') as HTMLInputElement)?.value.trim() ?? ''
+    const password = (form.elements.namedItem('password') as HTMLInputElement)?.value ?? ''
+    const confirm = (form.elements.namedItem('confirm') as HTMLInputElement)?.value ?? ''
 
     if (!/^[A-Za-z0-9_]{2,16}$/.test(username)) {
       setError('اسم المستخدم بالإنجليزية فقط (أحرف وأرقام و _)، من 2 إلى 16 خانة')
@@ -58,31 +54,38 @@ export default function RegisterPage() {
     }
 
     setLoading(true)
-    const { error } = await register({ username, displayName, email, password })
-    if (error) {
-      setError(error)
+    try {
+      const res = await fetch('/api/auth/onboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, displayName, email, password }),
+      })
+      const data = await res.json()
+      if (!res.ok) {
+        setError(data.error ?? 'تعذّر إكمال إنشاء الحساب')
+        setLoading(false)
+        return
+      }
+      // إعادة تحميل كاملة حتى يلتقط سياق المصادقة الملف المحدّث
+      window.location.href = '/dashboard'
+    } catch {
+      setError('تعذّر الاتصال، حاول لاحقاً')
       setLoading(false)
-      return
     }
-    router.push('/dashboard')
   }
 
   return (
-    <AuthShell
-      title="إنشاء حساب"
-      subtitle="انضم إلى SwiftRBX وابدأ الشراء خلال دقائق."
-      footer={
-        <>
-          لديك حساب بالفعل؟{' '}
-          <Link
-            href="/login"
-            className="font-semibold text-primary hover:underline"
-          >
-            سجّل الدخول
-          </Link>
-        </>
-      }
-    >
+    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6 py-12">
+      <div className="mb-8 flex flex-col items-center gap-4 text-center">
+        <BrandLogo />
+        <div>
+          <h1 className="text-2xl font-bold text-balance">أكمل إنشاء حسابك</h1>
+          <p className="mt-2 text-sm text-muted-foreground text-pretty">
+            سجّلت الدخول عبر {provider}. أكمل بياناتك مرة واحدة فقط — ستُحفظ دائماً حتى لو دخلت من جهاز آخر.
+          </p>
+        </div>
+      </div>
+
       <form onSubmit={handleSubmit} className="flex flex-col gap-5">
         {error && (
           <p
@@ -92,19 +95,10 @@ export default function RegisterPage() {
             {error}
           </p>
         )}
+
         <div className="flex flex-col gap-2">
           <Label htmlFor="displayName">الاسم المستعار</Label>
-          <Input
-            id="displayName"
-            name="displayName"
-            placeholder="مثال: نايف"
-            required
-            maxLength={24}
-            autoComplete="nickname"
-          />
-          <p className="text-xs text-muted-foreground">
-            الاسم الظاهر للآخرين، ويمكن تغييره لاحقاً.
-          </p>
+          <Input id="displayName" name="displayName" placeholder="مثال: نايف" required maxLength={24} />
         </div>
 
         <div className="flex flex-col gap-2">
@@ -117,10 +111,9 @@ export default function RegisterPage() {
             dir="ltr"
             pattern="[A-Za-z0-9_]{2,16}"
             title="بالإنجليزية فقط: أحرف وأرقام و _ ، من 2 إلى 16 خانة"
-            autoComplete="username"
           />
           <p className="text-xs text-muted-foreground">
-            بالإنجليزية فقط (أحرف وأرقام و _)، من 2 إلى 16 خانة. لا يمكن استخدام اسم مأخوذ مسبقاً.
+            بالإنجليزية فقط (أحرف وأرقام و _)، من 2 إلى 16 خانة. لا يمكن استخدام اسم مأخوذ.
           </p>
         </div>
 
@@ -130,13 +123,13 @@ export default function RegisterPage() {
             id="email"
             name="email"
             type="email"
+            defaultValue={defaultEmail}
             placeholder="you@example.com"
             required
             dir="ltr"
-            autoComplete="email"
           />
           <p className="text-xs text-muted-foreground">
-            نستخدمه لاستعادة كلمة المرور والتحقق بخطوتين.
+            {defaultEmail ? 'تم ملؤه تلقائياً من حسابك، ويمكنك تعديله.' : 'أدخل بريدك الإلكتروني.'}
           </p>
         </div>
 
@@ -149,7 +142,6 @@ export default function RegisterPage() {
               type={showPassword ? 'text' : 'password'}
               placeholder="••••••••"
               required
-              autoComplete="new-password"
               className="pl-10"
             />
             <button
@@ -158,11 +150,7 @@ export default function RegisterPage() {
               className="absolute inset-y-0 left-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
               aria-label={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
             >
-              {showPassword ? (
-                <EyeOff className="size-4" />
-              ) : (
-                <Eye className="size-4" />
-              )}
+              {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -172,41 +160,14 @@ export default function RegisterPage() {
 
         <div className="flex flex-col gap-2">
           <Label htmlFor="confirm">تأكيد كلمة المرور</Label>
-          <Input
-            id="confirm"
-            name="confirm"
-            type={showPassword ? 'text' : 'password'}
-            placeholder="••••••••"
-            required
-            autoComplete="new-password"
-          />
+          <Input id="confirm" name="confirm" type={showPassword ? 'text' : 'password'} placeholder="••••••••" required />
         </div>
 
-        <Button
-          type="submit"
-          disabled={loading}
-          className="w-full gap-2 shadow-[0_0_24px_-6px_var(--primary)]"
-        >
+        <Button type="submit" disabled={loading} className="w-full gap-2 shadow-[0_0_24px_-6px_var(--primary)]">
           {loading && <Loader2 className="size-4 animate-spin" />}
-          {loading ? 'جارٍ الإنشاء…' : 'إنشاء الحساب'}
+          {loading ? 'جارٍ الحفظ…' : 'إنشاء الحساب'}
         </Button>
-
-        <p className="text-center text-xs text-muted-foreground">
-          بإنشائك للحساب فأنت توافق على{' '}
-          <Link href="/privacy" className="text-primary hover:underline">
-            سياسة الخصوصية
-          </Link>
-          .
-        </p>
       </form>
-
-      <div className="flex items-center gap-4">
-        <Separator className="flex-1" />
-        <span className="text-xs text-muted-foreground">أو تابع عبر</span>
-        <Separator className="flex-1" />
-      </div>
-
-      <SocialButtons />
-    </AuthShell>
+    </div>
   )
 }

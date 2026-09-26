@@ -16,3 +16,9 @@ export function formatSar(sar: number): string {
 export function formatUsd(usd: number): string {
   return `$${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
+
+// Primary money display: SAR amount with the USD equivalent in parentheses.
+// Balances, prices and commissions are all stored in SAR.
+export function formatMoney(sar: number): string {
+  return `${formatSar(sar)} (${formatUsd(sarToUsd(sar))})`
+}

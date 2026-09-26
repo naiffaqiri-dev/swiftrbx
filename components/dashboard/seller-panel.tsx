@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { LayoutDashboard, Package, Wallet, CheckCircle2, Star, Percent, Loader2, CheckCircle, Ticket } from 'lucide-react'
+import { formatMoney } from '@/lib/currency'
 
 const NAV = [
   { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard className="h-4 w-4" /> },
@@ -134,9 +135,9 @@ export function SellerPanel() {
       {active === 'overview' && (
         <div className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="الرصيد الحالي" value={`${(user?.balance ?? 0).toLocaleString()} $`} accent icon={<Wallet className="h-5 w-5" />} />
+            <StatCard label="الرصيد الحالي" value={formatMoney(user?.balance ?? 0)} accent icon={<Wallet className="h-5 w-5" />} />
             <StatCard label="عمليات ناجحة" value={user?.totalSales ?? 0} icon={<CheckCircle2 className="h-5 w-5" />} />
-            <StatCard label="العمولة المستحقة" value={`${(user?.commission ?? 0).toLocaleString()} $`} icon={<Percent className="h-5 w-5" />} />
+            <StatCard label="العمولة المستحقة" value={formatMoney(user?.commission ?? 0)} icon={<Percent className="h-5 w-5" />} />
             <StatCard label="إجمالي روبوكس متاح" value={totalAvailable.toLocaleString()} icon={<Package className="h-5 w-5" />} />
           </div>
           <div className="rounded-xl border border-border/60 bg-card/40 p-5">
@@ -223,7 +224,7 @@ export function SellerPanel() {
                             />
                           </div>
                           <div className="space-y-1.5">
-                            <Label htmlFor={`rate-${d}`}>السعر / 1000 ($)</Label>
+                            <Label htmlFor={`rate-${d}`}>السعر / 1000 (SAR)</Label>
                             <Input
                               id={`rate-${d}`}
                               type="number"
@@ -273,7 +274,7 @@ export function SellerPanel() {
       {active === 'wallet' && (
         <div className="max-w-md space-y-4 rounded-xl border border-border/60 bg-card/40 p-5">
           <div className="text-sm text-muted-foreground">الرصيد المتاح للسحب</div>
-          <div className="text-3xl font-bold text-primary">{(user?.balance ?? 0).toLocaleString()} $</div>
+          <div className="text-3xl font-bold text-primary">{formatMoney(user?.balance ?? 0)}</div>
           <Button className="w-full">طلب سحب الأموال</Button>
           <p className="text-xs text-muted-foreground">
             يفتح زر السحب تذكرة خاصة بينك وبين الإدارة العليا لتأكيد الإرسال.
