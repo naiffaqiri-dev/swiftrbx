@@ -10,6 +10,7 @@ import {
   type DeliveryType,
 } from '@/lib/mock-data'
 import { createClient } from '@/lib/supabase/client'
+import { formatMoney } from '@/lib/currency'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -184,7 +185,7 @@ export function RobuxPurchase() {
         </div>
       </div>
 
-      {/* ملخص الطلب */}
+      {/* ملخص ال��لب */}
       <aside className="h-fit space-y-4 rounded-2xl border border-border/60 bg-card/40 p-6 lg:sticky lg:top-24">
         <h2 className="text-lg font-bold">ملخص الطلب</h2>
         <dl className="space-y-2.5 text-sm">
