@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { DashboardShell, StatCard } from './dashboard-shell'
 import { TicketsList } from './tickets-list'
 import { StarDisplay } from '@/components/reviews/star-rating'
-import { DELIVERY_TYPES, DELIVERY_LABELS, DELIVERY_NOTES, GAMEPASS_GUIDE_URL, isRobloxGroupLink, type DeliveryType } from '@/lib/mock-data'
+import { DELIVERY_TYPES, DELIVERY_LABELS, DELIVERY_NOTES, GAMEPASS_GUIDE_URL, isHttpsLink, isRobloxGroupLink, type DeliveryType } from '@/lib/mock-data'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
@@ -55,6 +55,10 @@ export function SellerPanel() {
   const [savingGroupLinks, setSavingGroupLinks] = useState(false)
   const [groupLinksSaved, setGroupLinksSaved] = useState(false)
   const [groupLinksError, setGroupLinksError] = useState('')
+  const [gamepassLinks, setGamepassLinks] = useState('')
+  const [savingGamepassLinks, setSavingGamepassLinks] = useState(false)
+  const [gamepassLinksSaved, setGamepassLinksSaved] = useState(false)
+  const [gamepassLinksError, setGamepassLinksError] = useState('')
   const rating = ratingOf(user)
 
   useEffect(() => {
@@ -63,11 +67,13 @@ export function SellerPanel() {
     const supabase = createClient()
     supabase
       .from('profiles')
-      .select('group_links')
+      .select('group_links, gamepass_links')
       .eq('id', user.id)
       .maybeSingle()
       .then(({ data }) => {
-        if (alive) setGroupLinks(Array.isArray(data?.group_links) ? data.group_links.join('\n') : '')
+        if (!alive) return
+        setGroupLinks(Array.isArray(data?.group_links) ? data.group_links.join('\n') : '')
+        setGamepassLinks(Array.isArray(data?.gamepass_links) ? data.gamepass_links.join('\n') : '')
       })
     supabase
       .from('offers')
@@ -169,6 +175,35 @@ export function SellerPanel() {
     setTimeout(() => setGroupLinksSaved(false), 2500)
   }
 
+  async function saveGamepassLinks() {
+    if (!user) return
+    setGamepassLinksError('')
+    const links = [...new Set(gamepassLinks.split(/\r?\n/).map((link) => link.trim()).filter(Boolean))]
+    if (links.length > 10) {
+      setGamepassLinksError('يمكنك إضافة 10 روابط كحد أقصى')
+      return
+    }
+    const validLinks = links.every(isHttpsLink)
+    if (!validLinks) {
+      setGamepassLinksError('أدخل روابط شرح صحيحة تبدأ بـ https://، رابطاً واحداً في كل سطر')
+      return
+    }
+
+    setSavingGamepassLinks(true)
+    const { error: updateError } = await createClient()
+      .from('profiles')
+      .update({ gamepass_links: links })
+      .eq('id', user.id)
+    setSavingGamepassLinks(false)
+    if (updateError) {
+      setGamepassLinksError('تعذّر حفظ روابط شرح Gamepass، حاول مرة أخرى')
+      return
+    }
+    setGamepassLinks(links.join('\n'))
+    setGamepassLinksSaved(true)
+    setTimeout(() => setGamepassLinksSaved(false), 2500)
+  }
+
   const totalAvailable = DELIVERY_TYPES.reduce((sum, d) => sum + (offers[d].active ? offers[d].available : 0), 0)
   const anyVisible = DELIVERY_TYPES.some((d) => offers[d].active && offers[d].rate > 0 && offers[d].available > 0)
 
@@ -247,6 +282,33 @@ export function SellerPanel() {
             <Button variant="secondary" onClick={saveGroupLinks} disabled={savingGroupLinks}>
               {savingGroupLinks ? <Loader2 className="h-4 w-4 animate-spin" /> : groupLinksSaved ? <CheckCircle className="h-4 w-4" /> : null}
               {groupLinksSaved ? 'تم حفظ الروابط' : 'حفظ روابط القروبات'}
+            </Button>
+          </div>
+
+          <div className="space-y-3 rounded-xl border border-border/60 bg-card/40 p-5">
+            <div>
+              <h3 className="text-sm font-bold">روابط شرح Gamepass</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                أضف رابط مقطع الشرح الخاص بك، رابطاً واحداً في كل سطر. سيظهر للمشتري بجانب اسمك عند اختيار تسليم Gamepass.
+              </p>
+            </div>
+            <Label htmlFor="seller-gamepass-links">روابط الشرح</Label>
+            <Textarea
+              id="seller-gamepass-links"
+              value={gamepassLinks}
+              onChange={(event) => setGamepassLinks(event.target.value)}
+              placeholder="https://youtu.be/..."
+              dir="ltr"
+              rows={3}
+              aria-describedby="seller-gamepass-links-help"
+            />
+            <p id="seller-gamepass-links-help" className="text-xs text-muted-foreground">
+              أضف رابطاً آمناً يبدأ بـ https://، وبحد أقصى 10 روابط.
+            </p>
+            {gamepassLinksError && <p className="text-xs text-destructive" role="alert">{gamepassLinksError}</p>}
+            <Button variant="secondary" onClick={saveGamepassLinks} disabled={savingGamepassLinks}>
+              {savingGamepassLinks ? <Loader2 className="h-4 w-4 animate-spin" /> : gamepassLinksSaved ? <CheckCircle className="h-4 w-4" /> : null}
+              {gamepassLinksSaved ? 'تم حفظ الروابط' : 'حفظ روابط الشرح'}
             </Button>
           </div>
 
