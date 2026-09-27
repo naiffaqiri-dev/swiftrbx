@@ -58,7 +58,7 @@ function AvailabilityCard({
         <span>{label}</span>
       </div>
       <p className="mt-2 truncate text-lg font-bold text-primary sm:text-2xl" aria-live="polite">
-        {loading ? '…' : failed ? '—' : value}
+        <bdi dir="ltr">{loading ? '…' : failed ? '—' : value}</bdi>
       </p>
     </div>
   )
@@ -95,9 +95,9 @@ export function DeliveryAvailability({ delivery }: { delivery: DeliveryType }) {
   return (
     <p className="mt-2 text-xs leading-relaxed text-muted-foreground" aria-live="polite">
       المتاح لهذا النوع في المتجر:{' '}
-      <span className="font-semibold text-primary">
+      <bdi className="font-semibold text-primary" dir="ltr">
         {availability.isLoading ? '…' : availability.error ? '—' : `${value} R$`}
-      </span>
+      </bdi>
     </p>
   )
 }
