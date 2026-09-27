@@ -36,19 +36,30 @@ export function RobuxPurchase() {
       const rows = (data ?? []) as ActiveOffer[]
       setOffers(rows)
       setLoading(false)
-      const sellerIds = [...new Set(rows.map((o) => o.seller_id).filter(Boolean))]
+      const sellerIds = [...new Set(rows.map((offer) => offer.seller_id).filter(Boolean))]
       if (sellerIds.length) {
-        const { data: profs } = await supabase.from('profiles').select('id, sales, group_links').in('id', sellerIds)
-        if (!active || !profs) return
-        setSales(Object.fromEntries(profs.map((p) => [p.id, Number(p.sales ?? 0)])))
-        setGroupLinks(
-          Object.fromEntries(
-            profs.map((profile) => [
-              profile.id,
-              Array.isArray(profile.group_links) ? profile.group_links.filter((link): link is string => typeof link === 'string') : [],
-            ]),
-          ),
-        )
+        const [{ data: profiles }, { data: publicLinks }] = await Promise.all([
+          supabase.from('profiles').select('id, sales').in('id', sellerIds),
+          supabase.rpc('active_seller_group_links'),
+        ])
+        if (!active) return
+        if (profiles) {
+          setSales(Object.fromEntries(profiles.map((profile) => [profile.id, Number(profile.sales ?? 0)])))
+        }
+        if (publicLinks) {
+          setGroupLinks(
+            Object.fromEntries(
+              publicLinks
+                .filter((row) => sellerIds.includes(row.seller_id))
+                .map((row) => [
+                  row.seller_id,
+                  Array.isArray(row.group_links)
+                    ? row.group_links.filter((link: unknown): link is string => typeof link === 'string')
+                    : [],
+                ]),
+            ),
+          )
+        }
       }
     })
     return () => {
