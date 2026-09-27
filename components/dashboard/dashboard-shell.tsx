@@ -9,6 +9,8 @@ import { MessageNotifier } from './message-notifier'
 import { SupportButton } from '@/components/support-button'
 import { LanguageToggle, useLocale } from '@/components/i18n/locale-provider'
 import { LogOut, Home, User as UserIcon } from 'lucide-react'
+import { SlidingNumber } from '@/components/animate-ui/primitives/texts/sliding-number'
+import { useReducedMotion } from 'motion/react'
 import type { ReactNode } from 'react'
 
 export function DashboardShell({
@@ -140,6 +142,8 @@ export function StatCard({
   accent?: boolean
   icon?: ReactNode
 }) {
+  const prefersReducedMotion = useReducedMotion()
+
   return (
     <div
       className={`rounded-xl border p-5 ${
@@ -150,7 +154,22 @@ export function StatCard({
         <span className="text-sm text-muted-foreground">{label}</span>
         {icon && <span className={accent ? 'text-primary' : 'text-muted-foreground'}>{icon}</span>}
       </div>
-      <div className="text-2xl font-bold">{value}</div>
+      <div className="text-2xl font-bold">
+        {typeof value !== 'number' ? (
+          value
+        ) : (
+          <>
+            <span aria-hidden="true">
+              {prefersReducedMotion ? (
+                value.toLocaleString('en-US')
+              ) : (
+                <SlidingNumber number={value} fromNumber={0} thousandSeparator="," />
+              )}
+            </span>
+            <span className="sr-only">{value.toLocaleString('en-US')}</span>
+          </>
+        )}
+      </div>
     </div>
   )
 }

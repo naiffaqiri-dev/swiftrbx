@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useAuth, ratingOf } from '@/components/auth/mock-auth'
 import { createClient } from '@/lib/supabase/client'
 import { DashboardShell, StatCard } from './dashboard-shell'
+import { MarketplaceAvailabilitySummary } from '@/components/market/marketplace-availability'
 import { TicketsList } from './tickets-list'
 import { StarDisplay } from '@/components/reviews/star-rating'
 import { DELIVERY_TYPES, DELIVERY_LABELS, DELIVERY_NOTES, GAMEPASS_GUIDE_URL, isHttpsLink, isRobloxGroupLink, type DeliveryType } from '@/lib/mock-data'
@@ -217,6 +218,7 @@ export function SellerPanel() {
             <StatCard label="العمولة المستحقة" value={formatMoney(user?.commission ?? 0)} icon={<Percent className="h-5 w-5" />} />
             <StatCard label="إجمالي روبوكس متاح" value={totalAvailable.toLocaleString('en-US')} icon={<Package className="h-5 w-5" />} />
           </div>
+          <MarketplaceAvailabilitySummary />
           <div className="rounded-xl border border-border/60 bg-card/40 p-5">
             <h2 className="mb-3 flex items-center gap-2 text-sm font-bold">
               <Star className="h-4 w-4 text-primary" />

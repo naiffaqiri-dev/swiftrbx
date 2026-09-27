@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/components/auth/mock-auth'
 import { createClient } from '@/lib/supabase/client'
 import { DashboardShell, StatCard } from './dashboard-shell'
+import { MarketplaceAvailabilitySummary } from '@/components/market/marketplace-availability'
 import { TicketsList } from './tickets-list'
 import { LayoutDashboard, Ticket, CheckCircle2, Clock, AlertTriangle } from 'lucide-react'
 
@@ -43,6 +44,9 @@ export function SupportPanel() {
           <StatCard label="تذاكر نشطة" value={counts.open} accent icon={<Clock className="h-5 w-5" />} />
           <StatCard label="نزاعات" value={counts.disputes} icon={<AlertTriangle className="h-5 w-5" />} />
           <StatCard label="إجمالي التذاكر" value={counts.total} icon={<CheckCircle2 className="h-5 w-5" />} />
+          <div className="col-span-full">
+            <MarketplaceAvailabilitySummary />
+          </div>
         </div>
       )}
 
