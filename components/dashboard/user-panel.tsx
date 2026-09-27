@@ -8,6 +8,7 @@ import { TopUpDialog } from './top-up-dialog'
 import { OrdersList, type OrderRow } from './orders-list'
 import { TicketsList } from './tickets-list'
 import { SiteReviews } from '@/components/reviews/site-reviews'
+import { MarketplaceAvailabilitySummary } from '@/components/market/marketplace-availability'
 import { createClient } from '@/lib/supabase/client'
 import { formatSar, formatUsd, sarToUsd } from '@/lib/currency'
 import { Button } from '@/components/ui/button'
@@ -84,6 +85,7 @@ export function UserPanel() {
             <StatCard label="عدد المشتريات" value={orders.length} icon={<ShoppingBag className="h-5 w-5" />} />
             <StatCard label="تذاكري" value={ticketCount} icon={<Ticket className="h-5 w-5" />} />
           </div>
+          <MarketplaceAvailabilitySummary />
           <div className="rounded-xl border border-border/60 bg-card/40 p-6 text-center">
             <p className="mb-3 text-sm text-muted-foreground">ابدأ عملية شراء روبوكس الآن</p>
             <Button asChild>

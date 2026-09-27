@@ -14,6 +14,7 @@ import {
 } from '@/lib/mock-data'
 import { createClient } from '@/lib/supabase/client'
 import { formatMoney } from '@/lib/currency'
+import { DeliveryAvailability, MarketplaceAvailabilitySummary } from '@/components/market/marketplace-availability'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -95,6 +96,7 @@ export function RobuxPurchase() {
     <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
       {/* الإعدادات + الموردون */}
       <div className="space-y-6">
+        <MarketplaceAvailabilitySummary />
         <div className="rounded-2xl border border-border/60 bg-card/40 p-6">
           <h2 className="mb-4 text-lg font-bold">حدّد طلبك</h2>
 
@@ -153,6 +155,7 @@ export function RobuxPurchase() {
                     </div>
                     <p className="mt-1 text-xs text-muted-foreground">{DELIVERY_NOTES[d]}</p>
                   </button>
+                  <DeliveryAvailability delivery={d} />
                   {d === 'gamepass' && (
                     <a
                       href={GAMEPASS_GUIDE_URL}

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useAuth, ROLE_LABELS, type Role, type ManagedUser } from '@/components/auth/mock-auth'
 import { DashboardShell, StatCard } from './dashboard-shell'
+import { MarketplaceAvailabilitySummary } from '@/components/market/marketplace-availability'
 import { AdminVerifyPanel } from './admin-verify-panel'
 import { TicketsList } from './tickets-list'
 import { CouponManager } from './coupon-manager'
@@ -252,6 +253,7 @@ export function OwnerPanel() {
               icon={<Wallet className="h-5 w-5" />}
             />
           </div>
+          <MarketplaceAvailabilitySummary />
           <div className="rounded-xl border border-border/60 bg-card/40 p-5">
             <h2 className="mb-4 flex items-center gap-2 text-sm font-bold">
               <ShieldCheck className="h-4 w-4 text-primary" />
