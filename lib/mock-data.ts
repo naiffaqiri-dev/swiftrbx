@@ -10,10 +10,23 @@ export const DELIVERY_LABELS: Record<DeliveryType, string> = {
 }
 
 export const DELIVERY_NOTES: Record<DeliveryType, string> = {
-  group: 'يُستلم خلال 5–7 أيام حسب سياسة روبلوكس، بدون رسوم إضافية.',
-  gamepass: 'تسليم أسرع لكن روبلوكس تخصم 30% من الكمية، احتسبناها في السعر.',
+  group: 'يشترط إكمال 14 يوماً بعد دخول المجموعة، وبعدها يكون التسليم فورياً. نتحمل الضرائب.',
+  gamepass: 'لا توجد شروط. أنشئ Gamepass بقيمة التكلفة المطلوبة مع الضريبة؛ نتحمل الضرائب. يستغرق التسليم 5–7 أيام: يومان من طرفنا و5 أيام وفق سياسة Roblox.',
   gift: 'إهداء العنصر مباشرة لحسابك داخل اللعبة، يتطلب توفر خاصية الإهداء.',
   plus: 'تحويل عبر خدمة بلس، سريع ويتطلب تأكيد اسم المستخدم.',
+}
+
+export const GAMEPASS_GUIDE_URL =
+  'https://drive.google.com/file/d/1tx2RDKrGYzNeyv8rT4IqhDfKrePVqSLI/view?usp=sharing'
+
+export function isRobloxGroupLink(value: string): boolean {
+  try {
+    const url = new URL(value)
+    const hostname = url.hostname.toLowerCase()
+    return url.protocol === 'https:' && (hostname === 'roblox.com' || hostname.endsWith('.roblox.com'))
+  } catch {
+    return false
+  }
 }
 
 // عرض بائع حقيقي قادم من دالة active_offers في قاعدة البيانات

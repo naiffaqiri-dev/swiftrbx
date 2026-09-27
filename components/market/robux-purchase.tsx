@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import {
   DELIVERY_LABELS,
   DELIVERY_NOTES,
+  GAMEPASS_GUIDE_URL,
+  isRobloxGroupLink,
   matchOffers,
   type ActiveOffer,
   type DeliveryType,
@@ -14,7 +16,7 @@ import { formatMoney } from '@/lib/currency'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Loader2, Star, Package, Truck, Zap, CheckCircle2 } from 'lucide-react'
+import { Loader2, Star, Package, Truck, Zap, CheckCircle2, ExternalLink } from 'lucide-react'
 
 export function RobuxPurchase() {
   const router = useRouter()
@@ -23,6 +25,7 @@ export function RobuxPurchase() {
   const [selected, setSelected] = useState<string | null>(null)
   const [offers, setOffers] = useState<ActiveOffer[]>([])
   const [sales, setSales] = useState<Record<string, number>>({})
+  const [groupLinks, setGroupLinks] = useState<Record<string, string[]>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -33,11 +36,31 @@ export function RobuxPurchase() {
       const rows = (data ?? []) as ActiveOffer[]
       setOffers(rows)
       setLoading(false)
-      const sellerIds = [...new Set(rows.map((o) => o.seller_id).filter(Boolean))]
+      const sellerIds = [...new Set(rows.map((offer) => offer.seller_id).filter(Boolean))]
       if (sellerIds.length) {
-        const { data: profs } = await supabase.from('profiles').select('id, sales').in('id', sellerIds)
-        if (!active || !profs) return
-        setSales(Object.fromEntries(profs.map((p) => [p.id, Number(p.sales ?? 0)])))
+        const [{ data: profiles }, { data: publicLinks }] = await Promise.all([
+          supabase.from('profiles').select('id, sales').in('id', sellerIds),
+          supabase.rpc('active_seller_group_links'),
+        ])
+        if (!active) return
+        if (profiles) {
+          setSales(Object.fromEntries(profiles.map((profile) => [profile.id, Number(profile.sales ?? 0)])))
+        }
+        if (publicLinks) {
+          const sellerLinkRows = publicLinks as { seller_id: string; group_links: unknown }[]
+          setGroupLinks(
+            Object.fromEntries(
+              sellerLinkRows
+                .filter((row) => sellerIds.includes(row.seller_id) && Array.isArray(row.group_links) && row.group_links.every(isRobloxGroupLink))
+                .map((row) => [
+                  row.seller_id,
+                  Array.isArray(row.group_links)
+                    ? row.group_links.filter((link): link is string => typeof link === 'string')
+                    : [],
+                ]),
+            ),
+          )
+        }
       }
     })
     return () => {
@@ -99,24 +122,41 @@ export function RobuxPurchase() {
             <Label>نوع التسليم</Label>
             <div className="grid gap-3 sm:grid-cols-2">
               {(Object.keys(DELIVERY_LABELS) as DeliveryType[]).map((d) => (
-                <button
+                <div
                   key={d}
-                  onClick={() => {
-                    setDelivery(d)
-                    setSelected(null)
-                  }}
-                  className={`rounded-xl border p-3 text-right transition-colors ${
+                  className={`rounded-xl border p-3 transition-colors ${
                     delivery === d
                       ? 'border-primary bg-primary/10'
                       : 'border-border/60 hover:border-primary/40'
                   }`}
                 >
-                  <div className="flex items-center gap-2 text-sm font-medium">
-                    {d === 'group' ? <Truck className="h-4 w-4 text-primary" /> : <Zap className="h-4 w-4 text-primary" />}
-                    {DELIVERY_LABELS[d]}
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{DELIVERY_NOTES[d]}</p>
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDelivery(d)
+                      setSelected(null)
+                    }}
+                    aria-pressed={delivery === d}
+                    className="w-full text-right"
+                  >
+                    <div className="flex items-center gap-2 text-sm font-medium">
+                      {d === 'group' ? <Truck className="h-4 w-4 text-primary" /> : <Zap className="h-4 w-4 text-primary" />}
+                      {DELIVERY_LABELS[d]}
+                    </div>
+                    <p className="mt-1 text-xs text-muted-foreground">{DELIVERY_NOTES[d]}</p>
+                  </button>
+                  {d === 'gamepass' && (
+                    <a
+                      href={GAMEPASS_GUIDE_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 inline-flex items-center gap-1 text-xs text-primary underline-offset-4 hover:underline"
+                    >
+                      شرح إنشاء وتسليم Gamepass للبائع
+                      <ExternalLink className="size-3" aria-hidden="true" />
+                    </a>
+                  )}
+                </div>
               ))}
             </div>
           </div>
@@ -140,45 +180,65 @@ export function RobuxPurchase() {
           ) : (
             matched.map((s) => {
               const isSel = chosen?.id === s.id
+              const sellerGroupLinks = (groupLinks[s.seller_id] ?? []).filter(isRobloxGroupLink)
               return (
-                <button
-                  key={s.id}
-                  onClick={() => setSelected(s.id)}
-                  className={`flex w-full items-center justify-between rounded-xl border p-4 text-right transition-colors ${
-                    isSel ? 'border-primary bg-primary/10' : 'border-border/60 bg-card/40 hover:border-primary/40'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">
-                      {s.username.slice(0, 2).toUpperCase()}
-                    </span>
-                    <div>
-                      <div className="flex items-center gap-1.5 font-medium">
-                        {s.username}
-                        {isSel && <CheckCircle2 className="h-4 w-4 text-primary" />}
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-0.5">
-                          <Star className="h-3 w-3 fill-primary text-primary" />
-                          {Number(s.rating).toFixed(1)}
-                        </span>
-                        <span>({s.rating_count} تقييم)</span>
-                        <span className="flex items-center gap-0.5">
-                          <Package className="h-3 w-3" />
-                          {Number(s.available).toLocaleString()}
-                        </span>
-                        <span className="flex items-center gap-0.5 text-emerald-400">
-                          <CheckCircle2 className="h-3 w-3" />
-                          {(sales[s.seller_id] ?? 0).toLocaleString()} عملية ناجحة
-                        </span>
+                <div key={s.id} className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                  <button
+                    type="button"
+                    onClick={() => setSelected(s.id)}
+                    aria-pressed={isSel}
+                    className={`flex w-full flex-1 items-center justify-between rounded-xl border p-4 text-right transition-colors ${
+                      isSel ? 'border-primary bg-primary/10' : 'border-border/60 bg-card/40 hover:border-primary/40'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">
+                        {s.username.slice(0, 2).toUpperCase()}
+                      </span>
+                      <div>
+                        <div className="flex items-center gap-1.5 font-medium">
+                          {s.username}
+                          {isSel && <CheckCircle2 className="h-4 w-4 text-primary" />}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-0.5">
+                            <Star className="h-3 w-3 fill-primary text-primary" />
+                            {Number(s.rating).toFixed(1)}
+                          </span>
+                          <span>({s.rating_count} تقييم)</span>
+                          <span className="flex items-center gap-0.5">
+                            <Package className="h-3 w-3" />
+                            {Number(s.available).toLocaleString()}
+                          </span>
+                          <span className="flex items-center gap-0.5 text-emerald-400">
+                            <CheckCircle2 className="h-3 w-3" />
+                            {(sales[s.seller_id] ?? 0).toLocaleString()} عملية ناجحة
+                          </span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div className="text-left">
-                    <div className="text-lg font-bold text-primary">{formatMoney(s.price)}</div>
-                    <div className="text-xs text-muted-foreground">لـ {amount.toLocaleString()} R$</div>
-                  </div>
-                </button>
+                    <div className="shrink-0 text-left">
+                      <div className="text-lg font-bold text-primary">{formatMoney(s.price)}</div>
+                      <div className="text-xs text-muted-foreground">لـ {amount.toLocaleString()} R$</div>
+                    </div>
+                  </button>
+                  {delivery === 'group' && sellerGroupLinks.length > 0 && (
+                    <div className="flex flex-wrap gap-2 sm:max-w-56 sm:content-center">
+                      {sellerGroupLinks.map((url, index) => (
+                        <a
+                          key={`${s.seller_id}-${url}`}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2 text-sm font-medium text-primary transition-colors hover:border-primary/50"
+                        >
+                          {sellerGroupLinks.length === 1 ? 'دخول قروب البائع' : `دخول المجموعة ${index + 1}`}
+                          <ExternalLink className="size-4" aria-hidden="true" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )
             })
           )}

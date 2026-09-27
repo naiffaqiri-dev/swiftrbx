@@ -6,11 +6,12 @@ import { createClient } from '@/lib/supabase/client'
 import { DashboardShell, StatCard } from './dashboard-shell'
 import { TicketsList } from './tickets-list'
 import { StarDisplay } from '@/components/reviews/star-rating'
-import { DELIVERY_TYPES, DELIVERY_LABELS, DELIVERY_NOTES, type DeliveryType } from '@/lib/mock-data'
+import { DELIVERY_TYPES, DELIVERY_LABELS, DELIVERY_NOTES, GAMEPASS_GUIDE_URL, isRobloxGroupLink, type DeliveryType } from '@/lib/mock-data'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
-import { LayoutDashboard, Package, Wallet, CheckCircle2, Star, Percent, Loader2, CheckCircle, Ticket } from 'lucide-react'
+import { LayoutDashboard, Package, Wallet, CheckCircle2, Star, Percent, Loader2, CheckCircle, Ticket, ExternalLink } from 'lucide-react'
 import { formatMoney } from '@/lib/currency'
 
 const NAV = [
@@ -50,12 +51,24 @@ export function SellerPanel() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+  const [groupLinks, setGroupLinks] = useState('')
+  const [savingGroupLinks, setSavingGroupLinks] = useState(false)
+  const [groupLinksSaved, setGroupLinksSaved] = useState(false)
+  const [groupLinksError, setGroupLinksError] = useState('')
   const rating = ratingOf(user)
 
   useEffect(() => {
     if (!user) return
     let alive = true
     const supabase = createClient()
+    supabase
+      .from('profiles')
+      .select('group_links')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (alive) setGroupLinks(Array.isArray(data?.group_links) ? data.group_links.join('\n') : '')
+      })
     supabase
       .from('offers')
       .select('available, min_amount, max_amount, rate, delivery, delivery_type, active')
@@ -127,6 +140,35 @@ export function SellerPanel() {
     setTimeout(() => setSaved(false), 2500)
   }
 
+  async function saveGroupLinks() {
+    if (!user) return
+    setGroupLinksError('')
+    const links = [...new Set(groupLinks.split(/\r?\n/).map((link) => link.trim()).filter(Boolean))]
+    if (links.length > 10) {
+      setGroupLinksError('يمكنك إضافة 10 روابط كحد أقصى')
+      return
+    }
+    const validLinks = links.every(isRobloxGroupLink)
+    if (!validLinks) {
+      setGroupLinksError('أدخل روابط Roblox صحيحة تبدأ بـ https://، رابطاً واحداً في كل سطر')
+      return
+    }
+
+    setSavingGroupLinks(true)
+    const { error: updateError } = await createClient()
+      .from('profiles')
+      .update({ group_links: links })
+      .eq('id', user.id)
+    setSavingGroupLinks(false)
+    if (updateError) {
+      setGroupLinksError('تعذّر حفظ روابط المجموعات، حاول مرة أخرى')
+      return
+    }
+    setGroupLinks(links.join('\n'))
+    setGroupLinksSaved(true)
+    setTimeout(() => setGroupLinksSaved(false), 2500)
+  }
+
   const totalAvailable = DELIVERY_TYPES.reduce((sum, d) => sum + (offers[d].active ? offers[d].available : 0), 0)
   const anyVisible = DELIVERY_TYPES.some((d) => offers[d].active && offers[d].rate > 0 && offers[d].available > 0)
 
@@ -181,6 +223,33 @@ export function SellerPanel() {
             </p>
           </div>
 
+          <div className="space-y-3 rounded-xl border border-border/60 bg-card/40 p-5">
+            <div>
+              <h3 className="text-sm font-bold">روابط قروباتك</h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                أضف روابط دعوة مجموعات Roblox الخاصة بك، رابطاً واحداً في كل سطر. ستظهر للمشتري بجانب اسمك عند اختيار تسليم المجموعة.
+              </p>
+            </div>
+            <Label htmlFor="seller-group-links">روابط المجموعات</Label>
+            <Textarea
+              id="seller-group-links"
+              value={groupLinks}
+              onChange={(event) => setGroupLinks(event.target.value)}
+              placeholder="https://www.roblox.com/share?code=..."
+              dir="ltr"
+              rows={3}
+              aria-describedby="seller-group-links-help"
+            />
+            <p id="seller-group-links-help" className="text-xs text-muted-foreground">
+              الروابط المقبولة آمنة وتابعة لنطاق Roblox.
+            </p>
+            {groupLinksError && <p className="text-xs text-destructive" role="alert">{groupLinksError}</p>}
+            <Button variant="secondary" onClick={saveGroupLinks} disabled={savingGroupLinks}>
+              {savingGroupLinks ? <Loader2 className="h-4 w-4 animate-spin" /> : groupLinksSaved ? <CheckCircle className="h-4 w-4" /> : null}
+              {groupLinksSaved ? 'تم حفظ الروابط' : 'حفظ روابط القروبات'}
+            </Button>
+          </div>
+
           {loading ? (
             <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -210,6 +279,17 @@ export function SellerPanel() {
                           className="mt-1 h-4 w-4 shrink-0 accent-primary"
                         />
                       </label>
+                      {d === 'gamepass' && (
+                        <a
+                          href={GAMEPASS_GUIDE_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-primary underline-offset-4 hover:underline"
+                        >
+                          شرح إنشاء وتسليم Gamepass للبائع
+                          <ExternalLink className="size-3" aria-hidden="true" />
+                        </a>
+                      )}
 
                       <div className={t.active ? 'space-y-3' : 'space-y-3 opacity-50'}>
                         <div className="grid grid-cols-2 gap-3">
