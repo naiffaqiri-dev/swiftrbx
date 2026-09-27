@@ -51,7 +51,7 @@ export function RobuxPurchase() {
           setGroupLinks(
             Object.fromEntries(
               sellerLinkRows
-                .filter((row) => sellerIds.includes(row.seller_id))
+                .filter((row) => sellerIds.includes(row.seller_id) && row.group_links.every(isRobloxGroupLink))
                 .map((row) => [
                   row.seller_id,
                   Array.isArray(row.group_links)
