@@ -19,11 +19,19 @@ export const DELIVERY_NOTES: Record<DeliveryType, string> = {
 export const GAMEPASS_GUIDE_URL =
   'https://drive.google.com/file/d/1tx2RDKrGYzNeyv8rT4IqhDfKrePVqSLI/view?usp=sharing'
 
+export function isHttpsLink(value: string): boolean {
+  try {
+    return new URL(value).protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
 export function isRobloxGroupLink(value: string): boolean {
   try {
     const url = new URL(value)
     const hostname = url.hostname.toLowerCase()
-    return url.protocol === 'https:' && (hostname === 'roblox.com' || hostname.endsWith('.roblox.com'))
+    return isHttpsLink(value) && (hostname === 'roblox.com' || hostname.endsWith('.roblox.com'))
   } catch {
     return false
   }

@@ -6,6 +6,7 @@ import {
   DELIVERY_LABELS,
   DELIVERY_NOTES,
   GAMEPASS_GUIDE_URL,
+  isHttpsLink,
   isRobloxGroupLink,
   matchOffers,
   type ActiveOffer,
@@ -26,6 +27,7 @@ export function RobuxPurchase() {
   const [offers, setOffers] = useState<ActiveOffer[]>([])
   const [sales, setSales] = useState<Record<string, number>>({})
   const [groupLinks, setGroupLinks] = useState<Record<string, string[]>>({})
+  const [gamepassLinks, setGamepassLinks] = useState<Record<string, string[]>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -38,9 +40,10 @@ export function RobuxPurchase() {
       setLoading(false)
       const sellerIds = [...new Set(rows.map((offer) => offer.seller_id).filter(Boolean))]
       if (sellerIds.length) {
-        const [{ data: profiles }, { data: publicLinks }] = await Promise.all([
+        const [{ data: profiles }, { data: publicLinks }, { data: publicGamepassLinks }] = await Promise.all([
           supabase.from('profiles').select('id, sales').in('id', sellerIds),
           supabase.rpc('active_seller_group_links'),
+          supabase.rpc('active_seller_gamepass_links'),
         ])
         if (!active) return
         if (profiles) {
@@ -52,12 +55,17 @@ export function RobuxPurchase() {
             Object.fromEntries(
               sellerLinkRows
                 .filter((row) => sellerIds.includes(row.seller_id) && Array.isArray(row.group_links) && row.group_links.every(isRobloxGroupLink))
-                .map((row) => [
-                  row.seller_id,
-                  Array.isArray(row.group_links)
-                    ? row.group_links.filter((link): link is string => typeof link === 'string')
-                    : [],
-                ]),
+                .map((row) => [row.seller_id, row.group_links as string[]]),
+            ),
+          )
+        }
+        if (publicGamepassLinks) {
+          const sellerGamepassLinkRows = publicGamepassLinks as { seller_id: string; gamepass_links: unknown }[]
+          setGamepassLinks(
+            Object.fromEntries(
+              sellerGamepassLinkRows
+                .filter((row) => sellerIds.includes(row.seller_id) && Array.isArray(row.gamepass_links) && row.gamepass_links.every(isHttpsLink))
+                .map((row) => [row.seller_id, row.gamepass_links as string[]]),
             ),
           )
         }
@@ -181,6 +189,7 @@ export function RobuxPurchase() {
             matched.map((s) => {
               const isSel = chosen?.id === s.id
               const sellerGroupLinks = (groupLinks[s.seller_id] ?? []).filter(isRobloxGroupLink)
+              const sellerGamepassLinks = (gamepassLinks[s.seller_id] ?? []).filter(isHttpsLink)
               return (
                 <div key={s.id} className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
                   <button
@@ -233,6 +242,22 @@ export function RobuxPurchase() {
                           className="inline-flex items-center justify-center gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2 text-sm font-medium text-primary transition-colors hover:border-primary/50"
                         >
                           {sellerGroupLinks.length === 1 ? 'دخول قروب البائع' : `دخول المجموعة ${index + 1}`}
+                          <ExternalLink className="size-4" aria-hidden="true" />
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                  {delivery === 'gamepass' && sellerGamepassLinks.length > 0 && (
+                    <div className="flex flex-wrap gap-2 sm:max-w-56 sm:content-center">
+                      {sellerGamepassLinks.map((url, index) => (
+                        <a
+                          key={`${s.seller_id}-${url}`}
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2 text-sm font-medium text-primary transition-colors hover:border-primary/50"
+                        >
+                          {sellerGamepassLinks.length === 1 ? 'شاهد شرح البائع' : `شرح البائع ${index + 1}`}
                           <ExternalLink className="size-4" aria-hidden="true" />
                         </a>
                       ))}
