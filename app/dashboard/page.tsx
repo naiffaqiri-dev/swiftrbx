@@ -18,7 +18,7 @@ export default function DashboardPage() {
 
   if (!ready || !user) {
     return (
-      <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
+      <div className="flex min-h-[calc(100svh-3.5rem)] items-center justify-center text-sm text-muted-foreground">
         جارٍ التحميل…
       </div>
     )

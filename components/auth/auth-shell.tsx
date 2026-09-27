@@ -16,7 +16,7 @@ export function AuthShell({
   footer: ReactNode
 }) {
   return (
-    <div className="grid min-h-svh lg:grid-cols-2">
+    <div className="grid min-h-[calc(100svh-3.5rem)] lg:grid-cols-2">
       {/* Visual side */}
       <div className="relative hidden overflow-hidden lg:block">
         <Image

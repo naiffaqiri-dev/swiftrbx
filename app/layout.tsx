@@ -5,6 +5,7 @@ import { Cairo } from 'next/font/google'
 import { AuthProvider } from '@/components/auth/mock-auth'
 import { TicketsProvider } from '@/components/tickets/tickets-provider'
 import { LocaleProvider } from '@/components/i18n/locale-provider'
+import { SiteFooter } from '@/components/site-footer'
 import './globals.css'
 
 const cairo = Cairo({
@@ -41,11 +42,14 @@ export default async function RootLayout({
 
   return (
     <html lang={initialLang} dir={initialDir} className={`dark ${cairo.variable} bg-background`}>
-      <body className="font-sans antialiased">
+      <body className="flex min-h-svh flex-col font-sans antialiased">
         <LocaleProvider initialLang={initialLang}>
-          <AuthProvider>
-            <TicketsProvider>{children}</TicketsProvider>
-          </AuthProvider>
+          <div className="h-[calc(100svh-3.5rem)] w-full overflow-y-auto">
+            <AuthProvider>
+              <TicketsProvider>{children}</TicketsProvider>
+            </AuthProvider>
+          </div>
+          <SiteFooter />
         </LocaleProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

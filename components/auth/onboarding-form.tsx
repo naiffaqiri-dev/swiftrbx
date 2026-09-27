@@ -75,7 +75,7 @@ export function OnboardingForm({
   }
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6 py-12">
+    <div className="mx-auto flex min-h-[calc(100svh-3.5rem)] w-full max-w-md flex-col justify-center px-6 py-12">
       <div className="mb-8 flex flex-col items-center gap-4 text-center">
         <BrandLogo />
         <div>

@@ -23,7 +23,7 @@ export function LegalPage({
   sections: LegalSection[]
 }) {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-background py-12 sm:py-16">
+    <main className="relative min-h-[calc(100svh-3.5rem)] overflow-hidden bg-background py-12 sm:py-16">
       {/* ambient neon glow */}
       <div
         aria-hidden

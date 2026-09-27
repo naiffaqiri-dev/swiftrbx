@@ -4,7 +4,7 @@ import { AccountView } from '@/components/account/account-view'
 
 export default function AccountPage() {
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className="flex min-h-[calc(100svh-3.5rem)] flex-col">
       <SiteHeader />
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
         <AccountView />

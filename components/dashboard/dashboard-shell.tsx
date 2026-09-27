@@ -34,7 +34,7 @@ export function DashboardShell({
   }
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground">
+    <div className="flex min-h-[calc(100svh-3.5rem)] bg-background text-foreground">
       <MessageNotifier />
       <SupportButton />
       <aside className="hidden w-64 shrink-0 flex-col border-l border-border/60 bg-card/40 p-4 md:flex">
