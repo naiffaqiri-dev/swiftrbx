@@ -63,10 +63,14 @@ const TICKET_STATUS: Record<string, { label: string; cls: string }> = {
 export function TicketsList({
   role,
   types,
+  statuses,
+  onlyRejectedTransfers = false,
   allowCreate = false,
 }: {
   role: TicketRole
   types?: string[]
+  statuses?: string[]
+  onlyRejectedTransfers?: boolean
   allowCreate?: boolean
 }) {
   const { user } = useAuth()
@@ -74,6 +78,8 @@ export function TicketsList({
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
+  const typeFilter = types?.join('|')
+  const statusFilter = statuses?.join('|')
 
   const load = useCallback(async () => {
     if (!user) return
@@ -82,11 +88,26 @@ export function TicketsList({
     if (role === 'buyer') query = query.eq('buyer_id', user.id)
     else if (role === 'seller') query = query.eq('seller_id', user.id).neq('status', 'pending_payment')
     else if (role === 'support') query = query.in('type', ['support', 'dispute'])
-    if (types && types.length) query = query.in('type', types)
+    if (typeFilter) query = query.in('type', typeFilter.split('|'))
+    if (statusFilter) query = query.in('status', statusFilter.split('|'))
+    if (onlyRejectedTransfers) {
+      query = query.eq('type', 'order').eq('status', 'closed').not('order_id', 'is', null)
+    }
     const { data } = await query
-    setTickets((data ?? []) as TicketRow[])
+    let visibleTickets = (data ?? []) as TicketRow[]
+    if (onlyRejectedTransfers && visibleTickets.length > 0) {
+      const orderIds = [...new Set(visibleTickets.map((ticket) => ticket.order_id).filter((id): id is string => Boolean(id)))]
+      const { data: rejectedOrders } = await supabase
+        .from('orders')
+        .select('id')
+        .in('id', orderIds)
+        .eq('status', 'rejected')
+      const rejectedOrderIds = new Set((rejectedOrders ?? []).map((order) => order.id))
+      visibleTickets = visibleTickets.filter((ticket) => ticket.order_id && rejectedOrderIds.has(ticket.order_id))
+    }
+    setTickets(visibleTickets)
     setLoading(false)
-  }, [user, role, types])
+  }, [user, role, typeFilter, statusFilter, onlyRejectedTransfers])
 
   useEffect(() => {
     load()
@@ -108,7 +129,7 @@ export function TicketsList({
         </div>
       ) : tickets.length === 0 ? (
         <p className="rounded-xl border border-border/60 bg-card/40 p-8 text-center text-sm text-muted-foreground">
-          لا توجد تذاكر.
+          {onlyRejectedTransfers ? 'لا توجد تذاكر لطلبات مرفوضة.' : statusFilter ? 'لا توجد تذاكر نشطة.' : 'لا توجد تذاكر.'}
         </p>
       ) : (
         tickets.map((t) => {
@@ -241,7 +262,7 @@ function NewSupportTicket({
   )
 }
 
-function TicketThread({
+export function TicketThread({
   ticketId,
   role,
   onClose,
