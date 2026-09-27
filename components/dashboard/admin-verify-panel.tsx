@@ -92,7 +92,7 @@ export function AdminVerifyPanel() {
           orders.map((o) => (
             <VerifyCard
               key={o.id}
-              title={`${o.robux_amount.toLocaleString()} R$ → ${o.roblox_username}`}
+              title={`${o.robux_amount.toLocaleString('en-US')} R$ → ${o.roblox_username}`}
               amount={formatSar(Number(o.price_sar))}
               bankKey={o.bank_key}
               sender={o.sender_name}

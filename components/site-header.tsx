@@ -4,17 +4,19 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { LayoutDashboard, LogOut, Wallet, Ticket } from 'lucide-react'
 import { BrandLogo } from '@/components/brand-logo'
+import { LogoutConfirmation } from '@/components/auth/logout-confirmation'
 import { useAuth, ROLE_LABELS } from '@/components/auth/mock-auth'
-import { Button } from '@/components/ui/button'
-import { LanguageToggle } from '@/components/i18n/locale-provider'
+import { Button, buttonVariants } from '@/components/ui/button'
+import { LanguageToggle, useLocale } from '@/components/i18n/locale-provider'
 
 export function SiteHeader() {
   const { user, ready, logout } = useAuth()
+  const { t } = useLocale()
   const router = useRouter()
 
-  function handleLogout() {
-    logout()
-    router.push('/')
+  async function handleLogout() {
+    await logout()
+    router.replace('/login')
   }
 
   return (
@@ -25,23 +27,17 @@ export function SiteHeader() {
           {ready && user ? (
             <div className="flex items-center gap-3">
               <LanguageToggle />
-              <Button variant="ghost" asChild className="gap-2">
-                <Link href="/market">
-                  <span className="hidden sm:inline">السوق</span>
-                </Link>
-              </Button>
-              <Button variant="ghost" asChild className="gap-2">
-                <Link href="/tickets">
-                  <Ticket className="size-4" />
-                  <span className="hidden sm:inline">التذاكر</span>
-                </Link>
-              </Button>
-              <Button variant="ghost" asChild className="gap-2">
-                <Link href="/dashboard">
-                  <LayoutDashboard className="size-4" />
-                  <span className="hidden sm:inline">لوحة التحكم</span>
-                </Link>
-              </Button>
+              <Link href="/market" className={buttonVariants({ variant: 'ghost', className: 'gap-2' })}>
+                <span className="hidden sm:inline">{t('nav.market')}</span>
+              </Link>
+              <Link href="/tickets" className={buttonVariants({ variant: 'ghost', className: 'gap-2' })}>
+                <Ticket className="size-4" />
+                <span className="hidden sm:inline">{t('nav.tickets')}</span>
+              </Link>
+              <Link href="/dashboard" className={buttonVariants({ variant: 'ghost', className: 'gap-2' })}>
+                <LayoutDashboard className="size-4" />
+                <span className="hidden sm:inline">{t('nav.dashboard')}</span>
+              </Link>
               <span className="flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
                 <Wallet className="size-4" />
                 {user.balance.toFixed(2)} $
@@ -57,24 +53,31 @@ export function SiteHeader() {
                   </span>
                 </span>
               </Link>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleLogout}
-                aria-label="تسجيل الخروج"
-              >
-                <LogOut className="size-4" />
-              </Button>
+              <LogoutConfirmation
+                onConfirm={handleLogout}
+                trigger={(openDialog) => (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={openDialog}
+                    aria-label={t('auth.logout')}
+                    title={t('auth.logout')}
+                  >
+                    <LogOut className="size-4" />
+                  </Button>
+                )}
+              />
             </div>
           ) : (
             <>
               <LanguageToggle />
-              <Button variant="ghost" asChild>
-                <Link href="/login">تسجيل الدخول</Link>
-              </Button>
-              <Button asChild className="shadow-[0_0_24px_-6px_var(--primary)]">
-                <Link href="/register">إنشاء حساب</Link>
-              </Button>
+              <Link href="/login" className={buttonVariants({ variant: 'ghost' })}>
+                {t('auth.login')}
+              </Link>
+              <Link href="/register" className={buttonVariants({ className: 'shadow-[0_0_24px_-6px_var(--primary)]' })}>
+                {t('auth.register')}
+              </Link>
             </>
           )}
         </nav>

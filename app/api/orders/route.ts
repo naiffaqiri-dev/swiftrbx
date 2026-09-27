@@ -114,7 +114,7 @@ export async function POST(req: Request) {
     .from("tickets")
     .insert({
       type: "order",
-      subject: `طلب ${requested.toLocaleString()} روبوكس`,
+      subject: `طلب ${requested.toLocaleString('en-US')} روبوكس`,
       order_id: order.id,
       buyer_id: user.id,
       seller_id: offer.seller_id,
@@ -127,14 +127,14 @@ export async function POST(req: Request) {
     await admin.from("ticket_messages").insert({
       ticket_id: ticket.id,
       sender_id: user.id,
-      body: `تم إنشاء الطلب: ${requested.toLocaleString()} R$ إلى حساب روبلوكس "${robloxUsername.trim()}".`,
+      body: `تم إنشاء الطلب: ${requested.toLocaleString('en-US')} R$ إلى حساب روبلوكس "${robloxUsername.trim()}".`,
     })
   }
 
   await notifyDiscord("orders", {
     title: paidFully ? "طلب جديد (مدفوع بالرصيد)" : "طلب جديد بانتظار تأكيد التحويل",
     fields: [
-      { name: "الكمية", value: `${requested.toLocaleString()} R$`, inline: true },
+      { name: "الكمية", value: `${requested.toLocaleString('en-US')} R$`, inline: true },
       { name: "المبلغ", value: `${afterCoupon} SAR`, inline: true },
       { name: "حساب روبلوكس", value: robloxUsername.trim(), inline: true },
       { name: "الحالة", value: status, inline: true },

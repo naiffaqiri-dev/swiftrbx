@@ -323,7 +323,7 @@ export function Checkout() {
         <dl className="space-y-2.5 text-sm">
           <div className="flex justify-between">
             <dt className="text-muted-foreground">الكمية</dt>
-            <dd className="font-medium">{amount.toLocaleString()} R$</dd>
+            <dd className="font-medium">{amount.toLocaleString('en-US')} R$</dd>
           </div>
           <div className="flex justify-between">
             <dt className="text-muted-foreground">التسليم</dt>

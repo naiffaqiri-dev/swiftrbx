@@ -1,35 +1,58 @@
 import Image from 'next/image'
 import Link from 'next/link'
+import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { Music2, ShieldCheck, Users, Zap } from 'lucide-react'
 import { BrandLogo } from '@/components/brand-logo'
 import { SiteHeader } from '@/components/site-header'
 import { SupportButton } from '@/components/support-button'
 import { SiteReviews } from '@/components/reviews/site-reviews'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/server'
 
-const features = [
-  {
-    icon: Zap,
-    title: 'تسليم فوري',
-    desc: 'نُنفّذ طلبك بأسرع وقت ممكن مع متابعة مباشرة حتى الاستلام.',
-  },
-  {
-    icon: ShieldCheck,
-    title: 'شراء آمن',
-    desc: 'كل عملية موثّقة وبإشراف فريق الدعم لضمان حقوقك.',
-  },
-  {
-    icon: Users,
-    title: 'بائعون موثوقون',
-    desc: 'شبكة موردين مُقيّمين تختار منهم الأنسب لكميتك.',
-  },
-]
+const features = {
+  ar: [
+    { icon: Zap, title: 'تسليم فوري', desc: 'نُنفّذ طلبك بأسرع وقت ممكن مع متابعة مباشرة حتى الاستلام.' },
+    { icon: ShieldCheck, title: 'شراء آمن', desc: 'كل عملية موثّقة وبإشراف فريق الدعم لضمان حقوقك.' },
+    { icon: Users, title: 'بائعون موثوقون', desc: 'شبكة موردين مُقيّمين تختار منهم الأنسب لكميتك.' },
+  ],
+  en: [
+    { icon: Zap, title: 'Fast delivery', desc: 'We fulfill your order as quickly as possible and track it until it arrives.' },
+    { icon: ShieldCheck, title: 'Secure checkout', desc: 'Every order is documented and monitored by our support team.' },
+    { icon: Users, title: 'Trusted sellers', desc: 'Choose the right seller from our network of rated suppliers.' },
+  ],
+}
 
 type OfferRow = { seller_id: string; available: number | string }
 
 export default async function HomePage() {
+  const cookieStore = await cookies()
+  const lang = cookieStore.get('swiftrbx.lang')?.value === 'en' ? 'en' : 'ar'
+  const copy = lang === 'en'
+    ? {
+        badge: 'Your trusted Robux store in the Middle East',
+        headline: 'Buy Robux quickly and securely',
+        intro: 'Choose your quantity and delivery method, pay securely, and let our team handle the rest with live support connecting you to your seller.',
+        buy: 'Shop Robux now',
+        signup: 'Create account',
+        available: 'Robux available now',
+        liveSupport: 'Live support',
+        activeSeller: 'Active sellers',
+        copyright: 'All rights reserved.',
+        imageAlt: 'SwiftRBX — your trusted Robux store',
+      }
+    : {
+        badge: 'متجرك الأمثل للروبكس في الشرق الأوسط',
+        headline: 'اشترِ الروبكس بسرعة وأمان',
+        intro: 'حدّد الكمية ونوع التسليم، ادفع بأمان، ودع فريقنا يُكمل الباقي مع دعم مباشر يربطك بالبائع لحظة بلحظة.',
+        buy: 'اشترِ روبوكس الآن',
+        signup: 'إنشاء حساب',
+        available: 'روبكس متاح الآن',
+        liveSupport: 'دعم مباشر',
+        activeSeller: 'بائع نشط',
+        copyright: 'جميع الحقوق محفوظة.',
+        imageAlt: 'SwiftRBX — متجرك الأمثل للروبكس',
+      }
   const supabase = await createClient()
   const {
     data: { user },
@@ -46,10 +69,11 @@ export default async function HomePage() {
   const activeSellers = new Set(rows.map((o) => o.seller_id)).size
 
   const stats = [
-    { value: totalRobux.toLocaleString('en-US'), label: 'روبكس متاح الآن' },
-    { value: '24/7', label: 'دعم مباشر' },
-    { value: activeSellers.toLocaleString('en-US'), label: 'بائع نشط' },
+    { value: totalRobux.toLocaleString('en-US'), label: copy.available },
+    { value: '24/7', label: copy.liveSupport },
+    { value: activeSellers.toLocaleString('en-US'), label: copy.activeSeller },
   ]
+  const pageFeatures = features[lang]
 
   return (
     <div className="flex min-h-svh flex-col">
@@ -61,33 +85,35 @@ export default async function HomePage() {
           <div className="mx-auto grid w-full max-w-6xl items-center gap-10 px-6 py-16 lg:grid-cols-2 lg:py-24">
             <div className="flex flex-col gap-6">
               <span className="w-fit rounded-full border border-primary/40 bg-primary/10 px-4 py-1.5 text-sm font-medium text-primary">
-                متجرك الأمثل للروبكس في الشرق الأوسط
+                {copy.badge}
               </span>
               <h1 className="text-balance text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-                اشترِ <span className="text-primary">الروبكس</span> بسرعة وأمان
+                {lang === 'en' ? (
+                  <>Buy <span className="text-primary">Robux</span> quickly and securely</>
+                ) : (
+                  <>اشترِ <span className="text-primary">الروبكس</span> بسرعة وأمان</>
+                )}
               </h1>
-              <p className="max-w-md text-pretty text-lg text-muted-foreground">
-                حدّد الكمية ونوع التسليم، ادفع بأمان، ودع فريقنا يُكمل الباقي مع
-                دعم مباشر يربطك بالبائع لحظة بلحظة.
+              <p className="max-w-md text-pretty text-lg leading-relaxed text-muted-foreground">
+                {copy.intro}
               </p>
               <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  size="lg"
-                  asChild
-                  className="gap-2 shadow-[0_0_28px_-6px_var(--primary)]"
+                <Link
+                  href="/market"
+                  className={buttonVariants({ size: 'lg', className: 'gap-2 shadow-[0_0_28px_-6px_var(--primary)]' })}
                 >
-                  <Link href="/market">اشترِ روبوكس الآن</Link>
-                </Button>
-                <Button size="lg" variant="secondary" asChild>
-                  <Link href="/register">إنشاء حساب</Link>
-                </Button>
+                  {copy.buy}
+                </Link>
+                <Link href="/register" className={buttonVariants({ size: 'lg', variant: 'secondary' })}>
+                  {copy.signup}
+                </Link>
               </div>
             </div>
 
             <div className="relative aspect-video overflow-hidden rounded-3xl ring-1 ring-primary/30 shadow-[0_0_60px_-20px_var(--primary)]">
               <Image
                 src="/images/swiftrbx-banner.jpg"
-                alt="SwiftRBX — متجرك الأمثل للروبكس"
+                alt={copy.imageAlt}
                 fill
                 className="object-cover"
                 sizes="(min-width: 1024px) 50vw, 100vw"
@@ -114,7 +140,7 @@ export default async function HomePage() {
         {/* Features */}
         <section className="mx-auto w-full max-w-6xl px-6 py-16">
           <div className="grid gap-5 sm:grid-cols-3">
-            {features.map((f) => (
+            {pageFeatures.map((f) => (
               <div
                 key={f.title}
                 className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card/50 p-6"
@@ -133,7 +159,7 @@ export default async function HomePage() {
 
         {/* Site reviews */}
         <section className="mx-auto w-full max-w-6xl px-6 pb-16">
-          <SiteReviews compact />
+            <SiteReviews compact />
         </section>
       </main>
 
@@ -156,7 +182,7 @@ export default async function HomePage() {
             </SocialIcon>
           </div>
           <p className="text-sm text-muted-foreground">
-            © {new Date().getFullYear()} SwiftRBX. جميع الحقوق محفوظة.
+            © {new Date().getFullYear()} SwiftRBX. {copy.copyright}
           </p>
         </div>
       </footer>

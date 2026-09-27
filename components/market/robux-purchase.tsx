@@ -120,7 +120,7 @@ export function RobuxPurchase() {
                       : 'border-border/60 text-muted-foreground hover:border-primary/40'
                   }`}
                 >
-                  {v.toLocaleString()}
+                  {v.toLocaleString('en-US')}
                 </button>
               ))}
             </div>
@@ -217,18 +217,18 @@ export function RobuxPurchase() {
                           <span>({s.rating_count} تقييم)</span>
                           <span className="flex items-center gap-0.5">
                             <Package className="h-3 w-3" />
-                            {Number(s.available).toLocaleString()}
+                            {Number(s.available).toLocaleString('en-US')}
                           </span>
                           <span className="flex items-center gap-0.5 text-emerald-400">
                             <CheckCircle2 className="h-3 w-3" />
-                            {(sales[s.seller_id] ?? 0).toLocaleString()} عملية ناجحة
+                            {(sales[s.seller_id] ?? 0).toLocaleString('en-US')} عملية ناجحة
                           </span>
                         </div>
                       </div>
                     </div>
                     <div className="shrink-0 text-left">
                       <div className="text-lg font-bold text-primary">{formatMoney(s.price)}</div>
-                      <div className="text-xs text-muted-foreground">لـ {amount.toLocaleString()} R$</div>
+                      <div className="text-xs text-muted-foreground">لـ {amount.toLocaleString('en-US')} R$</div>
                     </div>
                   </button>
                   {delivery === 'group' && sellerGroupLinks.length > 0 && (
@@ -276,7 +276,7 @@ export function RobuxPurchase() {
         <dl className="space-y-2.5 text-sm">
           <div className="flex justify-between">
             <dt className="text-muted-foreground">الكمية</dt>
-            <dd className="font-medium">{amount.toLocaleString()} R$</dd>
+            <dd className="font-medium">{amount.toLocaleString('en-US')} R$</dd>
           </div>
           <div className="flex justify-between">
             <dt className="text-muted-foreground">التسليم</dt>

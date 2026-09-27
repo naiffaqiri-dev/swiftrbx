@@ -46,7 +46,7 @@ export function OrdersList({ orders }: { orders: OrderRow[] }) {
                 <Package className="h-5 w-5" />
               </span>
               <div>
-                <div className="font-medium">{o.robux_amount.toLocaleString()} R$</div>
+                <div className="font-medium">{o.robux_amount.toLocaleString('en-US')} R$</div>
                 <div className="text-xs text-muted-foreground">
                   {DELIVERY_LABELS[o.delivery_method as DeliveryType] ?? o.delivery_method} · {o.roblox_username}
                 </div>

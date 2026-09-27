@@ -8,8 +8,7 @@ export type Lang = 'ar' | 'en'
 
 type Dict = Record<string, { ar: string; en: string }>
 
-// Shared chrome + navigation strings. Body copy stays in Arabic; this covers
-// the parts of every interface that frame the experience.
+// Shared navigation and interface strings used across pages.
 const DICT: Dict = {
   'nav.market': { ar: 'السوق', en: 'Market' },
   'nav.tickets': { ar: 'التذاكر', en: 'Tickets' },
@@ -17,9 +16,27 @@ const DICT: Dict = {
   'auth.login': { ar: 'تسجيل الدخول', en: 'Sign in' },
   'auth.register': { ar: 'إنشاء حساب', en: 'Sign up' },
   'auth.logout': { ar: 'تسجيل الخروج', en: 'Sign out' },
+  'auth.logout.confirmTitle': { ar: 'تأكيد تسجيل الخروج', en: 'Confirm sign out' },
+  'auth.logout.confirmMessage': { ar: 'هل أنت متأكد أنك تريد تسجيل الخروج؟', en: 'Are you sure you want to sign out?' },
+  'auth.logout.failed': { ar: 'تعذّر تسجيل الخروج. حاول مرة أخرى.', en: 'Sign out failed. Please try again.' },
+  'common.yes': { ar: 'نعم', en: 'YES' },
+  'common.no': { ar: 'لا', en: 'NO' },
+  'common.pleaseWait': { ar: 'يرجى الانتظار…', en: 'Please wait…' },
   'shell.backToSite': { ar: 'العودة للموقع', en: 'Back to site' },
   'shell.profile': { ar: 'الملف الشخصي والإعدادات', en: 'Profile & settings' },
   'support.button': { ar: 'الدعم المباشر', en: 'Live support' },
+  'support.close': { ar: 'إغلاق', en: 'Close' },
+  'support.sent': { ar: 'تم إرسال رسالتك', en: 'Your message was sent' },
+  'support.sentMessage': { ar: 'سيتواصل معك فريق الدعم في أقرب وقت.', en: 'Our support team will get back to you soon.' },
+  'support.done': { ar: 'تم', en: 'Done' },
+  'support.prompt': { ar: 'اكتب استفسارك وسيصل مباشرةً إلى فريق الدعم على الديسكورد.', en: 'Send your question directly to our support team on Discord.' },
+  'support.message': { ar: 'رسالتك', en: 'Message' },
+  'support.messagePlaceholder': { ar: 'كيف يمكننا مساعدتك؟', en: 'How can we help?' },
+  'support.contact': { ar: 'وسيلة تواصل (اختياري)', en: 'Contact method (optional)' },
+  'support.contactPlaceholder': { ar: 'ديسكورد / بريد / رقم', en: 'Discord / email / phone' },
+  'support.send': { ar: 'إرسال', en: 'Send' },
+  'support.errorMessage': { ar: 'يرجى كتابة رسالتك أولاً', en: 'Please enter a message first.' },
+  'support.errorSend': { ar: 'تعذّر إرسال الرسالة، حاول مرة أخرى.', en: 'Could not send your message. Please try again.' },
   'seller.overview': { ar: 'نظرة عامة', en: 'Overview' },
   'seller.orders': { ar: 'التذاكر النشطة', en: 'Active tickets' },
   'seller.stock': { ar: 'عرض البيع', en: 'Sale offer' },
@@ -38,23 +55,21 @@ const LocaleContext = createContext<Ctx | null>(null)
 
 const STORAGE_KEY = 'swiftrbx.lang'
 
-export function LocaleProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>('ar')
-
-  useEffect(() => {
-    const stored = (typeof window !== 'undefined' && window.localStorage.getItem(STORAGE_KEY)) as Lang | null
-    if (stored === 'ar' || stored === 'en') setLangState(stored)
-  }, [])
+export function LocaleProvider({
+  children,
+  initialLang,
+}: {
+  children: ReactNode
+  initialLang: Lang
+}) {
+  const [lang, setLangState] = useState<Lang>(initialLang)
 
   useEffect(() => {
     const dir = lang === 'ar' ? 'rtl' : 'ltr'
     document.documentElement.lang = lang
     document.documentElement.dir = dir
-    try {
-      window.localStorage.setItem(STORAGE_KEY, lang)
-    } catch {
-      // ignore storage failures (private mode etc.)
-    }
+    const secure = window.location.protocol === 'https:' ? '; Secure' : ''
+    document.cookie = `${STORAGE_KEY}=${lang}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`
   }, [lang])
 
   const setLang = useCallback((l: Lang) => setLangState(l), [])
