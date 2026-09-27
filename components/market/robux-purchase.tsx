@@ -47,14 +47,15 @@ export function RobuxPurchase() {
           setSales(Object.fromEntries(profiles.map((profile) => [profile.id, Number(profile.sales ?? 0)])))
         }
         if (publicLinks) {
+          const sellerLinkRows = publicLinks as { seller_id: string; group_links: unknown }[]
           setGroupLinks(
             Object.fromEntries(
-              publicLinks
+              sellerLinkRows
                 .filter((row) => sellerIds.includes(row.seller_id))
                 .map((row) => [
                   row.seller_id,
                   Array.isArray(row.group_links)
-                    ? row.group_links.filter((link: unknown): link is string => typeof link === 'string')
+                    ? row.group_links.filter((link): link is string => typeof link === 'string')
                     : [],
                 ]),
             ),
