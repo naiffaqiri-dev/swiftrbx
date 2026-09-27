@@ -120,30 +120,18 @@ export function AccountView() {
     }
     setProfileBusy('avatar')
     try {
-      const supabase = createClient()
-      const ext = file.name.split('.').pop() || 'png'
-      const path = `${user!.id}/${Date.now()}.${ext}`
-      const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, {
-        upsert: true,
-        contentType: file.type,
-      })
-      if (upErr) {
-        setProfileMsg({ type: 'err', text: 'تعذّر رفع الصورة، حاول مرة أخرى' })
-        return
-      }
-      const { data: pub } = supabase.storage.from('avatars').getPublicUrl(path)
-      const avatarUrl = pub.publicUrl
-      const res = await fetch('/api/account/profile', {
+      const formData = new FormData()
+      formData.set('file', file)
+      const res = await fetch('/api/account/avatar', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'avatar', value: avatarUrl }),
+        body: formData,
       })
       const data = await res.json()
       if (!res.ok) {
-        setProfileMsg({ type: 'err', text: data.error ?? 'تعذّر حفظ الصورة' })
+        setProfileMsg({ type: 'err', text: data.error ?? 'تعذّر رفع الصورة، حاول مرة أخرى' })
         return
       }
-      updateUser(user!.id, { avatarUrl })
+      updateUser(user!.id, { avatarUrl: data.avatarUrl })
       setProfileMsg({ type: 'ok', text: 'تم تحديث الصورة الشخصية بنجاح.' })
     } catch {
       setProfileMsg({ type: 'err', text: 'تعذّر الاتصال، حاول لاحقاً' })
@@ -208,7 +196,7 @@ export function AccountView() {
       return
     }
     if (pw.next !== pw.confirm) {
-      setPwMsg({ type: 'err', text: 'كلمتا المرور غير متطابقتين' })
+      setPwMsg({ type: 'err', text: 'كلمتا المرور غير م��طابقتين' })
       return
     }
     setPwBusy(true)
