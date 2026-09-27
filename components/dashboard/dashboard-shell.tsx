@@ -82,44 +82,48 @@ export function DashboardShell({
       </aside>
 
       <main className="flex-1 overflow-x-hidden">
-        <header className="flex items-center justify-between border-b border-border/60 bg-card/30 px-5 py-4">
-          <div>
-            <h1 className="text-lg font-bold text-balance">{title}</h1>
-            {user && (
-              <p className="text-xs text-muted-foreground">
-                {user.username} · {ROLE_LABELS[user.role]}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <LanguageToggle />
-            <div className="flex items-center gap-2 md:hidden">
-              {nav.map((item) => (
-                <button
-                  key={item.key}
-                  onClick={() => onNavigate(item.key)}
-                  aria-label={item.label}
-                  className={`rounded-lg p-2 ${active === item.key ? 'bg-primary/15 text-primary' : 'text-muted-foreground'}`}
-                >
-                  {item.icon}
-                </button>
-              ))}
-            </div>
-            <Link
-              href="/account"
-              aria-label="الملف الشخصي والإعدادات"
-              title="الملف الشخصي والإعدادات"
-              className="flex h-10 w-10 items-center justify-center rounded-full border border-border/60 bg-primary/15 text-sm font-bold text-primary transition-colors hover:border-primary/60 hover:bg-primary/25"
-            >
-              {user?.username ? (
-                user.username.slice(0, 2).toUpperCase()
-              ) : (
-                <UserIcon className="h-5 w-5" />
+        <header className="border-b border-border/60 bg-card/30 px-4 py-3 sm:px-5 sm:py-4">
+          <div className="flex min-w-0 items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-balance text-lg font-bold">{title}</h1>
+              {user && (
+                <p className="truncate text-xs text-muted-foreground">
+                  {user.username} · {ROLE_LABELS[user.role]}
+                </p>
               )}
-            </Link>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <LanguageToggle />
+              <Link
+                href="/account"
+                aria-label={t('shell.profile')}
+                title={t('shell.profile')}
+                className="flex size-10 items-center justify-center rounded-full border border-border/60 bg-primary/15 text-sm font-bold text-primary transition-colors hover:border-primary/60 hover:bg-primary/25"
+              >
+                {user?.username ? (
+                  user.username.slice(0, 2).toUpperCase()
+                ) : (
+                  <UserIcon className="size-5" />
+                )}
+              </Link>
+            </div>
           </div>
+          <nav aria-label={t('shell.navigation')} className="mt-3 grid grid-cols-2 gap-2 md:hidden">
+            {nav.map((item) => (
+              <button
+                key={item.key}
+                type="button"
+                onClick={() => onNavigate(item.key)}
+                aria-current={active === item.key ? 'page' : undefined}
+                className={`flex min-h-11 min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-right text-xs font-medium leading-5 transition-colors ${active === item.key ? 'bg-primary/15 text-primary' : 'bg-muted/30 text-muted-foreground'}`}
+              >
+                <span className="shrink-0">{item.icon}</span>
+                <span className="min-w-0">{item.label}</span>
+              </button>
+            ))}
+          </nav>
         </header>
-        <div className="p-5">{children}</div>
+        <div className="min-w-0 p-4 sm:p-5">{children}</div>
       </main>
     </div>
   )

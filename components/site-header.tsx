@@ -21,11 +21,11 @@ export function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
+      <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-3 px-4 py-3 sm:flex-row sm:justify-between sm:px-6 sm:py-4">
         <BrandLogo />
-        <nav className="flex items-center gap-2">
+        <nav className="flex w-full flex-wrap items-center justify-center gap-1.5 sm:w-auto sm:justify-end sm:gap-2">
           {ready && user ? (
-            <div className="flex items-center gap-3">
+            <div className="flex w-full flex-wrap items-center justify-center gap-1 sm:w-auto sm:justify-end sm:gap-3">
               <LanguageToggle />
               <Link href="/market" className={buttonVariants({ variant: 'ghost', className: 'gap-2' })}>
                 <span className="hidden sm:inline">{t('nav.market')}</span>

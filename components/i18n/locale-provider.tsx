@@ -23,6 +23,7 @@ const DICT: Dict = {
   'common.no': { ar: 'لا', en: 'NO' },
   'common.pleaseWait': { ar: 'يرجى الانتظار…', en: 'Please wait…' },
   'shell.backToSite': { ar: 'العودة للموقع', en: 'Back to site' },
+  'shell.navigation': { ar: 'التنقل في لوحة التحكم', en: 'Dashboard navigation' },
   'shell.profile': { ar: 'الملف الشخصي والإعدادات', en: 'Profile & settings' },
   'support.button': { ar: 'الدعم المباشر', en: 'Live support' },
   'support.close': { ar: 'إغلاق', en: 'Close' },

@@ -44,7 +44,7 @@ export default async function RootLayout({
     <html lang={initialLang} dir={initialDir} className={`dark ${cairo.variable} bg-background`}>
       <body className="flex min-h-svh flex-col font-sans antialiased">
         <LocaleProvider initialLang={initialLang}>
-          <div className="h-[calc(100svh-11rem)] w-full overflow-y-auto max-sm:h-[calc(100svh-15rem)]">
+          <div className="min-w-0 w-full flex-1">
             <AuthProvider>
               <TicketsProvider>{children}</TicketsProvider>
             </AuthProvider>

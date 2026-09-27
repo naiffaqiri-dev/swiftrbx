@@ -1,8 +1,10 @@
 'use client'
 
+import { useState } from 'react'
 import { DELIVERY_LABELS, type DeliveryType } from '@/lib/mock-data'
 import { formatSar } from '@/lib/currency'
 import { Package } from 'lucide-react'
+import { TicketThread } from './tickets-list'
 
 export type OrderRow = {
   id: string
@@ -24,7 +26,17 @@ export const ORDER_STATUS: Record<string, { label: string; cls: string }> = {
   disputed: { label: 'نزاع', cls: 'bg-destructive/15 text-destructive' },
 }
 
-export function OrdersList({ orders }: { orders: OrderRow[] }) {
+export function OrdersList({
+  orders,
+  ticketIdByOrder = {},
+  onChanged,
+}: {
+  orders: OrderRow[]
+  ticketIdByOrder?: Record<string, string>
+  onChanged?: () => void
+}) {
+  const [openTicketId, setOpenTicketId] = useState<string | null>(null)
+
   if (orders.length === 0) {
     return (
       <p className="rounded-xl border border-border/60 bg-card/40 p-8 text-center text-sm text-muted-foreground">
@@ -32,22 +44,23 @@ export function OrdersList({ orders }: { orders: OrderRow[] }) {
       </p>
     )
   }
+
   return (
     <div className="space-y-3">
       {orders.map((o) => {
         const st = ORDER_STATUS[o.status] ?? { label: o.status, cls: 'bg-muted text-muted-foreground' }
-        return (
-          <div
-            key={o.id}
-            className="flex flex-col gap-3 rounded-xl border border-border/60 bg-card/40 p-4 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-primary">
-                <Package className="h-5 w-5" />
+        const ticketId = ticketIdByOrder[o.id]
+        const isCompletedAndOpenable = o.status === 'completed' && Boolean(ticketId)
+        const cardClass = 'flex w-full flex-col gap-3 rounded-xl border border-border/60 bg-card/40 p-4 text-right sm:flex-row sm:items-center sm:justify-between'
+        const cardContent = (
+          <>
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
+                <Package className="size-5" />
               </span>
-              <div>
+              <div className="min-w-0">
                 <div className="font-medium">{o.robux_amount.toLocaleString('en-US')} R$</div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-pretty text-xs text-muted-foreground">
                   {DELIVERY_LABELS[o.delivery_method as DeliveryType] ?? o.delivery_method} · {o.roblox_username}
                 </div>
               </div>
@@ -55,10 +68,30 @@ export function OrdersList({ orders }: { orders: OrderRow[] }) {
             <div className="flex items-center justify-between gap-4 sm:justify-end">
               <span className="font-semibold">{formatSar(Number(o.price_sar))}</span>
               <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${st.cls}`}>{st.label}</span>
+              {isCompletedAndOpenable && <span className="text-xs font-medium text-primary">عرض التفاصيل</span>}
             </div>
+          </>
+        )
+
+        return isCompletedAndOpenable ? (
+          <button
+            key={o.id}
+            type="button"
+            onClick={() => setOpenTicketId(ticketId)}
+            aria-label={`تفاصيل الطلب المكتمل ${o.robux_amount.toLocaleString('en-US')} روبوكس`}
+            className={`${cardClass} cursor-pointer transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary`}
+          >
+            {cardContent}
+          </button>
+        ) : (
+          <div key={o.id} className={cardClass}>
+            {cardContent}
           </div>
         )
       })}
+      {openTicketId && (
+        <TicketThread ticketId={openTicketId} role="buyer" onClose={() => setOpenTicketId(null)} onChanged={onChanged ?? (() => {})} />
+      )}
     </div>
   )
 }

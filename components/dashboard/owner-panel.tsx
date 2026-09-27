@@ -76,7 +76,63 @@ function UserTable({
     return <p className="rounded-xl border border-border/60 bg-card/40 p-8 text-center text-sm text-muted-foreground">لا يوجد سجلات</p>
   }
   return (
-    <div className="overflow-x-auto rounded-xl border border-border/60 bg-card/40">
+    <>
+      <div className="space-y-3 md:hidden">
+        {rows.map((u) => (
+          <article key={u.id} className="rounded-xl border border-border/60 bg-card/40 p-4">
+            <div className="flex min-w-0 items-start gap-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
+                {u.username.slice(0, 2).toUpperCase()}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="break-all font-medium">{u.username}</div>
+                {u.email && <div className="break-all text-xs text-muted-foreground">{u.email}</div>}
+              </div>
+              <button
+                type="button"
+                onClick={() => onToggleActive(u)}
+                disabled={u.role === 'owner'}
+                aria-label={`${u.active ? 'إيقاف' : 'تفعيل'} ${u.username}`}
+                className="flex min-h-10 shrink-0 items-center rounded-lg px-2 disabled:opacity-40"
+              >
+                <StatusDot active={u.active} />
+              </button>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div>
+                <div className="mb-1 text-xs text-muted-foreground">الدور</div>
+                <select
+                  value={u.role}
+                  onChange={(e) => onChangeRole(u, e.target.value as Role)}
+                  disabled={u.role === 'owner'}
+                  aria-label={`تغيير دور ${u.username}`}
+                  className="min-h-10 w-full min-w-0 rounded-md border border-border/60 bg-background px-2 text-xs outline-none focus:border-primary disabled:opacity-60"
+                >
+                  {(['owner', 'seller', 'support', 'user'] as Role[]).map((r) => (
+                    <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <div className="mb-1 text-xs text-muted-foreground">الرصيد</div>
+                <div className="flex min-h-10 items-center font-medium">{formatMoney(u.balance)}</div>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => onRemove(u)}
+                disabled={u.role === 'owner'}
+                className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-xs text-destructive/90 transition-colors hover:bg-destructive/10 disabled:opacity-40"
+              >
+                <Trash2 className="size-4" />
+                حذف المستخدم
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+      <div className="hidden overflow-x-auto rounded-xl border border-border/60 bg-card/40 md:block">
       <table className="w-full min-w-[640px] text-right text-sm">
         <thead>
           <tr className="border-b border-border/60 text-xs text-muted-foreground">
@@ -135,7 +191,8 @@ function UserTable({
           ))}
         </tbody>
       </table>
-    </div>
+      </div>
+    </>
   )
 }
 

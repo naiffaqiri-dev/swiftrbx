@@ -26,6 +26,7 @@ export function UserPanel() {
   const [active, setActive] = useState('overview')
   const [topUpOpen, setTopUpOpen] = useState(false)
   const [orders, setOrders] = useState<OrderRow[]>([])
+  const [ticketIdByOrder, setTicketIdByOrder] = useState<Record<string, string>>({})
   const [ticketCount, setTicketCount] = useState(0)
 
   const load = useCallback(async () => {
@@ -37,10 +38,24 @@ export function UserPanel() {
         .select('id, robux_amount, roblox_username, delivery_method, price_sar, status, created_at')
         .eq('buyer_id', user.id)
         .order('created_at', { ascending: false }),
-      supabase.from('tickets').select('id', { count: 'exact', head: true }).eq('buyer_id', user.id),
+      supabase.from('tickets').select('id, order_id, type, status').eq('buyer_id', user.id),
     ])
-    setOrders((o.data ?? []) as OrderRow[])
-    setTicketCount(t.count ?? 0)
+    const orderRows = (o.data ?? []) as OrderRow[]
+    const ticketRows = (t.data ?? []) as { id: string; order_id: string | null; type: string; status: string }[]
+    const ordersById = new Map(orderRows.map((order) => [order.id, order]))
+    setOrders(orderRows)
+    setTicketIdByOrder(
+      Object.fromEntries(ticketRows.flatMap((ticket) => ticket.order_id ? [[ticket.order_id, ticket.id]] : [])),
+    )
+    setTicketCount(
+      ticketRows.filter(
+        (ticket) =>
+          ticket.type === 'order' &&
+          ticket.status === 'closed' &&
+          ticket.order_id &&
+          ordersById.get(ticket.order_id)?.status === 'rejected',
+      ).length,
+    )
   }, [user])
 
   useEffect(() => {
@@ -75,13 +90,22 @@ export function UserPanel() {
               <Link href="/market">اشترِ روبوكس</Link>
             </Button>
           </div>
-          {orders.length > 0 && <OrdersList orders={orders.slice(0, 5)} />}
+          <section className="space-y-3">
+            <h2 className="text-base font-semibold">التذاكر النشطة</h2>
+            <TicketsList
+              role="buyer"
+              types={['order', 'dispute']}
+              statuses={['open', 'pending_payment', 'delivered', 'disputed']}
+            />
+          </section>
         </div>
       )}
 
-      {active === 'orders' && <OrdersList orders={orders} />}
+      {active === 'orders' && (
+        <OrdersList orders={orders} ticketIdByOrder={ticketIdByOrder} onChanged={load} />
+      )}
 
-      {active === 'tickets' && <TicketsList role="buyer" types={['order', 'dispute']} />}
+      {active === 'tickets' && <TicketsList role="buyer" onlyRejectedTransfers />}
 
       {active === 'support' && (
         <div className="space-y-4">
