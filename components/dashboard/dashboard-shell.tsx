@@ -1,7 +1,9 @@
 'use client'
 
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useAuth, ROLE_LABELS } from '@/components/auth/mock-auth'
+import { LogoutConfirmation } from '@/components/auth/logout-confirmation'
 import { BrandLogo } from '@/components/brand-logo'
 import { MessageNotifier } from './message-notifier'
 import { SupportButton } from '@/components/support-button'
@@ -23,6 +25,13 @@ export function DashboardShell({
   children: ReactNode
 }) {
   const { user, logout } = useAuth()
+  const { t } = useLocale()
+  const router = useRouter()
+
+  async function handleLogout() {
+    await logout()
+    router.replace('/login')
+  }
 
   return (
     <div className="flex min-h-screen bg-background text-foreground">
@@ -54,15 +63,21 @@ export function DashboardShell({
             className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground"
           >
             <Home className="h-4 w-4" />
-            العودة للموقع
+            {t('shell.backToSite')}
           </Link>
-          <button
-            onClick={logout}
-            className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-destructive/90 transition-colors hover:bg-destructive/10"
-          >
-            <LogOut className="h-4 w-4" />
-            تسجيل الخروج
-          </button>
+          <LogoutConfirmation
+            onConfirm={handleLogout}
+            trigger={(openDialog) => (
+              <button
+                type="button"
+                onClick={openDialog}
+                className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-destructive/90 transition-colors hover:bg-destructive/10"
+              >
+                <LogOut className="h-4 w-4" />
+                {t('auth.logout')}
+              </button>
+            )}
+          />
         </div>
       </aside>
 

@@ -92,7 +92,7 @@ export async function POST(req: Request) {
   await notifyDiscord("orders", {
     title: "تم تأكيد الدفع وبدء تنفيذ الطلب",
     fields: [
-      { name: "الكمية", value: `${Number(order.robux_amount).toLocaleString()} R$`, inline: true },
+      { name: "الكمية", value: `${Number(order.robux_amount).toLocaleString('en-US')} R$`, inline: true },
       { name: "حساب روبلوكس", value: order.roblox_username, inline: true },
     ],
   })

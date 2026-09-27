@@ -215,7 +215,7 @@ export function SellerPanel() {
             <StatCard label="الرصيد الحالي" value={formatMoney(user?.balance ?? 0)} accent icon={<Wallet className="h-5 w-5" />} />
             <StatCard label="عمليات ناجحة" value={user?.totalSales ?? 0} icon={<CheckCircle2 className="h-5 w-5" />} />
             <StatCard label="العمولة المستحقة" value={formatMoney(user?.commission ?? 0)} icon={<Percent className="h-5 w-5" />} />
-            <StatCard label="إجمالي روبوكس متاح" value={totalAvailable.toLocaleString()} icon={<Package className="h-5 w-5" />} />
+            <StatCard label="إجمالي روبوكس متاح" value={totalAvailable.toLocaleString('en-US')} icon={<Package className="h-5 w-5" />} />
           </div>
           <div className="rounded-xl border border-border/60 bg-card/40 p-5">
             <h2 className="mb-3 flex items-center gap-2 text-sm font-bold">
