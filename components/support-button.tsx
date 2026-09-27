@@ -56,10 +56,11 @@ export function SupportButton() {
     <>
       <Button
         onClick={() => setOpen(true)}
-        className="fixed bottom-6 left-6 z-50 gap-2 rounded-full shadow-[0_0_28px_-6px_var(--primary)]"
+        aria-label={t('support.button')}
+        className="fixed bottom-4 left-4 z-50 gap-2 rounded-full shadow-[0_0_28px_-6px_var(--primary)] sm:bottom-6 sm:left-6"
       >
         <Headphones className="size-4" />
-        {t('support.button')}
+        <span className="hidden sm:inline">{t('support.button')}</span>
       </Button>
 
       {open && (
