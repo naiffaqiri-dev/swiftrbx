@@ -76,7 +76,7 @@ export default async function HomePage() {
   const pageFeatures = features[lang]
 
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className="flex min-h-[calc(100svh-3.5rem)] flex-col">
       <SiteHeader />
 
       <main className="flex-1">

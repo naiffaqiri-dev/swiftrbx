@@ -4,7 +4,7 @@ import { RobuxPurchase } from '@/components/market/robux-purchase'
 
 export default function MarketPage() {
   return (
-    <div className="flex min-h-svh flex-col">
+    <div className="flex min-h-[calc(100svh-3.5rem)] flex-col">
       <SiteHeader />
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
         <div className="mb-8">
