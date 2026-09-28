@@ -8,6 +8,7 @@ import { SupportButton } from '@/components/support-button'
 import { SiteReviews } from '@/components/reviews/site-reviews'
 import { buttonVariants } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/server'
+import { CATALOG_CATEGORIES, CATALOG_CATEGORY_INFO, CATALOG_PATHS } from '@/lib/catalog'
 
 const features = {
   ar: [
@@ -150,6 +151,27 @@ export default async function HomePage() {
                   {f.desc}
                 </p>
               </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="mx-auto w-full max-w-6xl px-6 pb-16">
+          <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-sm font-medium text-primary">متاجر البائعين</p>
+              <h2 className="mt-1 text-2xl font-extrabold">تصفّح أقسام السوق</h2>
+            </div>
+            <Link href="/market" className={buttonVariants({ variant: 'ghost', className: 'gap-2' })}>سوق الروبكس <span aria-hidden="true">←</span></Link>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-3">
+            {CATALOG_CATEGORIES.map((category) => (
+              <Link key={category} href={CATALOG_PATHS[category]} className="group flex min-h-36 flex-col justify-between rounded-2xl border border-border/60 bg-card/40 p-5 transition-colors hover:border-primary/50 hover:bg-card/70">
+                <span className="text-xs font-medium text-muted-foreground">متاجر SwiftRBX</span>
+                <span className="flex items-center justify-between gap-3 text-lg font-bold">
+                  {CATALOG_CATEGORY_INFO[category].label}
+                  <span className="text-primary transition-transform group-hover:-translate-x-1" aria-hidden="true">←</span>
+                </span>
+              </Link>
             ))}
           </div>
         </section>

@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatMoney } from '@/lib/currency'
+import { CATALOG_CATEGORIES, CATALOG_CATEGORY_INFO, type CatalogCategory } from '@/lib/catalog'
 import {
   LayoutDashboard,
   Store,
@@ -53,6 +54,30 @@ function RoleBadge({ role }: { role: Role }) {
   )
 }
 
+function SellerPermissionEditor({ user, onChange }: { user: ManagedUser; onChange: (user: ManagedUser, permissions: CatalogCategory[]) => void }) {
+  return (
+    <fieldset className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5">
+      <legend className="sr-only">صلاحيات متجر {user.username}</legend>
+      {CATALOG_CATEGORIES.map((category) => (
+        <label key={category} className="inline-flex min-h-7 items-center gap-1.5 text-[11px] text-muted-foreground">
+          <input
+            type="checkbox"
+            checked={user.sellerPermissions.includes(category)}
+            onChange={(event) => {
+              const next = event.target.checked
+                ? [...new Set([...user.sellerPermissions, category])]
+                : user.sellerPermissions.filter((item) => item !== category)
+              onChange(user, next)
+            }}
+            className="size-3.5 accent-primary"
+          />
+          {CATALOG_CATEGORY_INFO[category].label}
+        </label>
+      ))}
+    </fieldset>
+  )
+}
+
 function StatusDot({ active }: { active: boolean }) {
   return (
     <span className="inline-flex items-center gap-1.5 text-xs">
@@ -66,11 +91,13 @@ function UserTable({
   rows,
   onToggleActive,
   onChangeRole,
+  onChangePermissions,
   onRemove,
 }: {
   rows: ManagedUser[]
   onToggleActive: (u: ManagedUser) => void
   onChangeRole: (u: ManagedUser, role: Role) => void
+  onChangePermissions: (u: ManagedUser, permissions: CatalogCategory[]) => void
   onRemove: (u: ManagedUser) => void
 }) {
   if (rows.length === 0) {
@@ -119,6 +146,7 @@ function UserTable({
                 <div className="flex min-h-10 items-center font-medium">{formatMoney(u.balance)}</div>
               </div>
             </div>
+            {u.role !== 'owner' && <SellerPermissionEditor user={u} onChange={onChangePermissions} />}
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -171,6 +199,7 @@ function UserTable({
                     </option>
                   ))}
                 </select>
+                {u.role !== 'owner' && <div className="mt-2 max-w-56"><SellerPermissionEditor user={u} onChange={onChangePermissions} /></div>}
               </td>
               <td className="p-3 font-medium">{formatMoney(u.balance)}</td>
               <td className="p-3">
@@ -210,14 +239,23 @@ export function OwnerPanel() {
     { type: 'success'; email: string; tempPassword?: string } | { type: 'error'; text: string } | null
   >(null)
   const [submitting, setSubmitting] = useState(false)
+  const [permissionError, setPermissionError] = useState('')
 
-  const sellers = useMemo(() => users.filter((u) => u.role === 'seller'), [users])
+  const sellers = useMemo(() => users.filter((u) => u.role === 'seller' || u.sellerPermissions.length > 0), [users])
   const support = useMemo(() => users.filter((u) => u.role === 'support'), [users])
   const activeSellers = sellers.filter((u) => u.active).length
   const activeSupport = support.filter((u) => u.active).length
 
   const toggleActive = (u: ManagedUser) => updateUser(u.id, { active: !u.active })
   const changeRole = (u: ManagedUser, role: Role) => updateUser(u.id, { role })
+  const changePermissions = async (u: ManagedUser, permissions: CatalogCategory[]) => {
+    setPermissionError('')
+    try {
+      await updateUser(u.id, { sellerPermissions: permissions })
+    } catch {
+      setPermissionError('تعذّر حفظ صلاحيات المتجر، تحقق من الاتصال ثم حاول مجدداً')
+    }
+  }
   const remove = (u: ManagedUser) => removeUser(u.id)
 
   const submitStaff = async (e: React.FormEvent) => {
@@ -241,6 +279,7 @@ export function OwnerPanel() {
 
   return (
     <DashboardShell title="لوحة الإدارة العليا" nav={NAV} active={active} onNavigate={setActive}>
+      {permissionError && <p role="alert" className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{permissionError}</p>}
       {active === 'overview' && (
         <div className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -263,6 +302,7 @@ export function OwnerPanel() {
               rows={[...sellers, ...support].filter((u) => u.active)}
               onToggleActive={toggleActive}
               onChangeRole={changeRole}
+              onChangePermissions={changePermissions}
               onRemove={remove}
             />
           </div>
@@ -276,14 +316,14 @@ export function OwnerPanel() {
       {active === 'sellers' && (
         <div className="space-y-4">
           <h2 className="text-sm font-bold text-muted-foreground">كل الموردين ({sellers.length})</h2>
-          <UserTable rows={sellers} onToggleActive={toggleActive} onChangeRole={changeRole} onRemove={remove} />
+          <UserTable rows={sellers} onToggleActive={toggleActive} onChangeRole={changeRole} onChangePermissions={changePermissions} onRemove={remove} />
         </div>
       )}
 
       {active === 'support' && (
         <div className="space-y-4">
           <h2 className="text-sm font-bold text-muted-foreground">فريق الدعم الفني ({support.length})</h2>
-          <UserTable rows={support} onToggleActive={toggleActive} onChangeRole={changeRole} onRemove={remove} />
+          <UserTable rows={support} onToggleActive={toggleActive} onChangeRole={changeRole} onChangePermissions={changePermissions} onRemove={remove} />
         </div>
       )}
 
@@ -366,7 +406,7 @@ export function OwnerPanel() {
 
           <div className="space-y-4">
             <h2 className="text-sm font-bold text-muted-foreground">كل الحسابات ({users.length})</h2>
-            <UserTable rows={users} onToggleActive={toggleActive} onChangeRole={changeRole} onRemove={remove} />
+            <UserTable rows={users} onToggleActive={toggleActive} onChangeRole={changeRole} onChangePermissions={changePermissions} onRemove={remove} />
           </div>
         </div>
       )}

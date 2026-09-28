@@ -7,6 +7,8 @@ import { DashboardShell, StatCard } from './dashboard-shell'
 import { TopUpDialog } from './top-up-dialog'
 import { OrdersList, type OrderRow } from './orders-list'
 import { TicketsList } from './tickets-list'
+import { SellerCatalogManager } from './seller-catalog-manager'
+import { CATALOG_CATEGORIES, CATALOG_CATEGORY_INFO, canSellCategory } from '@/lib/catalog'
 import { SiteReviews } from '@/components/reviews/site-reviews'
 import { MarketplaceAvailabilitySummary } from '@/components/market/marketplace-availability'
 import { createClient } from '@/lib/supabase/client'
@@ -29,6 +31,9 @@ export function UserPanel() {
   const [orders, setOrders] = useState<OrderRow[]>([])
   const [ticketIdByOrder, setTicketIdByOrder] = useState<Record<string, string>>({})
   const [ticketCount, setTicketCount] = useState(0)
+  const catalogNav = CATALOG_CATEGORIES
+    .filter((category) => canSellCategory(user?.role, user?.sellerPermissions, category))
+    .map((category) => ({ key: `catalog-${category}`, label: `متجر ${CATALOG_CATEGORY_INFO[category].label}`, icon: <ShoppingBag className="h-4 w-4" /> }))
 
   const load = useCallback(async () => {
     if (!user) return
@@ -66,7 +71,7 @@ export function UserPanel() {
   const balance = user?.balance ?? 0
 
   return (
-    <DashboardShell title="لوحتي" nav={NAV} active={active} onNavigate={setActive}>
+    <DashboardShell title="لوحتي" nav={[...NAV, ...catalogNav]} active={active} onNavigate={setActive}>
       {active === 'overview' && (
         <div className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-3">
@@ -119,6 +124,7 @@ export function UserPanel() {
       )}
 
       {active === 'reviews' && <SiteReviews />}
+      {CATALOG_CATEGORIES.map((category) => active === `catalog-${category}` && canSellCategory(user?.role, user?.sellerPermissions, category) ? <SellerCatalogManager key={category} category={category} /> : null)}
 
       {topUpOpen && <TopUpDialog onClose={() => setTopUpOpen(false)} />}
     </DashboardShell>

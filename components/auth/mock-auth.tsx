@@ -9,6 +9,7 @@ import {
   useState,
 } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { sellerPermissions as normalizeSellerPermissions, type CatalogCategory } from '@/lib/catalog'
 
 export type Role = 'owner' | 'seller' | 'support' | 'user'
 
@@ -31,6 +32,7 @@ export type ManagedUser = {
   onboarded?: boolean
   usernameChangedAt?: number | null
   displayNameChangedAt?: number | null
+  sellerPermissions: CatalogCategory[]
 }
 
 export const ROLE_LABELS: Record<Role, string> = {
@@ -59,6 +61,7 @@ type ProfileRow = {
   username_changed_at: string | null
   display_name_changed_at: string | null
   created_at: string
+  seller_permissions?: unknown
 }
 
 function mapRow(r: ProfileRow): ManagedUser {
@@ -83,6 +86,7 @@ function mapRow(r: ProfileRow): ManagedUser {
     onboarded: r.onboarded ?? true,
     usernameChangedAt: r.username_changed_at ? Date.parse(r.username_changed_at) : null,
     displayNameChangedAt: r.display_name_changed_at ? Date.parse(r.display_name_changed_at) : null,
+    sellerPermissions: normalizeSellerPermissions(r.seller_permissions),
   }
 }
 
@@ -116,7 +120,7 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 const PROFILE_COLUMNS =
-  'id, username, display_name, avatar_url, email, role, balance, active, rating, rating_count, sales, commission, referral_code, two_factor_enabled, onboarded, username_changed_at, display_name_changed_at, created_at'
+  'id, username, display_name, avatar_url, email, role, seller_permissions, balance, active, rating, rating_count, sales, commission, referral_code, two_factor_enabled, onboarded, username_changed_at, display_name_changed_at, created_at'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = useMemo(() => createClient(), [])
@@ -243,14 +247,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // تحديث فوري متفائل لكل الحقول (بعضها يُكتب في قاعدة البيانات من الخادم)
       setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)))
 
+      if (patch.sellerPermissions !== undefined) {
+        const response = await fetch('/api/admin/staff/permissions', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId: id, permissions: patch.sellerPermissions }),
+        })
+        if (!response.ok) {
+          await refreshUsers()
+          throw new Error('تعذّر حفظ صلاحيات المتجر')
+        }
+      }
+
       const dbPatch: Record<string, unknown> = {}
       if (patch.email !== undefined) dbPatch.email = patch.email
       if (patch.active !== undefined) dbPatch.active = patch.active
       if (patch.role !== undefined) dbPatch.role = patch.role
       if (patch.balance !== undefined) dbPatch.balance = patch.balance
-      if (Object.keys(dbPatch).length === 0) return
-
-      await supabase.from('profiles').update(dbPatch).eq('id', id)
+      if (Object.keys(dbPatch).length > 0) await supabase.from('profiles').update(dbPatch).eq('id', id)
       await refreshUsers()
     },
     [supabase, refreshUsers],
