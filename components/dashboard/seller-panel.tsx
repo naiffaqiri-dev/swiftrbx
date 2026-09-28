@@ -14,6 +14,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { LayoutDashboard, Package, Wallet, CheckCircle2, Star, Percent, Loader2, CheckCircle, Ticket, ExternalLink } from 'lucide-react'
 import { formatMoney } from '@/lib/currency'
+import { CATALOG_CATEGORIES, CATALOG_CATEGORY_INFO, canSellCategory } from '@/lib/catalog'
+import { SellerCatalogManager } from './seller-catalog-manager'
 
 const NAV = [
   { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard className="h-4 w-4" /> },
@@ -61,6 +63,13 @@ export function SellerPanel() {
   const [gamepassLinksSaved, setGamepassLinksSaved] = useState(false)
   const [gamepassLinksError, setGamepassLinksError] = useState('')
   const rating = ratingOf(user)
+  const catalogNav = CATALOG_CATEGORIES
+    .filter((category) => canSellCategory(user?.role, user?.sellerPermissions, category))
+    .map((category) => ({
+      key: `catalog-${category}`,
+      label: `متجر ${CATALOG_CATEGORY_INFO[category].label}`,
+      icon: <Package className="h-4 w-4" />,
+    }))
 
   useEffect(() => {
     if (!user) return
@@ -209,7 +218,7 @@ export function SellerPanel() {
   const anyVisible = DELIVERY_TYPES.some((d) => offers[d].active && offers[d].rate > 0 && offers[d].available > 0)
 
   return (
-    <DashboardShell title="لوحة المورد" nav={NAV} active={active} onNavigate={setActive}>
+    <DashboardShell title="لوحة المورد" nav={[...NAV, ...catalogNav]} active={active} onNavigate={setActive}>
       {active === 'overview' && (
         <div className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -414,6 +423,10 @@ export function SellerPanel() {
           )}
         </div>
       )}
+
+      {CATALOG_CATEGORIES.map((category) => active === `catalog-${category}` && canSellCategory(user?.role, user?.sellerPermissions, category) ? (
+        <SellerCatalogManager key={category} category={category} />
+      ) : null)}
 
       {active === 'wallet' && (
         <div className="max-w-md space-y-4 rounded-xl border border-border/60 bg-card/40 p-5">
