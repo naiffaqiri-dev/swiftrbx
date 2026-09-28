@@ -4,7 +4,11 @@ import Image from 'next/image'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { useMemo, useState } from 'react'
-import { ArrowUpRight, Gamepad2, Search, Store } from 'lucide-react'
+import { ArrowUpRight, Gamepad2, Loader2, Search, Store } from 'lucide-react'
+import { useAuth } from '@/components/auth/mock-auth'
+import { TicketThread } from '@/components/dashboard/tickets-list'
+import { StarDisplay } from '@/components/reviews/star-rating'
+import { Button } from '@/components/ui/button'
 import { CATALOG_CATEGORY_INFO, CATALOG_PATHS, type CatalogCategory, type CatalogItem } from '@/lib/catalog'
 import { Input } from '@/components/ui/input'
 
@@ -15,14 +19,17 @@ const fetcher = async (url: string): Promise<{ items: CatalogItem[] }> => {
 }
 
 export function CatalogBrowser({ category, sellerId }: { category: CatalogCategory; sellerId?: string }) {
+  const { user } = useAuth()
   const [search, setSearch] = useState('')
+  const [purchaseBusyId, setPurchaseBusyId] = useState<string | null>(null)
+  const [purchaseError, setPurchaseError] = useState('')
+  const [ticketId, setTicketId] = useState<string | null>(null)
   const [selectedGame, setSelectedGame] = useState('')
   const url = `/api/catalog?${new URLSearchParams({ category, ...(sellerId ? { sellerId } : {}) })}`
   const { data, error, isLoading } = useSWR(url, fetcher)
   const items = data?.items ?? []
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
-    if (!term) return items
     return items.filter((item) => (!selectedGame || item.game === selectedGame)
       && (!term || [item.name, item.description, item.game, item.seller.username, item.seller.display_name]
         .some((value) => value?.toLowerCase().includes(term))))
@@ -30,6 +37,22 @@ export function CatalogBrowser({ category, sellerId }: { category: CatalogCatego
   const games = useMemo(() => [...new Set(items.map((item) => item.game).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar')), [items])
   const info = CATALOG_CATEGORY_INFO[category]
   const groupedSellers = useMemo(() => [...new Set(filtered.map((item) => item.seller.id))].length, [filtered])
+
+  async function requestPurchase(item: CatalogItem) {
+    if (!user || purchaseBusyId) return
+    setPurchaseBusyId(item.id)
+    setPurchaseError('')
+    const response = await fetch('/api/catalog/purchase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'purchase', itemId: item.id }),
+    }).catch(() => null)
+    const result = response ? await response.json().catch(() => ({})) : {}
+    if (!response?.ok) setPurchaseError(result.error ?? 'تعذّر إرسال طلب الشراء')
+    else if (typeof result.ticketId === 'string') setTicketId(result.ticketId)
+    else setPurchaseError('أُرسل الطلب، لكن تعذّر فتح التذكرة تلقائياً')
+    setPurchaseBusyId(null)
+  }
 
   return (
     <div className="flex flex-col gap-7">
@@ -47,6 +70,8 @@ export function CatalogBrowser({ category, sellerId }: { category: CatalogCatego
           ))}
         </nav>
       )}
+      {purchaseError && <p role="alert" className="rounded-lg border border-destructive/40 bg-card px-4 py-3 text-sm text-destructive">{purchaseError}</p>}
+
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
         <div>
           <div className="flex items-center gap-2 text-sm text-muted-foreground"><Store className="size-4" /> {groupedSellers.toLocaleString('ar-SA')} بائعين</div>
@@ -86,15 +111,30 @@ export function CatalogBrowser({ category, sellerId }: { category: CatalogCatego
                 </div>
                 {item.description && <p className="line-clamp-3 text-sm leading-relaxed text-muted-foreground">{item.description}</p>}
                 <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/50 pt-3">
-                  <Link href={`/market/store/${item.seller.id}`} className="min-w-0 truncate text-sm font-semibold hover:text-primary">{item.seller.display_name || item.seller.username}</Link>
-                  <span className="shrink-0 text-xs text-muted-foreground">{info.singular}</span>
+                  <div className="min-w-0">
+                    <Link href={`/market/store/${item.seller.id}`} className="block truncate text-sm font-semibold hover:text-primary">{item.seller.display_name || item.seller.username}</Link>
+                    <span className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"><StarDisplay value={item.seller.rating} size={13} /><span>{item.seller.rating_count ? `(${item.seller.rating_count})` : 'بائع جديد'}</span></span>
+                  </div>
+                  <div className="shrink-0 text-left">
+                    <span className="block text-sm font-bold">{item.price_sar !== null ? `${Number(item.price_sar).toFixed(2)} ر.س` : 'السعر غير محدد'}</span>
+                    <span className="text-xs text-muted-foreground">{info.singular}</span>
+                  </div>
                 </div>
                 {item.links.length > 0 && <div className="flex flex-wrap gap-2">{item.links.map((href, index) => <a key={`${item.id}-${index}`} href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-full border border-border/70 px-3 py-1.5 text-xs text-muted-foreground hover:text-primary">رابط {index + 1}<ArrowUpRight className="size-3" /></a>)}</div>}
+                {item.seller.id !== user?.id && (user ? (
+                  <Button onClick={() => requestPurchase(item)} disabled={purchaseBusyId !== null || item.price_sar === null} className="w-full">
+                    {purchaseBusyId === item.id ? <Loader2 className="size-4 animate-spin" /> : null}
+                    {item.price_sar === null ? 'بانتظار تحديد السعر' : 'طلب شراء عبر تذكرة'}
+                  </Button>
+                ) : (
+                  <Link href="/login" className="inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">سجّل الدخول للشراء</Link>
+                ))}
               </div>
             </article>
           ))}
         </div>
       )}
+      {ticketId && <TicketThread ticketId={ticketId} role="buyer" onClose={() => setTicketId(null)} onChanged={() => {}} />}
     </div>
   )
 }

@@ -30,6 +30,8 @@ type TicketRow = {
   seller_id: string | null
   order_id: string | null
   close_reason: string | null
+  catalog_item_id: string | null
+  purchase_price_sar: number | null
   created_at: string
 }
 
@@ -285,6 +287,7 @@ export function TicketThread({
   const [stars, setStars] = useState(0)
   const [showRating, setShowRating] = useState(false)
   const [reviewComment, setReviewComment] = useState('')
+  const [actionError, setActionError] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
@@ -364,7 +367,7 @@ export function TicketThread({
   }
 
   async function orderAction(action: string, extra?: Record<string, unknown>) {
-    if (!order) return
+    if (!order) return false
     const res = await fetch('/api/orders/action', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -373,13 +376,31 @@ export function TicketThread({
     return res.ok
   }
 
+  async function catalogTicketAction(action: 'deliver' | 'confirm', extra?: Record<string, unknown>) {
+    const res = await fetch('/api/catalog/purchase', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ticketId, action, ...extra }),
+    })
+    if (!res.ok) {
+      const result = await res.json().catch(() => ({}))
+      setActionError(result.error ?? 'تعذّر تحديث الطلب')
+      return false
+    }
+    setActionError('')
+    return true
+  }
+
   // البائع: تأكيد تسليم الطلب (يضيف الرصيد القابل للسحب للبائع فوراً على الخادم)
   async function markDelivered() {
-    if (!order || acting) return
+    if (acting) return
     setActing(true)
-    const ok = await orderAction('deliver')
-    if (ok)
-      await postSystem(`قام البائع بتأكيد تسليم ${order.robux_amount.toLocaleString()} روبوكس إلى "${order.roblox_username}".`)
+    if (ticket?.catalog_item_id) {
+      await catalogTicketAction('deliver')
+    } else if (order) {
+      const ok = await orderAction('deliver')
+      if (ok) await postSystem(`قام البائع بتأكيد تسليم ${order.robux_amount.toLocaleString()} روبوكس إلى "${order.roblox_username}".`)
+    }
     await load()
     onChanged()
     setActing(false)
@@ -387,14 +408,18 @@ export function TicketThread({
 
   // المشتري: تأكيد الاستلام + التقييم المتبادل
   async function confirmReceipt() {
-    if (!order || acting) return
+    if ((!order && !ticket?.catalog_item_id) || acting) return
     if (stars < 1) {
       setShowRating(true)
       return
     }
     setActing(true)
-    const ok = await orderAction('confirm', { rating: stars, comment: reviewComment.trim() })
-    if (ok) await postSystem(`أكد المشتري استلام الطلب وقيّم البائع بـ ${stars} من 5.`)
+    if (ticket?.catalog_item_id) {
+      await catalogTicketAction('confirm', { rating: stars, comment: reviewComment.trim() })
+    } else if (order) {
+      const ok = await orderAction('confirm', { rating: stars, comment: reviewComment.trim() })
+      if (ok) await postSystem(`أكد المشتري استلام الطلب وقيّم البائع بـ ${stars} من 5.`)
+    }
     await load()
     onChanged()
     setActing(false)
@@ -411,8 +436,8 @@ export function TicketThread({
   }
 
   const isOrderTicket = ticket?.type === 'order' || ticket?.type === 'dispute'
-  const sellerCanDeliver = role === 'seller' && isOrderTicket && order?.status === 'processing'
-  const buyerCanConfirm = role === 'buyer' && ticket?.type === 'order' && order?.status === 'delivered'
+  const sellerCanDeliver = role === 'seller' && isOrderTicket && (order?.status === 'processing' || (Boolean(ticket?.catalog_item_id) && ticket?.status === 'open'))
+  const buyerCanConfirm = role === 'buyer' && ticket?.type === 'order' && (order?.status === 'delivered' || (Boolean(ticket?.catalog_item_id) && ticket?.status === 'delivered'))
   const buyerCanDispute =
     role === 'buyer' && ticket?.order_id && ticket.type === 'order' && order?.status !== 'completed'
 
@@ -428,6 +453,7 @@ export function TicketThread({
             <p className="text-xs text-muted-foreground">
               رقم {ticketId.slice(0, 8)}
               {sellerName && role !== 'seller' ? ` · البائع: ${sellerName}` : ''}
+              {ticket?.purchase_price_sar !== null && ticket?.purchase_price_sar !== undefined ? ` · ${Number(ticket.purchase_price_sar).toFixed(2)} ر.س` : ''}
             </p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -463,6 +489,7 @@ export function TicketThread({
         </div>
 
         <div className="space-y-2 border-t border-border/60 p-3">
+          {actionError && <p role="alert" className="text-xs text-destructive">{actionError}</p>}
           {(ticket?.status === 'closed' || order?.status === 'rejected') &&
             (ticket?.close_reason || order?.close_reason) && (
               <div className="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
@@ -474,14 +501,14 @@ export function TicketThread({
           {sellerCanDeliver && (
             <Button onClick={markDelivered} disabled={acting} className="w-full gap-2">
               {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
-              تأكيد تسليم الطلب
+              {ticket?.catalog_item_id ? 'تأكيد تسليم المنتج للمشتري' : 'تأكيد تسليم الطلب'}
             </Button>
           )}
 
           {buyerCanConfirm && (
             <div className="space-y-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
               <p className="flex items-center gap-1.5 text-xs font-medium text-primary">
-                <Star className="h-3.5 w-3.5" /> استلمت طلبك؟ أكّد الاستلام وقيّم البائع
+                <Star className="h-3.5 w-3.5" /> استلمت {ticket?.catalog_item_id ? 'المنتج' : 'طلبك'}؟ أكّد الاستلام وقيّم البائع
               </p>
               {(showRating || stars > 0) && (
                 <div className="space-y-2 py-1">

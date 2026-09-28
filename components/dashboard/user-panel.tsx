@@ -112,7 +112,7 @@ export function UserPanel() {
         <OrdersList orders={orders} ticketIdByOrder={ticketIdByOrder} onChanged={load} />
       )}
 
-      {active === 'tickets' && <TicketsList role="buyer" onlyRejectedTransfers />}
+      {active === 'tickets' && <TicketsList role="buyer" types={['order', 'dispute']} />}
 
       {active === 'support' && (
         <div className="space-y-4">

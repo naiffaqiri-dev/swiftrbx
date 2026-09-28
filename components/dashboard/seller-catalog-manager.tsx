@@ -5,7 +5,7 @@ import { useState, type FormEvent } from 'react'
 import useSWR from 'swr'
 import { Check, ExternalLink, ImagePlus, Loader2, Plus, Trash2 } from 'lucide-react'
 import { mutate } from 'swr'
-import { CATALOG_CATEGORY_INFO, type CatalogCategory, type CatalogItem } from '@/lib/catalog'
+import { CATALOG_CATEGORY_INFO, isValidCatalogPrice, type CatalogCategory, type CatalogItem } from '@/lib/catalog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -25,6 +25,9 @@ export function SellerCatalogManager({ category }: { category: CatalogCategory }
   const [message, setMessage] = useState('')
   const [failure, setFailure] = useState('')
   const [name, setName] = useState('')
+  const [priceSar, setPriceSar] = useState('')
+  const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({})
+  const [savingPriceId, setSavingPriceId] = useState<string | null>(null)
   const [description, setDescription] = useState('')
   const [game, setGame] = useState('')
   const [links, setLinks] = useState('')
@@ -42,6 +45,7 @@ export function SellerCatalogManager({ category }: { category: CatalogCategory }
     const body = new FormData()
     body.set('category', category)
     body.set('name', name)
+    body.set('priceSar', priceSar)
     body.set('description', description)
     body.set('game', game.trim() || 'أغراض عامة')
     body.set('links', JSON.stringify(cleanLinks))
@@ -55,6 +59,7 @@ export function SellerCatalogManager({ category }: { category: CatalogCategory }
       return
     }
     setName('')
+    setPriceSar('')
     setDescription('')
     setGame('')
     setLinks('')
@@ -84,13 +89,35 @@ export function SellerCatalogManager({ category }: { category: CatalogCategory }
     await mutate(key)
   }
 
+  async function savePrice(item: CatalogItem) {
+    const price = Number(priceDrafts[item.id] ?? item.price_sar ?? 0)
+    if (!isValidCatalogPrice(price)) {
+      setFailure('أدخل سعراً صحيحاً بالريال السعودي')
+      return
+    }
+    setSavingPriceId(item.id)
+    setFailure('')
+    const response = await fetch('/api/catalog', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: item.id, priceSar: price }),
+    })
+    const result = await response.json().catch(() => ({}))
+    if (!response.ok) setFailure(result.error ?? 'تعذّر تحديث السعر')
+    else {
+      setMessage('تم تحديث سعر المنتج')
+      await mutate(key)
+    }
+    setSavingPriceId(null)
+  }
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-end justify-between gap-4 rounded-2xl border border-border/60 bg-card/40 p-5">
         <div>
           <p className="text-sm text-muted-foreground">متجرك · {CATALOG_CATEGORY_INFO[category].label}</p>
           <h2 className="mt-1 text-xl font-bold">إدارة المنتجات</h2>
-          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">أضف صورة المنتج واسمه، ثم أكمل الوصف والروابط إذا رغبت.</p>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">أضف صورة المنتج واسمه وسعره، وأكمل الوصف والروابط إذا رغبت.</p>
         </div>
         <Button onClick={() => { setOpen((value) => !value); setFailure('') }}><Plus data-icon="inline-start" />إضافة {CATALOG_CATEGORY_INFO[category].singular}</Button>
       </div>
@@ -110,6 +137,10 @@ export function SellerCatalogManager({ category }: { category: CatalogCategory }
               <Label htmlFor={`catalog-name-${category}`}>اسم المنتج <span className="text-destructive">*</span></Label>
               <Input id={`catalog-name-${category}`} value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={100} required placeholder={CATALOG_CATEGORY_INFO[category].singular} />
             </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor={`catalog-price-${category}`}>السعر بالريال السعودي <span className="text-destructive">*</span></Label>
+              <Input id={`catalog-price-${category}`} type="number" inputMode="decimal" min="0.01" max="1000000" step="0.01" value={priceSar} onChange={(event) => setPriceSar(event.target.value)} required placeholder="مثال: 25.00" />
+            </div>
             {category === 'map_item' && <div className="flex flex-col gap-2"><Label htmlFor={`catalog-game-${category}`}>اسم اللعبة أو الماب</Label><Input id={`catalog-game-${category}`} list="roblox-map-games" value={game} onChange={(event) => setGame(event.target.value)} maxLength={40} placeholder="مثال: Blade Ball" /><datalist id="roblox-map-games"><option value="Adopt Me!" /><option value="Blade Ball" /><option value="Murder Mystery 2" /><option value="Blox Fruits" /><option value="أخرى" /></datalist></div>}
           </div>
           <div className="flex flex-col gap-4">
@@ -125,6 +156,7 @@ export function SellerCatalogManager({ category }: { category: CatalogCategory }
           {items.map((item) => <article key={item.id} className="overflow-hidden rounded-2xl border border-border/60 bg-card/40">
             <div className="relative aspect-[4/3] bg-muted"><Image src={item.image_url} alt={item.name} fill sizes="(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw" className="object-cover" unoptimized /></div>
             <div className="flex flex-col gap-3 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="font-bold">{item.name}</h3><p className="mt-1 text-xs text-muted-foreground">{item.game}</p></div><span className="rounded-full border border-border/60 px-2.5 py-1 text-xs">{item.active ? 'معروض' : 'مخفي'}</span></div>
+              <div className="flex items-end gap-2"><div className="flex min-w-0 flex-1 flex-col gap-1"><Label htmlFor={`catalog-price-edit-${item.id}`} className="text-xs">السعر (ر.س)</Label><Input id={`catalog-price-edit-${item.id}`} type="number" inputMode="decimal" min="0.01" max="1000000" step="0.01" value={priceDrafts[item.id] ?? String(item.price_sar ?? '')} onChange={(event) => setPriceDrafts((current) => ({ ...current, [item.id]: event.target.value }))} /></div><Button size="sm" variant="outline" onClick={() => savePrice(item)} disabled={savingPriceId === item.id}>{savingPriceId === item.id ? <Loader2 className="size-4 animate-spin" /> : 'حفظ السعر'}</Button></div>
               <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => toggleItem(item)}>{item.active ? 'إخفاء' : 'إظهار'}</Button>{item.links[0] && <a href={item.links[0]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground hover:text-primary">رابط المنتج<ExternalLink className="size-3" /></a>}<Button size="sm" variant="ghost" className="text-destructive" onClick={() => removeItem(item.id)} aria-label={`حذف ${item.name}`}><Trash2 className="size-4" /></Button></div>
             </div>
           </article>)}

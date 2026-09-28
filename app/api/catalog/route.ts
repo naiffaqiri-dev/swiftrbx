@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { canManageCatalog, canSellCategory, CATALOG_CATEGORIES, sellerPermissions, validHttpsLinks, type CatalogCategory } from '@/lib/catalog'
+import { canManageCatalog, canSellCategory, CATALOG_CATEGORIES, isValidCatalogPrice, sellerPermissions, validHttpsLinks, type CatalogCategory } from '@/lib/catalog'
 
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024
 const MIME_EXTENSIONS: Record<string, string> = {
@@ -42,7 +42,7 @@ export async function GET(request: Request) {
 
   const admin = createAdminClient()
   let query = admin.from('marketplace_catalog_items')
-    .select('id, seller_id, category, name, description, image_url, links, game, active, created_at')
+    .select('id, seller_id, category, name, description, image_url, links, game, active, created_at, price_sar')
     .eq('active', true)
     .order('created_at', { ascending: false })
 
@@ -54,7 +54,7 @@ export async function GET(request: Request) {
       return errorResponse('غير مصرّح', 403)
     }
     query = admin.from('marketplace_catalog_items')
-      .select('id, seller_id, category, name, description, image_url, links, game, active, created_at')
+      .select('id, seller_id, category, name, description, image_url, links, game, active, created_at, price_sar')
       .eq('seller_id', current.user.id)
       .order('created_at', { ascending: false })
     if (category) query = query.eq('category', category)
@@ -64,13 +64,16 @@ export async function GET(request: Request) {
   if (error) return errorResponse('تعذّر تحميل المنتجات', 500)
   const sellerIds = [...new Set((items ?? []).map((item) => item.seller_id))]
   const { data: sellers } = sellerIds.length
-    ? await admin.from('profiles').select('id, username, display_name, avatar_url, active').in('id', sellerIds).eq('active', true)
+    ? await admin.from('profiles').select('id, username, display_name, avatar_url, active, rating, rating_count').in('id', sellerIds).eq('active', true)
     : { data: [] }
   const sellerById = new Map((sellers ?? []).map((seller) => [seller.id, seller]))
   return NextResponse.json({
     items: (items ?? [])
       .filter((item) => sellerById.has(item.seller_id))
-      .map((item) => ({ ...item, seller: sellerById.get(item.seller_id)! })),
+      .map((item) => {
+        const seller = sellerById.get(item.seller_id)!
+        return { ...item, seller: { ...seller, rating: Number(seller.rating ?? 0), rating_count: Number(seller.rating_count ?? 0) } }
+      }),
   })
 }
 
@@ -90,6 +93,7 @@ export async function POST(request: Request) {
   const name = String(form.get('name') ?? '').trim()
   const description = String(form.get('description') ?? '').trim()
   const game = String(form.get('game') ?? '').trim() || 'أغراض عامة'
+  const priceSar = Number(form.get('priceSar'))
   const image = form.get('image')
   let links: unknown
   try {
@@ -101,6 +105,7 @@ export async function POST(request: Request) {
   if (name.length < 2 || name.length > 100) return errorResponse('اسم المنتج يجب أن يكون بين حرفين و100 حرف', 400)
   if (description.length > 2000) return errorResponse('الوصف أطول من الحد المسموح', 400)
   if (game.length < 2 || game.length > 40) return errorResponse('اسم اللعبة يجب أن يكون بين حرفين و40 حرفاً', 400)
+  if (!isValidCatalogPrice(priceSar)) return errorResponse('أدخل سعراً صحيحاً بالريال السعودي', 400)
   if (!validHttpsLinks(links)) return errorResponse('أدخل حتى 5 روابط HTTPS صحيحة', 400)
   if (!(image instanceof File) || image.size < 1 || image.size > MAX_IMAGE_BYTES || !MIME_EXTENSIONS[image.type]) {
     return errorResponse('أرفق صورة PNG أو JPEG أو WebP أو AVIF بحجم أقصى 8 ميغابايت', 400)
@@ -123,6 +128,7 @@ export async function POST(request: Request) {
     image_url: imageData.publicUrl,
     links: links as string[],
     game,
+    price_sar: priceSar,
   }).select('id').single()
 
   if (error) {
@@ -138,10 +144,18 @@ export async function PATCH(request: Request) {
     return errorResponse('غير مصرّح', 403)
   }
 
-  const body = await request.json().catch(() => null) as { id?: string; active?: boolean } | null
-  if (!body?.id || typeof body.active !== 'boolean') return errorResponse('طلب غير صالح', 400)
+  const body = await request.json().catch(() => null) as { id?: string; active?: boolean; priceSar?: number } | null
+  if (!body?.id || (typeof body.active !== 'boolean' && body.priceSar === undefined)) return errorResponse('طلب غير صالح', 400)
+  const updates: { active?: boolean; price_sar?: number } = {}
+  if (typeof body.active === 'boolean') updates.active = body.active
+  if (body.priceSar !== undefined) {
+    if (!isValidCatalogPrice(body.priceSar)) {
+      return errorResponse('أدخل سعراً صحيحاً بالريال السعودي', 400)
+    }
+    updates.price_sar = body.priceSar
+  }
   const { error } = await current.admin.from('marketplace_catalog_items')
-    .update({ active: body.active })
+    .update(updates)
     .eq('id', body.id)
     .eq('seller_id', current.user.id)
   if (error) return errorResponse('تعذّر تحديث المنتج', 500)
