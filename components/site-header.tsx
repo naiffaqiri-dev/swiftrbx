@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import { LayoutDashboard, LogOut, Wallet, Ticket } from 'lucide-react'
 import { BrandLogo } from '@/components/brand-logo'
 import { LogoutConfirmation } from '@/components/auth/logout-confirmation'
@@ -14,6 +15,7 @@ export function SiteHeader() {
   const { user, ready, logout } = useAuth()
   const { t } = useLocale()
   const router = useRouter()
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState<string | null>(null)
 
   async function handleLogout() {
     await logout()
@@ -49,8 +51,19 @@ export function SiteHeader() {
                 {user.balance.toFixed(2)} $
               </span>
               <Link href="/account" className="flex items-center gap-2 rounded-full transition-opacity hover:opacity-80">
-                <span className="flex size-9 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">
-                  {user.username.slice(0, 2).toUpperCase()}
+                <span className="flex size-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary/15 text-sm font-bold text-primary">
+                  {user.avatarUrl && failedAvatarUrl !== user.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={user.avatarUrl}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      className="size-full object-cover"
+                      onError={() => setFailedAvatarUrl(user.avatarUrl ?? null)}
+                    />
+                  ) : (
+                    user.username.slice(0, 2).toUpperCase()
+                  )}
                 </span>
                 <span className="hidden flex-col leading-tight sm:flex">
                   <span className="text-sm font-semibold">{user.username}</span>
