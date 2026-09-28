@@ -13,11 +13,14 @@ export type CatalogItem = {
   game: string
   active: boolean
   created_at: string
+  price_sar: number | null
   seller: {
     id: string
     username: string
     display_name: string | null
     avatar_url: string | null
+    rating: number
+    rating_count: number
   }
 }
 
@@ -63,6 +66,11 @@ export function canManageCatalog(role: string | null | undefined, permissions: s
 export function sellerPermissions(value: unknown): CatalogCategory[] {
   if (!Array.isArray(value)) return []
   return value.filter((entry): entry is CatalogCategory => CATALOG_CATEGORIES.includes(entry as CatalogCategory))
+}
+
+export function isValidCatalogPrice(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 1_000_000
+    && Math.abs(value * 100 - Math.round(value * 100)) < 1e-8
 }
 
 export function validHttpsLinks(value: unknown) {
