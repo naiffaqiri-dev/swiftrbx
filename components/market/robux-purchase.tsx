@@ -20,13 +20,21 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Loader2, Star, Package, Truck, Zap, CheckCircle2, ExternalLink } from 'lucide-react'
 
+type SellerProfile = {
+  id: string
+  username: string
+  display_name: string | null
+  avatar_url: string | null
+  sales: number | null
+}
+
 export function RobuxPurchase() {
   const router = useRouter()
   const [amount, setAmount] = useState<number>(5000)
   const [delivery, setDelivery] = useState<DeliveryType>('group')
   const [selected, setSelected] = useState<string | null>(null)
   const [offers, setOffers] = useState<ActiveOffer[]>([])
-  const [sales, setSales] = useState<Record<string, number>>({})
+  const [sellerProfiles, setSellerProfiles] = useState<Record<string, SellerProfile>>({})
   const [groupLinks, setGroupLinks] = useState<Record<string, string[]>>({})
   const [gamepassLinks, setGamepassLinks] = useState<Record<string, string[]>>({})
   const [loading, setLoading] = useState(true)
@@ -41,14 +49,20 @@ export function RobuxPurchase() {
       setLoading(false)
       const sellerIds = [...new Set(rows.map((offer) => offer.seller_id).filter(Boolean))]
       if (sellerIds.length) {
-        const [{ data: profiles }, { data: publicLinks }, { data: publicGamepassLinks }] = await Promise.all([
-          supabase.from('profiles').select('id, sales').in('id', sellerIds),
+        const [{ data: publicLinks }, { data: publicGamepassLinks }, publicSellerProfiles] = await Promise.all([
           supabase.rpc('active_seller_group_links'),
           supabase.rpc('active_seller_gamepass_links'),
+          fetch(`/api/market/seller-profiles?sellerIds=${encodeURIComponent(sellerIds.join(','))}`, { cache: 'no-store' })
+            .then(async (response) => {
+              if (!response.ok) return [] as SellerProfile[]
+              const result = await response.json() as { sellers?: SellerProfile[] }
+              return result.sellers ?? []
+            })
+            .catch(() => [] as SellerProfile[]),
         ])
         if (!active) return
-        if (profiles) {
-          setSales(Object.fromEntries(profiles.map((profile) => [profile.id, Number(profile.sales ?? 0)])))
+        if (publicSellerProfiles.length) {
+          setSellerProfiles(Object.fromEntries(publicSellerProfiles.map((profile) => [profile.id, profile])))
         }
         if (publicLinks) {
           const sellerLinkRows = publicLinks as { seller_id: string; group_links: unknown }[]
@@ -191,6 +205,8 @@ export function RobuxPurchase() {
           ) : (
             matched.map((s) => {
               const isSel = chosen?.id === s.id
+              const sellerProfile = sellerProfiles[s.seller_id]
+              const sellerName = sellerProfile?.display_name?.trim() || s.username
               const sellerGroupLinks = (groupLinks[s.seller_id] ?? []).filter(isRobloxGroupLink)
               const sellerGamepassLinks = (gamepassLinks[s.seller_id] ?? []).filter(isHttpsLink)
               return (
@@ -204,14 +220,19 @@ export function RobuxPurchase() {
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">
-                        {s.username.slice(0, 2).toUpperCase()}
-                      </span>
+                      {sellerProfile?.avatar_url ? (
+                        <img src={sellerProfile.avatar_url} alt="" className="size-10 rounded-full object-cover" />
+                      ) : (
+                        <span className="flex size-10 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">
+                          {sellerName.slice(0, 2).toUpperCase()}
+                        </span>
+                      )}
                       <div>
                         <div className="flex items-center gap-1.5 font-medium">
-                          {s.username}
+                          {sellerName}
                           {isSel && <CheckCircle2 className="h-4 w-4 text-primary" />}
                         </div>
+                        <div className="text-xs text-muted-foreground">@{sellerProfile?.username || s.username}</div>
                         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                           <span className="flex items-center gap-0.5">
                             <Star className="h-3 w-3 fill-primary text-primary" />
@@ -224,7 +245,7 @@ export function RobuxPurchase() {
                           </span>
                           <span className="flex items-center gap-0.5 text-emerald-400">
                             <CheckCircle2 className="h-3 w-3" />
-                            {(sales[s.seller_id] ?? 0).toLocaleString('en-US')} عملية ناجحة
+                            {Number(sellerProfile?.sales ?? 0).toLocaleString('en-US')} عملية ناجحة
                           </span>
                         </div>
                       </div>
@@ -287,7 +308,7 @@ export function RobuxPurchase() {
           </div>
           <div className="flex justify-between">
             <dt className="text-muted-foreground">البائع</dt>
-            <dd className="font-medium">{chosen?.username ?? '—'}</dd>
+            <dd className="font-medium">{chosen ? sellerProfiles[chosen.seller_id]?.display_name?.trim() || chosen.username : '—'}</dd>
           </div>
         </dl>
         <div className="border-t border-border/60 pt-3">
