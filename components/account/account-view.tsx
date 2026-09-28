@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth, ROLE_LABELS, ratingOf } from '@/components/auth/mock-auth'
 import { createClient } from '@/lib/supabase/client'
 import { StarDisplay } from '@/components/reviews/star-rating'
+import { ProfileAvatar } from '@/components/profile-avatar'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -273,18 +274,12 @@ export function AccountView() {
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-6 flex items-center gap-4 rounded-2xl border border-border/60 bg-card/40 p-6">
-        {user.avatarUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={user.avatarUrl || "/placeholder.svg"}
-            alt={user.displayName ?? user.username}
-            className="h-16 w-16 shrink-0 rounded-full object-cover ring-2 ring-primary/30"
-          />
-        ) : (
-          <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xl font-bold text-primary">
-            {(user.displayName ?? user.username).slice(0, 2).toUpperCase()}
-          </span>
-        )}
+        <ProfileAvatar
+          src={user.avatarUrl}
+          name={user.displayName ?? user.username}
+          alt={user.displayName ?? user.username}
+          className="size-16 ring-2 ring-primary/30"
+        />
         <div className="min-w-0">
           <h1 className="truncate text-xl font-bold">{user.displayName ?? user.username}</h1>
           <p className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -332,18 +327,12 @@ export function AccountView() {
           {/* الصورة الشخصية */}
           <div className="flex items-center gap-4">
             <div className="relative">
-              {user.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={user.avatarUrl || "/placeholder.svg"}
-                  alt={user.displayName ?? user.username}
-                  className="h-20 w-20 rounded-full object-cover ring-2 ring-primary/30"
-                />
-              ) : (
-                <span className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/15 text-2xl font-bold text-primary">
-                  {(user.displayName ?? user.username).slice(0, 2).toUpperCase()}
-                </span>
-              )}
+              <ProfileAvatar
+                src={user.avatarUrl}
+                name={user.displayName ?? user.username}
+                alt={user.displayName ?? user.username}
+                className="size-20 ring-2 ring-primary/30"
+              />
               {profileBusy === 'avatar' && (
                 <span className="absolute inset-0 flex items-center justify-center rounded-full bg-background/70">
                   <Loader2 className="h-5 w-5 animate-spin text-primary" />

@@ -13,6 +13,7 @@ import {
   type DeliveryType,
 } from '@/lib/mock-data'
 import { createClient } from '@/lib/supabase/client'
+import { ProfileAvatar } from '@/components/profile-avatar'
 import { formatMoney } from '@/lib/currency'
 import { DeliveryAvailability, MarketplaceAvailabilitySummary } from '@/components/market/marketplace-availability'
 import { Button } from '@/components/ui/button'
@@ -220,13 +221,11 @@ export function RobuxPurchase() {
                     }`}
                   >
                     <div className="flex items-center gap-3">
-                      {sellerProfile?.avatar_url ? (
-                        <img src={sellerProfile.avatar_url} alt="" className="size-10 rounded-full object-cover" />
-                      ) : (
-                        <span className="flex size-10 items-center justify-center rounded-full bg-primary/15 text-sm font-bold text-primary">
-                          {sellerName.slice(0, 2).toUpperCase()}
-                        </span>
-                      )}
+                      <ProfileAvatar
+                        src={sellerProfile?.avatar_url}
+                        name={sellerName}
+                        className="size-10"
+                      />
                       <div>
                         <div className="flex items-center gap-1.5 font-medium">
                           {sellerName}

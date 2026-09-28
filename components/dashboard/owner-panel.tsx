@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useAuth, ROLE_LABELS, type Role, type ManagedUser } from '@/components/auth/mock-auth'
 import { DashboardShell, StatCard } from './dashboard-shell'
+import { ProfileAvatar } from '@/components/profile-avatar'
 import { MarketplaceAvailabilitySummary } from '@/components/market/marketplace-availability'
 import { AdminVerifyPanel } from './admin-verify-panel'
 import { TicketsList } from './tickets-list'
@@ -109,9 +110,7 @@ function UserTable({
         {rows.map((u) => (
           <article key={u.id} className="rounded-xl border border-border/60 bg-card/40 p-4">
             <div className="flex min-w-0 items-start gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
-                {u.username.slice(0, 2).toUpperCase()}
-              </span>
+              <ProfileAvatar src={u.avatarUrl} name={u.displayName ?? u.username} className="size-9 text-xs" />
               <div className="min-w-0 flex-1">
                 <div className="break-all font-medium">{u.username}</div>
                 {u.email && <div className="break-all text-xs text-muted-foreground">{u.email}</div>}
@@ -177,9 +176,7 @@ function UserTable({
             <tr key={u.id} className="border-b border-border/40 last:border-0">
               <td className="p-3">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/15 text-xs font-bold text-primary">
-                    {u.username.slice(0, 2).toUpperCase()}
-                  </span>
+                  <ProfileAvatar src={u.avatarUrl} name={u.displayName ?? u.username} className="size-8 text-xs" />
                   <div>
                     <div className="font-medium">{u.username}</div>
                     {u.email && <div className="text-xs text-muted-foreground">{u.email}</div>}
