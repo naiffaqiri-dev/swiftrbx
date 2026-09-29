@@ -118,7 +118,7 @@ export function CatalogBrowser({ category, sellerId }: { category: CatalogCatego
       </div>
 
       {isLoading ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{[0, 1, 2].map((item) => <div key={item} className="h-80 animate-pulse rounded-2xl border border-border/60 bg-card/40" />)}</div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">{[0, 1, 2, 3, 4, 5].map((item) => <div key={item} className="aspect-[3/5] animate-pulse rounded-2xl border border-border/60 bg-card/40" />)}</div>
       ) : error ? (
         <p role="alert" className="rounded-xl border border-destructive/40 bg-card p-5 text-sm text-destructive">{error.message}</p>
       ) : filtered.length === 0 ? (
@@ -128,11 +128,11 @@ export function CatalogBrowser({ category, sellerId }: { category: CatalogCatego
           <p className="max-w-md text-sm leading-relaxed text-muted-foreground">{info.description}</p>
         </div>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
           {filtered.map((item) => (
-            <article key={item.id} className="group flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card/50 transition-colors hover:border-primary/50">
-                <Link href={`/market/item/${item.id}`} className="relative block aspect-[4/3] overflow-hidden bg-muted" aria-label={`عرض المنتج ${item.name}`}>
-                <Image src={item.image_url} alt={item.name} fill sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw" className="object-cover transition-transform duration-300 group-hover:scale-[1.03]" unoptimized />
+            <article key={item.id} className="group flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border/60 bg-card/50 transition-colors hover:border-primary/50">
+                <Link href={`/market/item/${item.id}`} className="relative block aspect-square overflow-hidden bg-muted/30" aria-label={`عرض المنتج ${item.name}`}>
+                <Image src={item.image_url} alt={item.name} fill sizes="(min-width: 1536px) 16vw, (min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw" className="object-contain transition-transform duration-300 group-hover:scale-[1.02]" unoptimized />
                 {category === 'map_item' && <span className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-background/90 px-3 py-1 text-xs font-medium">{item.map_thumbnail_url && <Image src={item.map_thumbnail_url} alt="" width={20} height={20} className="size-5 rounded-full object-cover" unoptimized />}{item.game_emoji || <Gamepad2 className="size-3.5" />}{item.game}</span>}
               </Link>
               <div className="flex flex-1 flex-col gap-3 p-4">
