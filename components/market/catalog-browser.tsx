@@ -4,7 +4,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { useMemo, useState } from 'react'
-import { ArrowUpRight, Gamepad2, Loader2, Search, Store } from 'lucide-react'
+import { ArrowUpRight, Gamepad2, Search, Store } from 'lucide-react'
 import { useAuth } from '@/components/auth/mock-auth'
 import { TicketThread } from '@/components/dashboard/tickets-list'
 import { StarDisplay } from '@/components/reviews/star-rating'
@@ -131,20 +131,23 @@ export function CatalogBrowser({ category, sellerId }: { category: CatalogCatego
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {filtered.map((item) => (
             <article key={item.id} className="group flex flex-col overflow-hidden rounded-2xl border border-border/60 bg-card/50 transition-colors hover:border-primary/50">
-              <Link href={`/market/store/${item.seller.id}`} className="relative block aspect-[4/3] overflow-hidden bg-muted" aria-label={`فتح متجر ${item.seller.display_name || item.seller.username}`}>
+                <Link href={`/market/item/${item.id}`} className="relative block aspect-[4/3] overflow-hidden bg-muted" aria-label={`عرض المنتج ${item.name}`}>
                 <Image src={item.image_url} alt={item.name} fill sizes="(min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw" className="object-cover transition-transform duration-300 group-hover:scale-[1.03]" unoptimized />
                 {category === 'map_item' && <span className="absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-background/90 px-3 py-1 text-xs font-medium">{item.map_thumbnail_url && <Image src={item.map_thumbnail_url} alt="" width={20} height={20} className="size-5 rounded-full object-cover" unoptimized />}{item.game_emoji || <Gamepad2 className="size-3.5" />}{item.game}</span>}
               </Link>
               <div className="flex flex-1 flex-col gap-3 p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0"><h3 className="text-base font-bold leading-6">{item.name}</h3>{category === 'map_item' && item.map_category && <p className="mt-1 inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2.5 py-1 text-xs font-medium">{item.map_category_emoji && <span aria-hidden="true">{item.map_category_emoji}</span>}{item.map_category}</p>}</div>
-                  <Link href={`/market/store/${item.seller.id}`} aria-label="افتح متجر البائع" className="shrink-0 rounded-full border border-border/70 p-2 text-muted-foreground transition-colors hover:text-primary"><ArrowUpRight className="size-4" /></Link>
+                  <div className="min-w-0"><h3 className="text-base font-bold leading-6"><Link href={`/market/item/${item.id}`} className="transition-colors hover:text-primary">{item.name}</Link></h3>{category === 'map_item' && item.map_category && <p className="mt-1 inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2.5 py-1 text-xs font-medium">{item.map_category_emoji && <span aria-hidden="true">{item.map_category_emoji}</span>}{item.map_category}</p>}</div>
+                  <Link href={`/market/item/${item.id}`} aria-label={`عرض تفاصيل ${item.name}`} className="shrink-0 rounded-full border border-border/70 p-2 text-muted-foreground transition-colors hover:text-primary"><ArrowUpRight className="size-4" /></Link>
                 </div>
                 {item.description && <p className="line-clamp-3 text-sm leading-relaxed text-muted-foreground">{item.description}</p>}
                 <div className="mt-auto flex items-center justify-between gap-3 border-t border-border/50 pt-3">
                   <div className="min-w-0">
-                    <Link href={`/market/store/${item.seller.id}`} className="block truncate text-sm font-semibold hover:text-primary">{item.seller.display_name || item.seller.username}</Link>
-                    <span className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground"><StarDisplay value={item.seller.rating} size={13} /><span>{item.seller.rating_count ? `(${item.seller.rating_count})` : 'بائع جديد'}</span></span>
+                    <Link href={`/market/store/${item.seller.id}`} className="inline-flex max-w-full items-center gap-2 rounded-full py-1 text-xs font-medium hover:text-primary">
+                      {item.seller.avatar_url ? <Image src={item.seller.avatar_url} alt="" width={22} height={22} className="size-[22px] shrink-0 rounded-full object-cover" unoptimized /> : <span aria-hidden="true" className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-muted text-[10px] font-bold">{(item.seller.display_name || item.seller.username).slice(0, 1).toUpperCase()}</span>}
+                      <span className="truncate">{item.seller.display_name || item.seller.username}</span>
+                    </Link>
+                    <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><StarDisplay value={item.seller.rating} size={13} /><span>{item.seller.rating_count ? `(${item.seller.rating_count})` : 'بائع جديد'}</span></span>
                   </div>
                   <div className="shrink-0 text-left">
                     <span className="block text-sm font-bold">{item.price_sar !== null ? `${Number(item.price_sar).toFixed(2)} ر.س` : 'السعر غير محدد'}</span>
