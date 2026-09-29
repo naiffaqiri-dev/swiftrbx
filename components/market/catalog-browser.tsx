@@ -19,6 +19,14 @@ const fetcher = async (url: string): Promise<{ items: CatalogItem[] }> => {
   return response.json()
 }
 
+type MarketplaceGame = { id: string; name: string; emoji: string | null; thumbnail_url: string | null }
+
+const gamesFetcher = async (url: string): Promise<{ maps: MarketplaceGame[] }> => {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error('تعذّر تحميل المابات')
+  return response.json()
+}
+
 export function CatalogBrowser({ category, sellerId }: { category: CatalogCategory; sellerId?: string }) {
   const { user } = useAuth()
   const [search, setSearch] = useState('')
@@ -30,6 +38,7 @@ export function CatalogBrowser({ category, sellerId }: { category: CatalogCatego
   const [selectedMapCategory, setSelectedMapCategory] = useState('')
   const url = `/api/catalog?${new URLSearchParams({ category, ...(sellerId ? { sellerId } : {}) })}`
   const { data, error, isLoading } = useSWR(url, fetcher)
+  const { data: gamesData } = useSWR(category === 'map_item' ? '/api/marketplace-games' : null, gamesFetcher)
   const items = data?.items ?? []
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
@@ -38,7 +47,18 @@ export function CatalogBrowser({ category, sellerId }: { category: CatalogCatego
       && (!term || [item.name, item.description, item.game, item.map_category, item.seller.username, item.seller.display_name]
         .some((value) => value?.toLowerCase().includes(term))))
   }, [items, search, selectedGame, selectedMapCategory])
-  const games = useMemo(() => [...new Set(items.map((item) => item.game).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'ar')), [items])
+  const games = useMemo(() => {
+    const byName = new Map<string, { name: string; thumbnailUrl: string | null; emoji: string | null }>()
+    for (const map of gamesData?.maps ?? []) {
+      byName.set(map.name, { name: map.name, thumbnailUrl: map.thumbnail_url, emoji: map.emoji })
+    }
+    for (const item of items) {
+      if (item.game && !byName.has(item.game)) {
+        byName.set(item.game, { name: item.game, thumbnailUrl: item.map_thumbnail_url, emoji: item.game_emoji })
+      }
+    }
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, 'ar'))
+  }, [gamesData?.maps, items])
   const mapCategories = useMemo(() => [...new Set(items.map((item) => item.map_category).filter((value): value is string => Boolean(value)))].sort((a, b) => a.localeCompare(b, 'ar')), [items])
   const info = CATALOG_CATEGORY_INFO[category]
   const groupedSellers = useMemo(() => [...new Set(filtered.map((item) => item.seller.id))].length, [filtered])
@@ -67,19 +87,34 @@ export function CatalogBrowser({ category, sellerId }: { category: CatalogCatego
       )}
       {purchaseError && <p role="alert" className="rounded-lg border border-destructive/40 bg-card px-4 py-3 text-sm text-destructive">{purchaseError}</p>}
 
-      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-        <div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground"><Store className="size-4" /> {groupedSellers.toLocaleString('ar-SA')} بائعين</div>
-          <h2 className="mt-2 text-xl font-bold">{sellerId ? 'المعروض من هذا المتجر' : 'تصفّح المتاجر والمنتجات'}</h2>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
+          <div>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground"><Store className="size-4" /> {groupedSellers.toLocaleString('ar-SA')} بائعين</div>
+            <h2 className="mt-2 text-xl font-bold">{sellerId ? 'المعروض من هذا المتجر' : 'تصفّح المتاجر والمنتجات'}</h2>
+          </div>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            {category === 'map_item' && mapCategories.length > 0 && <select value={selectedMapCategory} onChange={(event) => setSelectedMapCategory(event.target.value)} aria-label="تصفية حسب فئة الماب" className="h-10 rounded-md border border-border/60 bg-background px-3 text-sm"><option value="">كل الفئات</option>{mapCategories.map((mapCategory) => <option key={mapCategory} value={mapCategory}>{mapCategory}</option>)}</select>}
+            <label className="relative block w-full sm:max-w-xs">
+              <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث بالاسم أو اللعبة أو البائع" className="pr-9" aria-label="ابحث في المنتجات" />
+            </label>
+          </div>
         </div>
-        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-          {category === 'map_item' && games.length > 0 && <select value={selectedGame} onChange={(event) => setSelectedGame(event.target.value)} aria-label="تصفية حسب اللعبة" className="h-10 rounded-md border border-border/60 bg-background px-3 text-sm"><option value="">كل الألعاب</option>{games.map((game) => <option key={game} value={game}>{game}</option>)}</select>}
-          {category === 'map_item' && mapCategories.length > 0 && <select value={selectedMapCategory} onChange={(event) => setSelectedMapCategory(event.target.value)} aria-label="تصفية حسب فئة الماب" className="h-10 rounded-md border border-border/60 bg-background px-3 text-sm"><option value="">كل الفئات</option>{mapCategories.map((mapCategory) => <option key={mapCategory} value={mapCategory}>{mapCategory}</option>)}</select>}
-          <label className="relative block w-full sm:max-w-xs">
-            <Search className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="ابحث بالاسم أو اللعبة أو البائع" className="pr-9" aria-label="ابحث في المنتجات" />
-          </label>
-        </div>
+        {category === 'map_item' && games.length > 0 && (
+          <div className="flex flex-col gap-2">
+            <p className="text-sm text-muted-foreground">تصفية حسب الماب</p>
+            <div role="group" aria-label="اختيار ماب" className="flex gap-2 overflow-x-auto pb-1">
+              <Button type="button" size="sm" variant={selectedGame ? 'outline' : 'secondary'} aria-pressed={!selectedGame} onClick={() => setSelectedGame('')} className="shrink-0">كل المابات</Button>
+              {games.map((game) => (
+                <Button key={game.name} type="button" size="sm" variant={selectedGame === game.name ? 'secondary' : 'outline'} aria-pressed={selectedGame === game.name} onClick={() => setSelectedGame(game.name)} className="shrink-0">
+                  {game.thumbnailUrl ? <Image src={game.thumbnailUrl} alt="" width={24} height={24} className="size-6 rounded object-cover" unoptimized /> : game.emoji ? <span aria-hidden="true">{game.emoji}</span> : <Gamepad2 aria-hidden="true" />}
+                  <span>{game.name}</span>
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {isLoading ? (
