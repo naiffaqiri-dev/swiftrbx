@@ -43,7 +43,7 @@ export function CatalogPurchaseCheckout({
       const response = await fetch('/api/catalog/receipt', { method: 'POST', body: form })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error ?? 'تعذّر رفع الإيصال')
-      setReceiptUrl(result.receiptUrl)
+      setReceiptUrl(result.receiptPath)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'تعذّر رفع الإيصال')
     } finally {

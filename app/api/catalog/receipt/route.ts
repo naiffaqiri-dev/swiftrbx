@@ -31,14 +31,13 @@ export async function POST(request: Request) {
   if (!profile?.active) return NextResponse.json({ error: 'الحساب غير نشط' }, { status: 403 })
 
   const path = `${user.id}/marketplace-${crypto.randomUUID()}.${type.extension}`
-  const { error } = await admin.storage.from('receipts').upload(path, bytes, {
+  const { error } = await admin.storage.from('marketplace-receipts').upload(path, bytes, {
     contentType: file.type,
     upsert: false,
   })
   if (error) return NextResponse.json({ error: 'تعذّر رفع الإيصال، حاول مرة أخرى' }, { status: 500 })
 
-  const { data } = admin.storage.from('receipts').getPublicUrl(path)
-  return NextResponse.json({ receiptUrl: data.publicUrl }, { status: 201 })
+  return NextResponse.json({ receiptPath: path }, { status: 201 })
 }
 
 export const runtime = 'nodejs'

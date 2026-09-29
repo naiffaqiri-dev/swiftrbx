@@ -32,8 +32,8 @@ type PendingMarketplaceTicket = {
   purchase_price_sar: number
   wallet_amount_sar: number | null
   payment_bank_key: string | null
-  payment_receipt_url: string | null
   payment_sender_name: string | null
+  signedReceiptUrl: string | null
 }
 
 export function AdminVerifyPanel() {
@@ -59,7 +59,7 @@ export function AdminVerifyPanel() {
         .order('created_at', { ascending: true }),
       supabase
         .from('tickets')
-        .select('id, subject, purchase_price_sar, wallet_amount_sar, payment_bank_key, payment_receipt_url, payment_sender_name')
+        .select('id, subject, purchase_price_sar, wallet_amount_sar, payment_bank_key, payment_sender_name')
         .eq('type', 'order')
         .eq('status', 'pending_payment')
         .not('catalog_item_id', 'is', null)
@@ -67,7 +67,17 @@ export function AdminVerifyPanel() {
     ])
     setOrders((o.data ?? []) as PendingOrder[])
     setTopups((t.data ?? []) as PendingTopUp[])
-    setMarketplaceTickets((m.data ?? []) as PendingMarketplaceTicket[])
+    const pendingTickets = (m.data ?? []) as Omit<PendingMarketplaceTicket, 'signedReceiptUrl'>[]
+    const ticketsWithReceipts = await Promise.all(pendingTickets.map(async (ticket) => {
+      try {
+        const response = await fetch(`/api/admin/marketplace-receipt/${ticket.id}`)
+        const result = response.ok ? await response.json().catch(() => ({})) : {}
+        return { ...ticket, signedReceiptUrl: typeof result.signedUrl === 'string' ? result.signedUrl : null }
+      } catch {
+        return { ...ticket, signedReceiptUrl: null }
+      }
+    }))
+    setMarketplaceTickets(ticketsWithReceipts)
     setLoading(false)
   }, [])
 
@@ -119,7 +129,7 @@ export function AdminVerifyPanel() {
             amount={formatSar(Number(ticket.purchase_price_sar))}
             bankKey={ticket.payment_bank_key}
             sender={ticket.payment_sender_name}
-            receipt={ticket.payment_receipt_url}
+            receipt={ticket.signedReceiptUrl}
             detail={Number(ticket.wallet_amount_sar ?? 0) > 0 ? `استخدام المحفظة: ${formatSar(Number(ticket.wallet_amount_sar))}` : undefined}
             busy={busy === ticket.id}
             onConfirm={() => act('marketplace_ticket', ticket.id, 'confirm')}

@@ -70,14 +70,11 @@ export async function POST(request: Request) {
       if (!getBank(bankKey) || !senderName || !receiptUrl) {
         return errorResponse('بيانات التحويل البنكي غير مكتملة', 400)
       }
-      try {
-        const proof = new URL(receiptUrl)
-        const supabaseUrl = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL ?? '')
-        if (
-          proof.origin !== supabaseUrl.origin ||
-          !proof.pathname.startsWith(`/storage/v1/object/public/receipts/${user.id}/marketplace-`)
-        ) return errorResponse('رابط الإيصال غير صالح', 400)
-      } catch {
+      const expectedReceiptPrefix = `${user.id}/marketplace-`
+      const receiptFilename = receiptUrl.startsWith(expectedReceiptPrefix)
+        ? receiptUrl.slice(expectedReceiptPrefix.length)
+        : ''
+      if (!/^[-a-z0-9]+\\.(jpg|png|webp)$/i.test(receiptFilename)) {
         return errorResponse('رابط الإيصال غير صالح', 400)
       }
     }
