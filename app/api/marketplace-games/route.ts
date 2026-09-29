@@ -5,7 +5,7 @@ export async function GET() {
   const admin = createAdminClient()
   const { data, error } = await admin
     .from('marketplace_games')
-    .select('id, name, emoji')
+    .select('id, name, emoji, thumbnail_url')
     .eq('active', true)
     .order('name', { ascending: true })
 

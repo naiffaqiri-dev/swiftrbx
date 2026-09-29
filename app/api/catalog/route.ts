@@ -67,12 +67,20 @@ export async function GET(request: Request) {
     ? await admin.from('profiles').select('id, username, display_name, avatar_url, active, rating, rating_count').in('id', sellerIds).eq('active', true)
     : { data: [] }
   const sellerById = new Map((sellers ?? []).map((seller) => [seller.id, seller]))
+  const { data: games } = category === 'map_item'
+    ? await admin.from('marketplace_games').select('name, thumbnail_url')
+    : { data: [] }
+  const thumbnailByGameName = new Map((games ?? []).map((game) => [game.name, game.thumbnail_url]))
   return NextResponse.json({
     items: (items ?? [])
       .filter((item) => sellerById.has(item.seller_id))
       .map((item) => {
         const seller = sellerById.get(item.seller_id)!
-        return { ...item, seller: { ...seller, rating: Number(seller.rating ?? 0), rating_count: Number(seller.rating_count ?? 0) } }
+        return {
+          ...item,
+          map_thumbnail_url: thumbnailByGameName.get(item.game) || item.map_thumbnail_url || null,
+          seller: { ...seller, rating: Number(seller.rating ?? 0), rating_count: Number(seller.rating_count ?? 0) },
+        }
       }),
   })
 }
@@ -95,6 +103,7 @@ export async function POST(request: Request) {
   const selectedGameId = String(form.get('gameId') ?? '').trim()
   let game = 'أغراض عامة'
   let gameEmoji: string | null = null
+  let selectedGame: { name: string; emoji: string | null; thumbnail_url: string | null } | null = null
   const mapCategory = String(form.get('mapCategory') ?? '').trim()
   const mapCategoryEmoji = String(form.get('mapCategoryEmoji') ?? '').trim()
   const mapThumbnailUrl = String(form.get('mapThumbnailUrl') ?? '').trim()
@@ -112,13 +121,14 @@ export async function POST(request: Request) {
   if (description.length > 2000) return errorResponse('الوصف أطول من الحد المسموح', 400)
   if (category === 'map_item') {
     if (!selectedGameId) return errorResponse('اختر ماباً معتمداً من الإدارة', 400)
-    const { data: selectedGame, error: gameError } = await current.admin.from('marketplace_games')
-      .select('id, name, emoji')
+    const { data, error: gameError } = await current.admin.from('marketplace_games')
+      .select('id, name, emoji, thumbnail_url')
       .eq('id', selectedGameId)
       .eq('active', true)
       .maybeSingle()
     if (gameError) return errorResponse('تعذّر التحقق من الماب المعتمد', 500)
-    if (!selectedGame) return errorResponse('هذا الماب غير معتمد أو تم إيقافه. اختر ماباً متاحاً من القائمة.', 400)
+    if (!data) return errorResponse('هذا الماب غير معتمد أو تم إيقافه. اختر ماباً متاحاً من القائمة.', 400)
+    selectedGame = data
     game = selectedGame.name
     gameEmoji = selectedGame.emoji
   }
@@ -153,7 +163,7 @@ export async function POST(request: Request) {
     map_category: category === 'map_item' ? mapCategory : null,
     game_emoji: category === 'map_item' ? gameEmoji || null : null,
     map_category_emoji: category === 'map_item' ? mapCategoryEmoji || null : null,
-    map_thumbnail_url: category === 'map_item' ? mapThumbnailUrl || null : null,
+    map_thumbnail_url: category === 'map_item' ? selectedGame?.thumbnail_url || mapThumbnailUrl || null : null,
     map_url: category === 'map_item' ? mapUrl || null : null,
   }).select('id').single()
 
