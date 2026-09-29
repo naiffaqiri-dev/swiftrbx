@@ -6,6 +6,7 @@ import { useAuth, ROLE_LABELS } from '@/components/auth/mock-auth'
 import { LogoutConfirmation } from '@/components/auth/logout-confirmation'
 import { BrandLogo } from '@/components/brand-logo'
 import { MessageNotifier } from './message-notifier'
+import { ProfileAvatar } from '@/components/profile-avatar'
 import { SupportButton } from '@/components/support-button'
 import { LanguageToggle, useLocale } from '@/components/i18n/locale-provider'
 import { LogOut, Home, User as UserIcon } from 'lucide-react'
@@ -100,12 +101,18 @@ export function DashboardShell({
                 href="/account"
                 aria-label={t('shell.profile')}
                 title={t('shell.profile')}
-                className="flex size-10 items-center justify-center rounded-full border border-border/60 bg-primary/15 text-sm font-bold text-primary transition-colors hover:border-primary/60 hover:bg-primary/25"
+                className="rounded-full transition-opacity hover:opacity-80"
               >
-                {user?.username ? (
-                  user.username.slice(0, 2).toUpperCase()
+                {user ? (
+                  <ProfileAvatar
+                    src={user.avatarUrl}
+                    name={user.displayName ?? user.username}
+                    className="size-10 border border-border/60"
+                  />
                 ) : (
-                  <UserIcon className="size-5" />
+                  <span className="flex size-10 items-center justify-center rounded-full border border-border/60 bg-muted/40 text-muted-foreground">
+                    <UserIcon className="size-5" />
+                  </span>
                 )}
               </Link>
             </div>

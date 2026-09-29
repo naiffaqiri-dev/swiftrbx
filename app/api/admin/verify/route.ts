@@ -29,12 +29,31 @@ export async function POST(req: Request) {
   if (!body) return NextResponse.json({ error: "طلب غير صالح" }, { status: 400 })
 
   const { kind, id, action } = body as {
-    kind: "order" | "topup"
+    kind: "order" | "topup" | "marketplace_ticket"
     id: string
     action: "confirm" | "reject"
   }
-  if (!id || !["order", "topup"].includes(kind) || !["confirm", "reject"].includes(action))
+  if (!id || !["order", "topup", "marketplace_ticket"].includes(kind) || !["confirm", "reject"].includes(action))
     return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 })
+
+  if (kind === "marketplace_ticket") {
+    const { error } = await admin.rpc("review_marketplace_payment", {
+      p_ticket_id: id,
+      p_action: action,
+      p_admin_id: userId,
+    })
+    if (error) {
+      const isPendingConflict = error.message.includes("MARKETPLACE_PAYMENT_NOT_PENDING")
+      return NextResponse.json(
+        { error: isPendingConflict ? "تمت معالجة هذا الطلب مسبقاً" : "تعذّرت معالجة إثبات الدفع" },
+        { status: isPendingConflict ? 409 : 500 },
+      )
+    }
+    await notifyDiscord("orders", {
+      title: action === "confirm" ? "تم تأكيد دفعة طلب سوق" : "تم رفض دفعة طلب سوق وإعادة رصيد المحفظة",
+    })
+    return NextResponse.json({ ok: true })
+  }
 
   if (kind === "topup") {
     const { data: topup } = await admin.from("top_ups").select("*").eq("id", id).single()

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { isValidCatalogPrice } from '@/lib/catalog'
+import { getBank } from '@/lib/banks'
 
 function errorResponse(error: string, status: number) {
   return NextResponse.json({ error }, { status })
@@ -18,17 +19,21 @@ export async function POST(request: Request) {
     ticketId?: string
     rating?: number
     comment?: string
+    useBalance?: boolean
+    bankKey?: string | null
+    receiptUrl?: string | null
+    senderName?: string | null
   } | null
   if (!body) return errorResponse('طلب غير صالح', 400)
 
   const admin = createAdminClient()
-  const { data: currentProfile } = await admin.from('profiles').select('role, active').eq('id', user.id).maybeSingle()
+  const { data: currentProfile } = await admin.from('profiles').select('role, active, balance').eq('id', user.id).maybeSingle()
   if (!currentProfile?.active) return errorResponse('الحساب غير نشط', 403)
 
   if (body.action === 'purchase') {
     if (!body.itemId) return errorResponse('المنتج غير صالح', 400)
     const { data: item } = await admin.from('marketplace_catalog_items')
-      .select('id, seller_id, name, price_sar, active')
+      .select('id, seller_id, name, price_sar, active, game, game_emoji, map_category, map_category_emoji')
       .eq('id', body.itemId)
       .eq('active', true)
       .maybeSingle()
@@ -45,28 +50,58 @@ export async function POST(request: Request) {
       .eq('type', 'order')
       .eq('buyer_id', user.id)
       .eq('catalog_item_id', item.id)
-      .in('status', ['open', 'delivered'])
+      .in('status', ['open', 'delivered', 'pending_payment'])
       .limit(1)
       .maybeSingle()
     if (existing) return NextResponse.json({ ticketId: existing.id, existing: true })
 
-    const { data: ticket, error } = await admin.from('tickets').insert({
-      type: 'order',
-      subject: `طلب شراء: ${item.name}`,
-      catalog_item_id: item.id,
-      purchase_price_sar: price,
-      buyer_id: user.id,
-      seller_id: item.seller_id,
-      status: 'open',
-    }).select('id').single()
-    if (error || !ticket) return errorResponse('تعذّر إنشاء طلب الشراء', 500)
+    const useBalance = body.useBalance !== false
+    const walletAmount = useBalance ? Math.min(Number(currentProfile.balance ?? 0), price) : 0
+    const remaining = +(price - walletAmount).toFixed(2)
+    const paymentMethod = remaining > 0 ? 'bank_transfer' : 'balance'
+    let bankKey: string | null = null
+    let receiptUrl: string | null = null
+    let senderName: string | null = null
 
-    await admin.from('ticket_messages').insert({
-      ticket_id: ticket.id,
-      sender_id: user.id,
-      body: `تم إرسال طلب شراء «${item.name}» بسعر ${price.toFixed(2)} ر.س. تواصل مع البائع هنا لإتمام التفاصيل.`,
+    if (remaining > 0) {
+      bankKey = typeof body.bankKey === 'string' ? body.bankKey : null
+      receiptUrl = typeof body.receiptUrl === 'string' ? body.receiptUrl : null
+      senderName = typeof body.senderName === 'string' ? body.senderName.trim().slice(0, 120) : null
+      if (!getBank(bankKey) || !senderName || !receiptUrl) {
+        return errorResponse('بيانات التحويل البنكي غير مكتملة', 400)
+      }
+      const expectedReceiptPrefix = `${user.id}/marketplace-`
+      const receiptFilename = receiptUrl.startsWith(expectedReceiptPrefix)
+        ? receiptUrl.slice(expectedReceiptPrefix.length)
+        : ''
+      if (!/^[-a-z0-9]+\.(jpg|png|webp)$/i.test(receiptFilename)) {
+        return errorResponse('رابط الإيصال غير صالح', 400)
+      }
+    }
+
+    const itemContext = item.map_category
+      ? ` (${item.game_emoji ? `${item.game_emoji} ` : ''}${item.game} · ${item.map_category_emoji ? `${item.map_category_emoji} ` : ''}${item.map_category})`
+      : ''
+    const { data: ticketId, error } = await admin.rpc('create_marketplace_purchase', {
+      p_buyer_id: user.id,
+      p_seller_id: item.seller_id,
+      p_item_id: item.id,
+      p_subject: `طلب شراء: ${item.name}${itemContext}`,
+      p_purchase_price_sar: price,
+      p_payment_method: paymentMethod,
+      p_bank_key: bankKey,
+      p_receipt_url: receiptUrl,
+      p_sender_name: senderName,
+      p_wallet_amount_sar: walletAmount,
+      p_payment_verified_at: paymentMethod === 'balance' ? new Date().toISOString() : null,
     })
-    return NextResponse.json({ ticketId: ticket.id }, { status: 201 })
+    if (error || !ticketId) {
+      if (error?.message.includes('INSUFFICIENT_MARKETPLACE_BALANCE')) {
+        return errorResponse('رصيد المحفظة تغيّر، حدّث الصفحة وحاول مرة أخرى', 409)
+      }
+      return errorResponse('تعذّر إنشاء طلب الشراء', 500)
+    }
+    return NextResponse.json({ ticketId }, { status: 201 })
   }
 
   if (body.action !== 'deliver' && body.action !== 'confirm') return errorResponse('الإجراء غير صالح', 400)
