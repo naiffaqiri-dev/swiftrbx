@@ -11,6 +11,7 @@ export type CatalogItem = {
   image_url: string
   links: string[]
   game: string
+  game_id: string | null
   active: boolean
   created_at: string
   price_sar: number | null

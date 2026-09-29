@@ -42,7 +42,7 @@ export async function GET(request: Request) {
 
   const admin = createAdminClient()
   let query = admin.from('marketplace_catalog_items')
-    .select('id, seller_id, category, name, description, image_url, links, game, active, created_at, price_sar, stock_quantity, map_category, game_emoji, map_category_emoji, map_thumbnail_url, map_url')
+    .select('id, seller_id, category, name, description, image_url, links, game, game_id, active, created_at, price_sar, stock_quantity, map_category, game_emoji, map_category_emoji, map_thumbnail_url, map_url')
     .eq('active', true)
     .order('created_at', { ascending: false })
 
@@ -54,7 +54,7 @@ export async function GET(request: Request) {
       return errorResponse('غير مصرّح', 403)
     }
     query = admin.from('marketplace_catalog_items')
-      .select('id, seller_id, category, name, description, image_url, links, game, active, created_at, price_sar, stock_quantity, map_category, game_emoji, map_category_emoji, map_thumbnail_url, map_url')
+      .select('id, seller_id, category, name, description, image_url, links, game, game_id, active, created_at, price_sar, stock_quantity, map_category, game_emoji, map_category_emoji, map_thumbnail_url, map_url')
       .eq('seller_id', current.user.id)
       .order('created_at', { ascending: false })
     if (category) query = query.eq('category', category)
@@ -176,6 +176,130 @@ export async function POST(request: Request) {
     return errorResponse('تعذّر نشر المنتج', 500)
   }
   return NextResponse.json({ id: item.id }, { status: 201 })
+}
+
+export async function PUT(request: Request) {
+  const current = await getCurrentProfile()
+  if (!current || !canManageCatalog(current.profile.role, sellerPermissions(current.profile.seller_permissions))) {
+    return errorResponse('غير مصرّح', 403)
+  }
+
+  const form = await request.formData().catch(() => null)
+  if (!form) return errorResponse('نموذج غير صالح', 400)
+  const id = String(form.get('id') ?? '').trim()
+  if (!id) return errorResponse('المنتج غير صالح', 400)
+
+  const { data: existing, error: lookupError } = await current.admin.from('marketplace_catalog_items')
+    .select('id, category')
+    .eq('id', id)
+    .eq('seller_id', current.user.id)
+    .maybeSingle()
+  if (lookupError) return errorResponse('تعذّر تحميل المنتج', 500)
+  if (!existing) return errorResponse('المنتج غير موجود', 404)
+  const category = existing.category as CatalogCategory
+  if (!canSellCategory(current.profile.role, sellerPermissions(current.profile.seller_permissions), category)) {
+    return errorResponse('لا تملك صلاحية تعديل هذا المنتج', 403)
+  }
+
+  const name = String(form.get('name') ?? '').trim()
+  const description = String(form.get('description') ?? '').trim()
+  const selectedGameId = String(form.get('gameId') ?? '').trim()
+  const mapCategory = String(form.get('mapCategory') ?? '').trim()
+  const mapCategoryEmoji = String(form.get('mapCategoryEmoji') ?? '').trim()
+  const mapThumbnailUrl = String(form.get('mapThumbnailUrl') ?? '').trim()
+  const mapUrl = String(form.get('mapUrl') ?? '').trim()
+  const priceSar = Number(form.get('priceSar'))
+  const stockQuantity = Number(form.get('stockQuantity'))
+  const image = form.get('image')
+  let links: unknown
+  try {
+    links = JSON.parse(String(form.get('links') ?? '[]'))
+  } catch {
+    return errorResponse('تحقق من صيغة الروابط', 400)
+  }
+
+  if (name.length < 2 || name.length > 100) return errorResponse('اسم المنتج يجب أن يكون بين حرفين و100 حرف', 400)
+  if (description.length > 2000) return errorResponse('الوصف أطول من الحد المسموح', 400)
+  if (!isValidCatalogPrice(priceSar)) return errorResponse('أدخل سعراً صحيحاً بالريال السعودي', 400)
+  if (!Number.isInteger(stockQuantity) || stockQuantity < 0 || stockQuantity > 1_000_000) return errorResponse('أدخل كمية صحيحة بين صفر ومليون', 400)
+  if (!validHttpsLinks(links)) return errorResponse('أدخل حتى 5 روابط HTTPS صحيحة', 400)
+  if (category === 'map_item' && !selectedGameId) return errorResponse('اختر ماباً معتمداً من الإدارة', 400)
+  if (category === 'map_item' && (mapCategory.length < 2 || mapCategory.length > 60)) return errorResponse('أدخل اسم فئة الماب (2–60 حرفاً)', 400)
+  if (mapCategoryEmoji.length > 16) return errorResponse('إيموجي الفئة أطول من الحد المسموح', 400)
+  if (mapThumbnailUrl && !validHttpsLinks([mapThumbnailUrl])) return errorResponse('رابط الصورة المصغرة يجب أن يكون HTTPS صحيحاً', 400)
+  if (mapUrl && !validHttpsLinks([mapUrl])) return errorResponse('رابط الماب يجب أن يكون HTTPS صحيحاً', 400)
+  if (image instanceof File && image.size > 0 && (image.size > MAX_IMAGE_BYTES || !MIME_EXTENSIONS[image.type])) {
+    return errorResponse('أرفق صورة PNG أو JPEG أو WebP أو AVIF بحجم أقصى 8 ميغابايت', 400)
+  }
+
+  let game = 'أغراض عامة'
+  let gameEmoji: string | null = null
+  let selectedGame: { id: string; name: string; emoji: string | null; thumbnail_url: string | null } | null = null
+  if (category === 'map_item') {
+    const { data, error: gameError } = await current.admin.from('marketplace_games')
+      .select('id, name, emoji, thumbnail_url')
+      .eq('id', selectedGameId)
+      .eq('active', true)
+      .maybeSingle()
+    if (gameError) return errorResponse('تعذّر التحقق من الماب المعتمد', 500)
+    if (!data) return errorResponse('هذا الماب غير معتمد أو تم إيقافه. اختر ماباً متاحاً من القائمة.', 400)
+    selectedGame = data
+    game = data.name
+    gameEmoji = data.emoji
+  }
+
+  const updates: {
+    name: string
+    description: string | null
+    links: string[]
+    game: string
+    game_id: string | null
+    price_sar: number
+    stock_quantity: number
+    map_category: string | null
+    game_emoji: string | null
+    map_category_emoji: string | null
+    map_thumbnail_url: string | null
+    map_url: string | null
+    image_url?: string
+  } = {
+    name,
+    description: description || null,
+    links: links as string[],
+    game,
+    game_id: category === 'map_item' ? selectedGame?.id ?? null : null,
+    price_sar: priceSar,
+    stock_quantity: stockQuantity,
+    map_category: category === 'map_item' ? mapCategory : null,
+    game_emoji: category === 'map_item' ? gameEmoji : null,
+    map_category_emoji: category === 'map_item' ? mapCategoryEmoji || null : null,
+    map_thumbnail_url: category === 'map_item' ? selectedGame?.thumbnail_url || mapThumbnailUrl || null : null,
+    map_url: category === 'map_item' ? mapUrl || null : null,
+  }
+
+  let uploadedPath: string | null = null
+  if (image instanceof File && image.size > 0) {
+    uploadedPath = `${current.user.id}/${randomUUID()}.${MIME_EXTENSIONS[image.type]}`
+    const { error: uploadError } = await current.admin.storage.from('marketplace-listings').upload(uploadedPath, image, {
+      contentType: image.type,
+      cacheControl: '3600',
+      upsert: false,
+    })
+    if (uploadError) return errorResponse('تعذّر رفع الصورة، حاول مرة أخرى', 500)
+    updates.image_url = current.admin.storage.from('marketplace-listings').getPublicUrl(uploadedPath).data.publicUrl
+  }
+
+  const { data: updated, error: updateError } = await current.admin.from('marketplace_catalog_items')
+    .update(updates)
+    .eq('id', id)
+    .eq('seller_id', current.user.id)
+    .select('id')
+    .maybeSingle()
+  if (updateError || !updated) {
+    if (uploadedPath) await current.admin.storage.from('marketplace-listings').remove([uploadedPath])
+    return errorResponse('تعذّر تحديث المنتج', updateError ? 500 : 404)
+  }
+  return NextResponse.json({ ok: true })
 }
 
 export async function PATCH(request: Request) {
