@@ -11,9 +11,10 @@ import { SellerCatalogManager } from './seller-catalog-manager'
 import { CATALOG_CATEGORIES, CATALOG_CATEGORY_INFO, canSellCategory } from '@/lib/catalog'
 import { SiteReviews } from '@/components/reviews/site-reviews'
 import { MarketplaceAvailabilitySummary } from '@/components/market/marketplace-availability'
+import { MarketplaceCategoryLinks } from '@/components/market/marketplace-category-links'
 import { createClient } from '@/lib/supabase/client'
 import { formatSar, formatUsd, sarToUsd } from '@/lib/currency'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { LayoutDashboard, ShoppingBag, Ticket, Wallet, Plus, Headphones, MessageSquareQuote } from 'lucide-react'
 
 const NAV = [
@@ -91,11 +92,12 @@ export function UserPanel() {
             <StatCard label="تذاكري" value={ticketCount} icon={<Ticket className="h-5 w-5" />} />
           </div>
           <MarketplaceAvailabilitySummary />
+          <MarketplaceCategoryLinks />
           <div className="rounded-xl border border-border/60 bg-card/40 p-6 text-center">
             <p className="mb-3 text-sm text-muted-foreground">ابدأ عملية شراء روبوكس الآن</p>
-            <Button asChild>
-              <Link href="/market">اشترِ روبوكس</Link>
-            </Button>
+            <Link href="/market" className={buttonVariants()}>
+              اشترِ روبوكس
+            </Link>
           </div>
           <section className="space-y-3">
             <h2 className="text-base font-semibold">التذاكر النشطة</h2>
