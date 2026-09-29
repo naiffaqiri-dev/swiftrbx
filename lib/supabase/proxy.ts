@@ -6,6 +6,12 @@ export async function updateSession(request: NextRequest) {
     request,
   })
 
+  const hasSupabaseSession = request.cookies
+    .getAll()
+    .some(({ name }) => /^sb-.+-auth-token(?:\.\d+)?$/.test(name))
+
+  if (!hasSupabaseSession) return supabaseResponse
+
   // With Fluid compute, don't put this client in a global environment
   // variable. Always create a new one on each request.
   const supabase = createServerClient(
