@@ -5,7 +5,7 @@ import { useState, type FormEvent } from 'react'
 import useSWR from 'swr'
 import { Check, ExternalLink, ImagePlus, Loader2, Pencil, Plus, Trash2 } from 'lucide-react'
 import { mutate } from 'swr'
-import { CATALOG_CATEGORY_INFO, isValidCatalogPrice, type CatalogCategory, type CatalogItem } from '@/lib/catalog'
+import { CATALOG_CATEGORY_INFO, type CatalogCategory, type CatalogItem } from '@/lib/catalog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -38,10 +38,6 @@ export function SellerCatalogManager({ category }: { category: CatalogCategory }
   const [name, setName] = useState('')
   const [priceSar, setPriceSar] = useState('')
   const [stockQuantity, setStockQuantity] = useState('1')
-  const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({})
-  const [stockDrafts, setStockDrafts] = useState<Record<string, string>>({})
-  const [savingPriceId, setSavingPriceId] = useState<string | null>(null)
-  const [savingStockId, setSavingStockId] = useState<string | null>(null)
   const [description, setDescription] = useState('')
   const [gameId, setGameId] = useState('')
   const [mapCategory, setMapCategory] = useState('')
@@ -149,57 +145,13 @@ export function SellerCatalogManager({ category }: { category: CatalogCategory }
     await mutate(key)
   }
 
-  async function savePrice(item: CatalogItem) {
-    const price = Number(priceDrafts[item.id] ?? item.price_sar ?? 0)
-    if (!isValidCatalogPrice(price)) {
-      setFailure('أدخل سعراً صحيحاً بالريال السعودي')
-      return
-    }
-    setSavingPriceId(item.id)
-    setFailure('')
-    const response = await fetch('/api/catalog', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: item.id, priceSar: price }),
-    })
-    const result = await response.json().catch(() => ({}))
-    if (!response.ok) setFailure(result.error ?? 'تعذّر تحديث السعر')
-    else {
-      setMessage('تم تحديث سعر المنتج')
-      await mutate(key)
-    }
-    setSavingPriceId(null)
-  }
-
-  async function saveStock(item: CatalogItem) {
-    const stockQuantity = Number(stockDrafts[item.id] ?? item.stock_quantity)
-    if (!Number.isInteger(stockQuantity) || stockQuantity < 0 || stockQuantity > 1_000_000) {
-      setFailure('أدخل كمية صحيحة بين صفر ومليون')
-      return
-    }
-    setSavingStockId(item.id)
-    setFailure('')
-    const response = await fetch('/api/catalog', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: item.id, stockQuantity }),
-    })
-    const result = await response.json().catch(() => ({}))
-    if (!response.ok) setFailure(result.error ?? 'تعذّر تحديث المخزون')
-    else {
-      setMessage('تم تحديث الكمية المتاحة')
-      await mutate(key)
-    }
-    setSavingStockId(null)
-  }
-
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-end justify-between gap-4 rounded-2xl border border-border/60 bg-card/40 p-5">
         <div>
           <p className="text-sm text-muted-foreground">متجرك · {CATALOG_CATEGORY_INFO[category].label}</p>
           <h2 className="mt-1 text-xl font-bold">إدارة المنتجات</h2>
-          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">أضف صورة المنتج واسمه وسعره، وأكمل الوصف والروابط. لأكثر من فئة في الماب نفسه، أضف منتجاً لكل فئة.</p>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">أضف صورة ��لمنتج واسمه وسعره، وأكمل الوصف والروابط. لأكثر من فئة في الماب نفسه، أضف منتجاً لكل فئة.</p>
         </div>
         <Button onClick={startCreating}><Plus data-icon="inline-start" />إضافة {CATALOG_CATEGORY_INFO[category].singular}</Button>
       </div>
@@ -246,13 +198,26 @@ export function SellerCatalogManager({ category }: { category: CatalogCategory }
       )}
 
       {isLoading ? <p className="py-8 text-center text-sm text-muted-foreground">جارٍ تحميل منتجاتك…</p> : error ? <p role="alert" className="text-sm text-destructive">{error.message}</p> : items.length === 0 ? <div className="rounded-2xl border border-dashed border-border/70 p-10 text-center text-sm text-muted-foreground">لم تضف منتجات لهذا القسم بعد.</div> : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          {[...items].sort((a, b) => Number(a.stock_quantity < 1) - Number(b.stock_quantity < 1)).map((item) => <article key={item.id} className="overflow-hidden rounded-2xl border border-border/60 bg-card/40">
-            <div className="relative aspect-[4/3] bg-muted"><Image src={item.image_url} alt={item.name} fill sizes="(min-width: 1280px) 33vw, (min-width: 640px) 50vw, 100vw" className="object-cover" unoptimized /></div>
-            <div className="flex flex-col gap-3 p-4"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><h3 className="font-bold">{item.name}</h3><p className="mt-1 text-xs text-muted-foreground">{item.game_emoji && `${item.game_emoji} `}{item.game}</p>{item.map_category && <p className="mt-1 text-xs font-medium">{item.map_category_emoji && `${item.map_category_emoji} `}{item.map_category}</p>}{item.description && <p className="mt-2 line-clamp-2 text-sm leading-relaxed text-muted-foreground">{item.description}</p>}{item.map_url && <a href={item.map_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline">رابط الماب<ExternalLink className="size-3" /></a>}</div><div className="flex shrink-0 flex-wrap justify-end gap-1.5"><span className="rounded-full border border-border/60 px-2.5 py-1 text-xs">{item.active ? 'معروض' : 'مخفي'}</span>{item.stock_quantity < 1 && <span role="status" className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive">نفدت الكمية</span>}</div></div>
-              <div className="flex items-end gap-2"><div className="flex min-w-0 flex-1 flex-col gap-1"><Label htmlFor={`catalog-price-edit-${item.id}`} className="text-xs">السعر (ر.س)</Label><Input id={`catalog-price-edit-${item.id}`} type="number" inputMode="decimal" min="0.01" max="1000000" step="0.01" value={priceDrafts[item.id] ?? String(item.price_sar ?? '')} onChange={(event) => setPriceDrafts((current) => ({ ...current, [item.id]: event.target.value }))} /></div><Button size="sm" variant="outline" onClick={() => savePrice(item)} disabled={savingPriceId === item.id}>{savingPriceId === item.id ? <Loader2 className="size-4 animate-spin" /> : 'حفظ السعر'}</Button></div>
-              <div className="flex items-end gap-2"><div className="flex min-w-0 flex-1 flex-col gap-1"><Label htmlFor={`catalog-stock-edit-${item.id}`} className="text-xs">الكمية المتاحة</Label><Input id={`catalog-stock-edit-${item.id}`} type="number" inputMode="numeric" min="0" max="1000000" step="1" value={stockDrafts[item.id] ?? String(item.stock_quantity)} onChange={(event) => setStockDrafts((current) => ({ ...current, [item.id]: event.target.value }))} /></div><Button size="sm" variant="outline" onClick={() => saveStock(item)} disabled={savingStockId === item.id}>{savingStockId === item.id ? <Loader2 className="size-4 animate-spin" /> : 'حفظ الكمية'}</Button></div>
-              <div className="flex flex-wrap gap-2"><Button size="sm" variant="outline" onClick={() => startEditing(item)}><Pencil data-icon="inline-start" />تعديل المنتج</Button><Button size="sm" variant="outline" onClick={() => toggleItem(item)}>{item.active ? 'إخفاء' : 'إظهار'}</Button>{item.links[0] && <a href={item.links[0]} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-2 text-xs text-muted-foreground hover:text-primary">رابط المنتج<ExternalLink className="size-3" /></a>}<Button size="sm" variant="ghost" className="text-destructive" onClick={() => removeItem(item.id)} aria-label={`حذف ${item.name}`}><Trash2 className="size-4" /></Button></div>
+        <div className="flex flex-col gap-3">
+          {[...items].sort((a, b) => Number(a.stock_quantity < 1) - Number(b.stock_quantity < 1)).map((item) => <article key={item.id} className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card/40 p-3 sm:flex-row sm:items-center sm:gap-5 sm:p-4">
+            <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden rounded-xl bg-muted sm:aspect-square sm:size-24"><Image src={item.image_url} alt={item.name} fill sizes="(min-width: 640px) 96px, 100vw" className="object-cover" unoptimized /></div>
+            <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2"><h3 className="font-bold">{item.name}</h3><span className="rounded-full border border-border/60 px-2.5 py-1 text-xs">{item.active ? 'معروض' : 'مخفي'}</span>{item.stock_quantity < 1 && <span role="status" className="rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-xs font-medium text-destructive">نفدت الكمية</span>}</div>
+                <p className="mt-1 text-sm text-muted-foreground">{item.game_emoji && `${item.game_emoji} `}{item.game}{item.map_category ? ` · ${item.map_category_emoji ? `${item.map_category_emoji} ` : ''}${item.map_category}` : ''}</p>
+                {item.description && <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-muted-foreground">{item.description}</p>}
+                {item.map_url && <a href={item.map_url} target="_blank" rel="noopener noreferrer" className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline">رابط الماب<ExternalLink className="size-3" /></a>}
+              </div>
+              <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+                <div className="min-w-24 rounded-lg border border-border/60 px-3 py-2"><p className="text-xs text-muted-foreground">السعر</p><p className="font-semibold">{item.price_sar ?? '—'} ر.س</p></div>
+                <div className="min-w-24 rounded-lg border border-border/60 px-3 py-2"><p className="text-xs text-muted-foreground">المخزون</p><p className="font-semibold">{item.stock_quantity}</p></div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 border-t border-border/60 pt-3 sm:border-t-0 sm:border-s sm:pt-0 sm:ps-4">
+              <Button size="sm" onClick={() => startEditing(item)}><Pencil data-icon="inline-start" />تعديل المنتج</Button>
+              <Button size="sm" variant="outline" onClick={() => toggleItem(item)}>{item.active ? 'إخفاء' : 'إظهار'}</Button>
+              {item.links[0] && <a href={item.links[0]} target="_blank" rel="noopener noreferrer" aria-label={`فتح رابط ${item.name}`} className="inline-flex size-9 items-center justify-center rounded-md border border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground"><ExternalLink className="size-4" /></a>}
+              <Button size="sm" variant="ghost" className="text-destructive" onClick={() => removeItem(item.id)} aria-label={`حذف ${item.name}`}><Trash2 className="size-4" /></Button>
             </div>
           </article>)}
         </div>
