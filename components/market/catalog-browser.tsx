@@ -37,15 +37,16 @@ export function CatalogBrowser({ category, sellerId }: { category: CatalogCatego
   const [selectedGame, setSelectedGame] = useState('')
   const [selectedMapCategory, setSelectedMapCategory] = useState('')
   const url = `/api/catalog?${new URLSearchParams({ category, ...(sellerId ? { sellerId } : {}) })}`
-  const { data, error, isLoading } = useSWR(url, fetcher)
+  const { data, error, isLoading, mutate } = useSWR(url, fetcher)
   const { data: gamesData } = useSWR(category === 'map_item' ? '/api/marketplace-games' : null, gamesFetcher)
   const items = data?.items ?? []
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase()
-    return items.filter((item) => (!selectedGame || item.game === selectedGame)
+    const matchingItems = items.filter((item) => (!selectedGame || item.game === selectedGame)
       && (!selectedMapCategory || item.map_category === selectedMapCategory)
       && (!term || [item.name, item.description, item.game, item.map_category, item.seller.username, item.seller.display_name]
         .some((value) => value?.toLowerCase().includes(term))))
+    return matchingItems.sort((a, b) => Number(a.stock_quantity < 1) - Number(b.stock_quantity < 1))
   }, [items, search, selectedGame, selectedMapCategory])
   const games = useMemo(() => {
     const byName = new Map<string, { name: string; thumbnailUrl: string | null; emoji: string | null }>()
@@ -151,7 +152,7 @@ export function CatalogBrowser({ category, sellerId }: { category: CatalogCatego
                   <div className="shrink-0 text-left">
                     <span className="block text-sm font-bold">{item.price_sar !== null ? `${Number(item.price_sar).toFixed(2)} ر.س` : 'السعر غير محدد'}</span>
                     <span className="text-xs text-muted-foreground">{info.singular}</span>
-                    <span className="mt-1 block text-xs text-muted-foreground">{item.stock_quantity > 0 ? `المتاح: ${item.stock_quantity.toLocaleString('ar-SA')}` : 'نفدت الكمية'}</span>
+                    {item.stock_quantity > 0 ? <span className="mt-1 block text-xs text-muted-foreground">المتاح: {item.stock_quantity.toLocaleString('ar-SA')}</span> : <span role="status" className="mt-1 inline-flex rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">نفدت الكمية</span>}
                   </div>
                 </div>
                 {(item.map_url || item.links.length > 0) && <div className="flex flex-wrap gap-2">{item.map_url && <a href={item.map_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-full border border-primary/40 px-3 py-1.5 text-xs text-primary hover:bg-primary/10">رابط الماب<ArrowUpRight className="size-3" /></a>}{item.links.map((href, index) => <a key={`${item.id}-${index}`} href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-full border border-border/70 px-3 py-1.5 text-xs text-muted-foreground hover:text-primary">رابط {index + 1}<ArrowUpRight className="size-3" /></a>)}</div>}
@@ -175,6 +176,7 @@ export function CatalogBrowser({ category, sellerId }: { category: CatalogCatego
             setCheckoutItem(null)
             setTicketId(id)
             setPurchaseBusyId(null)
+            void mutate()
           }}
         />
       )}
