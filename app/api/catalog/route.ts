@@ -103,7 +103,7 @@ export async function POST(request: Request) {
   const selectedGameId = String(form.get('gameId') ?? '').trim()
   let game = 'أغراض عامة'
   let gameEmoji: string | null = null
-  let selectedGame: { name: string; emoji: string | null; thumbnail_url: string | null } | null = null
+  let selectedGame: { id: string; name: string; emoji: string | null; thumbnail_url: string | null } | null = null
   const mapCategory = String(form.get('mapCategory') ?? '').trim()
   const mapCategoryEmoji = String(form.get('mapCategoryEmoji') ?? '').trim()
   const mapThumbnailUrl = String(form.get('mapThumbnailUrl') ?? '').trim()
@@ -161,6 +161,7 @@ export async function POST(request: Request) {
     image_url: imageData.publicUrl,
     links: links as string[],
     game,
+    game_id: category === 'map_item' ? selectedGame?.id ?? null : null,
     price_sar: priceSar,
     stock_quantity: stockQuantity,
     map_category: category === 'map_item' ? mapCategory : null,
