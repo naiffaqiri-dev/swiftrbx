@@ -14,6 +14,7 @@ export type CatalogItem = {
   active: boolean
   created_at: string
   price_sar: number | null
+  stock_quantity: number
   map_category: string | null
   game_emoji: string | null
   map_category_emoji: string | null

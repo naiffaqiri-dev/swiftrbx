@@ -31,6 +31,7 @@ type TicketRow = {
   order_id: string | null
   close_reason: string | null
   catalog_item_id: string | null
+  catalog_quantity: number | null
   purchase_price_sar: number | null
   created_at: string
 }
@@ -453,6 +454,7 @@ export function TicketThread({
             <p className="text-xs text-muted-foreground">
               رقم {ticketId.slice(0, 8)}
               {sellerName && role !== 'seller' ? ` · البائع: ${sellerName}` : ''}
+              {ticket?.catalog_item_id ? ` · الكمية: ${Number(ticket.catalog_quantity ?? 1).toLocaleString('ar-SA')}` : ''}
               {ticket?.purchase_price_sar !== null && ticket?.purchase_price_sar !== undefined ? ` · ${Number(ticket.purchase_price_sar).toFixed(2)} ر.س` : ''}
             </p>
           </div>
