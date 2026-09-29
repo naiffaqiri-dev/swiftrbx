@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   if (body.action === 'purchase') {
     if (!body.itemId) return errorResponse('المنتج غير صالح', 400)
     const { data: item } = await admin.from('marketplace_catalog_items')
-      .select('id, seller_id, name, price_sar, active')
+      .select('id, seller_id, name, price_sar, active, game, game_emoji, map_category, map_category_emoji')
       .eq('id', body.itemId)
       .eq('active', true)
       .maybeSingle()
@@ -50,9 +50,12 @@ export async function POST(request: Request) {
       .maybeSingle()
     if (existing) return NextResponse.json({ ticketId: existing.id, existing: true })
 
+    const itemContext = item.map_category
+      ? ` (${item.game_emoji ? `${item.game_emoji} ` : ''}${item.game} · ${item.map_category_emoji ? `${item.map_category_emoji} ` : ''}${item.map_category})`
+      : ''
     const { data: ticket, error } = await admin.from('tickets').insert({
       type: 'order',
-      subject: `طلب شراء: ${item.name}`,
+      subject: `طلب شراء: ${item.name}${itemContext}`,
       catalog_item_id: item.id,
       purchase_price_sar: price,
       buyer_id: user.id,

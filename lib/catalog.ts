@@ -14,6 +14,11 @@ export type CatalogItem = {
   active: boolean
   created_at: string
   price_sar: number | null
+  map_category: string | null
+  game_emoji: string | null
+  map_category_emoji: string | null
+  map_thumbnail_url: string | null
+  map_url: string | null
   seller: {
     id: string
     username: string

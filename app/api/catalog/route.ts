@@ -42,7 +42,7 @@ export async function GET(request: Request) {
 
   const admin = createAdminClient()
   let query = admin.from('marketplace_catalog_items')
-    .select('id, seller_id, category, name, description, image_url, links, game, active, created_at, price_sar')
+    .select('id, seller_id, category, name, description, image_url, links, game, active, created_at, price_sar, map_category, game_emoji, map_category_emoji, map_thumbnail_url, map_url')
     .eq('active', true)
     .order('created_at', { ascending: false })
 
@@ -54,7 +54,7 @@ export async function GET(request: Request) {
       return errorResponse('غير مصرّح', 403)
     }
     query = admin.from('marketplace_catalog_items')
-      .select('id, seller_id, category, name, description, image_url, links, game, active, created_at, price_sar')
+      .select('id, seller_id, category, name, description, image_url, links, game, active, created_at, price_sar, map_category, game_emoji, map_category_emoji, map_thumbnail_url, map_url')
       .eq('seller_id', current.user.id)
       .order('created_at', { ascending: false })
     if (category) query = query.eq('category', category)
@@ -93,6 +93,11 @@ export async function POST(request: Request) {
   const name = String(form.get('name') ?? '').trim()
   const description = String(form.get('description') ?? '').trim()
   const game = String(form.get('game') ?? '').trim() || 'أغراض عامة'
+  const mapCategory = String(form.get('mapCategory') ?? '').trim()
+  const gameEmoji = String(form.get('gameEmoji') ?? '').trim()
+  const mapCategoryEmoji = String(form.get('mapCategoryEmoji') ?? '').trim()
+  const mapThumbnailUrl = String(form.get('mapThumbnailUrl') ?? '').trim()
+  const mapUrl = String(form.get('mapUrl') ?? '').trim()
   const priceSar = Number(form.get('priceSar'))
   const image = form.get('image')
   let links: unknown
@@ -105,6 +110,10 @@ export async function POST(request: Request) {
   if (name.length < 2 || name.length > 100) return errorResponse('اسم المنتج يجب أن يكون بين حرفين و100 حرف', 400)
   if (description.length > 2000) return errorResponse('الوصف أطول من الحد المسموح', 400)
   if (game.length < 2 || game.length > 40) return errorResponse('اسم اللعبة يجب أن يكون بين حرفين و40 حرفاً', 400)
+  if (category === 'map_item' && (mapCategory.length < 2 || mapCategory.length > 60)) return errorResponse('أدخل اسم فئة الماب (2–60 حرفاً)', 400)
+  if (gameEmoji.length > 16 || mapCategoryEmoji.length > 16) return errorResponse('الإيموجي أطول من الحد المسموح', 400)
+  if (mapThumbnailUrl && !validHttpsLinks([mapThumbnailUrl])) return errorResponse('رابط الصورة المصغرة يجب أن يكون HTTPS صحيحاً', 400)
+  if (mapUrl && !validHttpsLinks([mapUrl])) return errorResponse('رابط الماب يجب أن يكون HTTPS صحيحاً', 400)
   if (!isValidCatalogPrice(priceSar)) return errorResponse('أدخل سعراً صحيحاً بالريال السعودي', 400)
   if (!validHttpsLinks(links)) return errorResponse('أدخل حتى 5 روابط HTTPS صحيحة', 400)
   if (!(image instanceof File) || image.size < 1 || image.size > MAX_IMAGE_BYTES || !MIME_EXTENSIONS[image.type]) {
@@ -129,6 +138,11 @@ export async function POST(request: Request) {
     links: links as string[],
     game,
     price_sar: priceSar,
+    map_category: category === 'map_item' ? mapCategory : null,
+    game_emoji: category === 'map_item' ? gameEmoji || null : null,
+    map_category_emoji: category === 'map_item' ? mapCategoryEmoji || null : null,
+    map_thumbnail_url: category === 'map_item' ? mapThumbnailUrl || null : null,
+    map_url: category === 'map_item' ? mapUrl || null : null,
   }).select('id').single()
 
   if (error) {
