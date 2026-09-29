@@ -20,6 +20,7 @@ export async function POST(request: Request) {
     rating?: number
     comment?: string
     useBalance?: boolean
+    quantity?: number
     bankKey?: string | null
     receiptUrl?: string | null
     senderName?: string | null
@@ -32,28 +33,35 @@ export async function POST(request: Request) {
 
   if (body.action === 'purchase') {
     if (!body.itemId) return errorResponse('المنتج غير صالح', 400)
+    const quantity = body.quantity ?? 1
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 99) return errorResponse('اختر كمية صحيحة بين 1 و99', 400)
     const { data: item } = await admin.from('marketplace_catalog_items')
-      .select('id, seller_id, name, price_sar, active, game, game_emoji, map_category, map_category_emoji')
+      .select('id, seller_id, name, price_sar, stock_quantity, active, game, game_emoji, map_category, map_category_emoji')
       .eq('id', body.itemId)
       .eq('active', true)
       .maybeSingle()
     if (!item) return errorResponse('هذا المنتج لم يعد متاحاً', 404)
     if (item.seller_id === user.id) return errorResponse('لا يمكنك طلب منتج من متجرك', 400)
-    const price = Number(item.price_sar)
-    if (!isValidCatalogPrice(price)) return errorResponse('لم يحدد البائع سعر هذا المنتج بعد', 409)
+    const unitPrice = Number(item.price_sar)
+    if (!isValidCatalogPrice(unitPrice)) return errorResponse('لم يحدد البائع سعر هذا المنتج بعد', 409)
+    if (item.stock_quantity < quantity) return errorResponse('الكمية المطلوبة غير متوفرة. حدّث الصفحة لمعرفة المتاح.', 409)
+    const price = Number((unitPrice * quantity).toFixed(2))
 
     const { data: seller } = await admin.from('profiles').select('active').eq('id', item.seller_id).maybeSingle()
     if (!seller?.active) return errorResponse('متجر البائع غير متاح حالياً', 409)
 
     const { data: existing } = await admin.from('tickets')
-      .select('id')
+      .select('id, catalog_quantity')
       .eq('type', 'order')
       .eq('buyer_id', user.id)
       .eq('catalog_item_id', item.id)
       .in('status', ['open', 'delivered', 'pending_payment'])
       .limit(1)
       .maybeSingle()
-    if (existing) return NextResponse.json({ ticketId: existing.id, existing: true })
+    if (existing) {
+      if (existing.catalog_quantity !== quantity) return errorResponse('لديك طلب مفتوح بكمية مختلفة لهذا المنتج', 409)
+      return NextResponse.json({ ticketId: existing.id, existing: true })
+    }
 
     const useBalance = body.useBalance !== false
     const walletAmount = useBalance ? Math.min(Number(currentProfile.balance ?? 0), price) : 0
@@ -86,7 +94,7 @@ export async function POST(request: Request) {
       p_buyer_id: user.id,
       p_seller_id: item.seller_id,
       p_item_id: item.id,
-      p_subject: `طلب شراء: ${item.name}${itemContext}`,
+      p_subject: `طلب شراء: ${item.name} × ${quantity}${itemContext}`,
       p_purchase_price_sar: price,
       p_payment_method: paymentMethod,
       p_bank_key: bankKey,
@@ -94,10 +102,14 @@ export async function POST(request: Request) {
       p_sender_name: senderName,
       p_wallet_amount_sar: walletAmount,
       p_payment_verified_at: paymentMethod === 'balance' ? new Date().toISOString() : null,
+      p_quantity: quantity,
     })
     if (error || !ticketId) {
       if (error?.message.includes('INSUFFICIENT_MARKETPLACE_BALANCE')) {
         return errorResponse('رصيد المحفظة تغيّر، حدّث الصفحة وحاول مرة أخرى', 409)
+      }
+      if (error?.message.includes('INSUFFICIENT_MARKETPLACE_STOCK')) {
+        return errorResponse('نفدت الكمية المطلوبة. حدّث الصفحة وحاول بكمية أقل.', 409)
       }
       return errorResponse('تعذّر إنشاء طلب الشراء', 500)
     }

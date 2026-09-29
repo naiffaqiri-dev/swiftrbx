@@ -42,7 +42,7 @@ export async function GET(request: Request) {
 
   const admin = createAdminClient()
   let query = admin.from('marketplace_catalog_items')
-    .select('id, seller_id, category, name, description, image_url, links, game, active, created_at, price_sar, map_category, game_emoji, map_category_emoji, map_thumbnail_url, map_url')
+    .select('id, seller_id, category, name, description, image_url, links, game, active, created_at, price_sar, stock_quantity, map_category, game_emoji, map_category_emoji, map_thumbnail_url, map_url')
     .eq('active', true)
     .order('created_at', { ascending: false })
 
@@ -54,7 +54,7 @@ export async function GET(request: Request) {
       return errorResponse('غير مصرّح', 403)
     }
     query = admin.from('marketplace_catalog_items')
-      .select('id, seller_id, category, name, description, image_url, links, game, active, created_at, price_sar, map_category, game_emoji, map_category_emoji, map_thumbnail_url, map_url')
+      .select('id, seller_id, category, name, description, image_url, links, game, active, created_at, price_sar, stock_quantity, map_category, game_emoji, map_category_emoji, map_thumbnail_url, map_url')
       .eq('seller_id', current.user.id)
       .order('created_at', { ascending: false })
     if (category) query = query.eq('category', category)
@@ -109,6 +109,7 @@ export async function POST(request: Request) {
   const mapThumbnailUrl = String(form.get('mapThumbnailUrl') ?? '').trim()
   const mapUrl = String(form.get('mapUrl') ?? '').trim()
   const priceSar = Number(form.get('priceSar'))
+  const stockQuantity = Number(form.get('stockQuantity'))
   const image = form.get('image')
   let links: unknown
   try {
@@ -137,6 +138,7 @@ export async function POST(request: Request) {
   if (mapThumbnailUrl && !validHttpsLinks([mapThumbnailUrl])) return errorResponse('رابط الصورة المصغرة يجب أن يكون HTTPS صحيحاً', 400)
   if (mapUrl && !validHttpsLinks([mapUrl])) return errorResponse('رابط الماب يجب أن يكون HTTPS صحيحاً', 400)
   if (!isValidCatalogPrice(priceSar)) return errorResponse('أدخل سعراً صحيحاً بالريال السعودي', 400)
+  if (!Number.isInteger(stockQuantity) || stockQuantity < 1 || stockQuantity > 1_000_000) return errorResponse('أدخل كمية صحيحة بين 1 ومليون', 400)
   if (!validHttpsLinks(links)) return errorResponse('أدخل حتى 5 روابط HTTPS صحيحة', 400)
   if (!(image instanceof File) || image.size < 1 || image.size > MAX_IMAGE_BYTES || !MIME_EXTENSIONS[image.type]) {
     return errorResponse('أرفق صورة PNG أو JPEG أو WebP أو AVIF بحجم أقصى 8 ميغابايت', 400)
@@ -160,6 +162,7 @@ export async function POST(request: Request) {
     links: links as string[],
     game,
     price_sar: priceSar,
+    stock_quantity: stockQuantity,
     map_category: category === 'map_item' ? mapCategory : null,
     game_emoji: category === 'map_item' ? gameEmoji || null : null,
     map_category_emoji: category === 'map_item' ? mapCategoryEmoji || null : null,
@@ -180,15 +183,21 @@ export async function PATCH(request: Request) {
     return errorResponse('غير مصرّح', 403)
   }
 
-  const body = await request.json().catch(() => null) as { id?: string; active?: boolean; priceSar?: number } | null
-  if (!body?.id || (typeof body.active !== 'boolean' && body.priceSar === undefined)) return errorResponse('طلب غير صالح', 400)
-  const updates: { active?: boolean; price_sar?: number } = {}
+  const body = await request.json().catch(() => null) as { id?: string; active?: boolean; priceSar?: number; stockQuantity?: number } | null
+  if (!body?.id || (typeof body.active !== 'boolean' && body.priceSar === undefined && body.stockQuantity === undefined)) return errorResponse('طلب غير صالح', 400)
+  const updates: { active?: boolean; price_sar?: number; stock_quantity?: number } = {}
   if (typeof body.active === 'boolean') updates.active = body.active
   if (body.priceSar !== undefined) {
     if (!isValidCatalogPrice(body.priceSar)) {
       return errorResponse('أدخل سعراً صحيحاً بالريال السعودي', 400)
     }
     updates.price_sar = body.priceSar
+  }
+  if (body.stockQuantity !== undefined) {
+    if (!Number.isInteger(body.stockQuantity) || body.stockQuantity < 0 || body.stockQuantity > 1_000_000) {
+      return errorResponse('أدخل كمية صحيحة بين صفر ومليون', 400)
+    }
+    updates.stock_quantity = body.stockQuantity
   }
   const { error } = await current.admin.from('marketplace_catalog_items')
     .update(updates)

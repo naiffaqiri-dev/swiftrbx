@@ -21,6 +21,7 @@ export function CatalogPurchaseCheckout({
 }) {
   const { user } = useAuth()
   const [useBalance, setUseBalance] = useState(true)
+  const [quantity, setQuantity] = useState(1)
   const [bank, setBank] = useState(() => randomBank())
   const [senderName, setSenderName] = useState('')
   const [receiptUrl, setReceiptUrl] = useState('')
@@ -28,7 +29,9 @@ export function CatalogPurchaseCheckout({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
   const [copied, setCopied] = useState<string | null>(null)
-  const price = Number(item.price_sar ?? 0)
+  const unitPrice = Number(item.price_sar ?? 0)
+  const maxQuantity = Math.min(99, item.stock_quantity)
+  const price = Number((unitPrice * quantity).toFixed(2))
   const balance = Number(user?.balance ?? 0)
   const walletAmount = useBalance ? Math.min(balance, price) : 0
   const remainder = Math.max(0, +(price - walletAmount).toFixed(2))
@@ -64,6 +67,10 @@ export function CatalogPurchaseCheckout({
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (submitting || uploading) return
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > maxQuantity) {
+      setError('الكمية المطلوبة غير متوفرة في المخزون')
+      return
+    }
     if (remainder > 0 && (!receiptUrl || !senderName.trim())) {
       setError('أرفق صورة الإيصال واكتب اسم المحوّل لإكمال الطلب')
       return
@@ -77,6 +84,7 @@ export function CatalogPurchaseCheckout({
         body: JSON.stringify({
           action: 'purchase',
           itemId: item.id,
+          quantity,
           useBalance,
           bankKey: remainder > 0 ? bank.key : null,
           receiptUrl: remainder > 0 ? receiptUrl : null,
@@ -106,8 +114,15 @@ export function CatalogPurchaseCheckout({
 
       <form onSubmit={submit} className="flex flex-col gap-5">
         <div className="flex flex-col gap-3 rounded-xl border border-border/60 bg-background/50 p-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="marketplace-quantity">الكمية</Label>
+              <Input id="marketplace-quantity" type="number" inputMode="numeric" min="1" max={maxQuantity} step="1" value={quantity} disabled={maxQuantity < 1} onChange={(event) => setQuantity(Math.max(1, Math.min(maxQuantity, Number(event.target.value) || 1)))} className="w-28" />
+            </div>
+            <span className="text-xs text-muted-foreground">{formatSar(unitPrice)} للوحدة · المتاح {item.stock_quantity.toLocaleString('ar-SA')}</span>
+          </div>
           <div className="flex items-center justify-between gap-3">
-            <span className="text-sm text-muted-foreground">قيمة المنتج</span>
+            <span className="text-sm text-muted-foreground">الإجمالي ({quantity} × {formatSar(unitPrice)})</span>
             <strong>{formatSar(price)}</strong>
           </div>
           <label className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-border/60 p-3">

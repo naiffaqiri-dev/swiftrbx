@@ -149,12 +149,13 @@ export function CatalogBrowser({ category, sellerId }: { category: CatalogCatego
                   <div className="shrink-0 text-left">
                     <span className="block text-sm font-bold">{item.price_sar !== null ? `${Number(item.price_sar).toFixed(2)} ر.س` : 'السعر غير محدد'}</span>
                     <span className="text-xs text-muted-foreground">{info.singular}</span>
+                    <span className="mt-1 block text-xs text-muted-foreground">{item.stock_quantity > 0 ? `المتاح: ${item.stock_quantity.toLocaleString('ar-SA')}` : 'نفدت الكمية'}</span>
                   </div>
                 </div>
                 {(item.map_url || item.links.length > 0) && <div className="flex flex-wrap gap-2">{item.map_url && <a href={item.map_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-full border border-primary/40 px-3 py-1.5 text-xs text-primary hover:bg-primary/10">رابط الماب<ArrowUpRight className="size-3" /></a>}{item.links.map((href, index) => <a key={`${item.id}-${index}`} href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-full border border-border/70 px-3 py-1.5 text-xs text-muted-foreground hover:text-primary">رابط {index + 1}<ArrowUpRight className="size-3" /></a>)}</div>}
                 {item.seller.id !== user?.id && (user ? (
-                  <Button onClick={() => beginPurchase(item)} disabled={purchaseBusyId !== null || item.price_sar === null} className="w-full">
-                    {item.price_sar === null ? 'بانتظار تحديد السعر' : 'شراء المنتج'}
+                  <Button onClick={() => beginPurchase(item)} disabled={purchaseBusyId !== null || item.price_sar === null || item.stock_quantity < 1} className="w-full">
+                    {item.stock_quantity < 1 ? 'نفدت الكمية' : item.price_sar === null ? 'بانتظار تحديد السعر' : 'شراء المنتج'}
                   </Button>
                 ) : (
                   <Link href="/login" className="inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">سجّل الدخول للشراء</Link>
