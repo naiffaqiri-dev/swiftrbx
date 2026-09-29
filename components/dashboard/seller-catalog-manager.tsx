@@ -11,15 +11,25 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 
+type MarketplaceGame = { id: string; name: string; emoji: string | null }
+
 const fetcher = async (url: string): Promise<{ items: CatalogItem[] }> => {
   const response = await fetch(url)
   if (!response.ok) throw new Error('تعذّر تحميل المنتجات')
   return response.json()
 }
 
+const gamesFetcher = async (url: string): Promise<{ maps: MarketplaceGame[] }> => {
+  const response = await fetch(url)
+  if (!response.ok) throw new Error('تعذّر تحميل فئات المابات')
+  return response.json()
+}
+
 export function SellerCatalogManager({ category }: { category: CatalogCategory }) {
   const key = `/api/catalog?${new URLSearchParams({ category, mine: '1' })}`
   const { data, error, isLoading } = useSWR(key, fetcher)
+  const { data: gamesData, isLoading: gamesLoading, error: gamesError } = useSWR(category === 'map_item' ? '/api/marketplace-games' : null, gamesFetcher)
+  const games = gamesData?.maps ?? []
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState('')
@@ -29,9 +39,8 @@ export function SellerCatalogManager({ category }: { category: CatalogCategory }
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({})
   const [savingPriceId, setSavingPriceId] = useState<string | null>(null)
   const [description, setDescription] = useState('')
-  const [game, setGame] = useState('')
+  const [gameId, setGameId] = useState('')
   const [mapCategory, setMapCategory] = useState('')
-  const [gameEmoji, setGameEmoji] = useState('')
   const [mapCategoryEmoji, setMapCategoryEmoji] = useState('')
   const [mapThumbnailUrl, setMapThumbnailUrl] = useState('')
   const [mapUrl, setMapUrl] = useState('')
@@ -52,9 +61,8 @@ export function SellerCatalogManager({ category }: { category: CatalogCategory }
     body.set('name', name)
     body.set('priceSar', priceSar)
     body.set('description', description)
-    body.set('game', game.trim() || 'أغراض عامة')
+    body.set('gameId', gameId)
     body.set('mapCategory', mapCategory.trim())
-    body.set('gameEmoji', gameEmoji.trim())
     body.set('mapCategoryEmoji', mapCategoryEmoji.trim())
     body.set('mapThumbnailUrl', mapThumbnailUrl.trim())
     body.set('mapUrl', mapUrl.trim())
@@ -71,9 +79,8 @@ export function SellerCatalogManager({ category }: { category: CatalogCategory }
     setName('')
     setPriceSar('')
     setDescription('')
-    setGame('')
+    setGameId('')
     setMapCategory('')
-    setGameEmoji('')
     setMapCategoryEmoji('')
     setMapThumbnailUrl('')
     setMapUrl('')
@@ -157,7 +164,7 @@ export function SellerCatalogManager({ category }: { category: CatalogCategory }
               <Input id={`catalog-price-${category}`} type="number" inputMode="decimal" min="0.01" max="1000000" step="0.01" value={priceSar} onChange={(event) => setPriceSar(event.target.value)} required placeholder="مثال: 25.00" />
             </div>
             {category === 'map_item' && <>
-              <div className="flex flex-col gap-2"><Label htmlFor={`catalog-game-${category}`}>اسم اللعبة أو الماب <span className="text-destructive">*</span></Label><div className="flex gap-2"><Input id={`catalog-game-${category}`} list="roblox-map-games" value={game} onChange={(event) => setGame(event.target.value)} minLength={2} maxLength={40} required placeholder="مثال: Blade Ball" /><Input aria-label="إيموجي اللعبة" value={gameEmoji} onChange={(event) => setGameEmoji(event.target.value)} maxLength={16} className="w-20 text-center" placeholder="🎮" /></div><datalist id="roblox-map-games"><option value="Adopt Me!" /><option value="Blade Ball" /><option value="Murder Mystery 2" /><option value="Blox Fruits" /><option value="أخرى" /></datalist></div>
+              <div className="flex flex-col gap-2"><Label htmlFor={`catalog-game-${category}`}>الماب المعتمد <span className="text-destructive">*</span></Label><select id={`catalog-game-${category}`} value={gameId} onChange={(event) => setGameId(event.target.value)} required disabled={gamesLoading || games.length === 0} className="h-10 w-full rounded-md border border-border/60 bg-background px-3 text-sm outline-none focus:border-primary disabled:opacity-60"><option value="">{gamesLoading ? 'جارٍ تحميل المابات…' : 'اختر ماباً أضافته الإدارة'}</option>{games.map((game) => <option key={game.id} value={game.id}>{game.emoji ? `${game.emoji} ` : ''}{game.name}</option>)}</select>{gamesError ? <p role="alert" className="text-xs text-destructive">تعذّر تحميل المابات المعتمدة. حدّث الصفحة وحاول مجدداً.</p> : games.length === 0 && !gamesLoading ? <p className="text-xs text-muted-foreground">لا توجد مابات معتمدة حالياً. تواصل مع الإدارة لإضافة الماب أولاً.</p> : <p className="text-xs text-muted-foreground">يمكنك الاختيار من المابات التي أضافتها الإدارة فقط.</p>}</div>
               <div className="flex flex-col gap-2"><Label htmlFor={`catalog-map-category-${category}`}>اسم الفئة داخل الماب <span className="text-destructive">*</span></Label><div className="flex gap-2"><Input id={`catalog-map-category-${category}`} value={mapCategory} onChange={(event) => setMapCategory(event.target.value)} minLength={2} maxLength={60} required placeholder="مثال: أسلحة نادرة" /><Input aria-label="إيموجي الفئة" value={mapCategoryEmoji} onChange={(event) => setMapCategoryEmoji(event.target.value)} maxLength={16} className="w-20 text-center" placeholder="⚔️" /></div><p className="text-xs leading-relaxed text-muted-foreground">يمكنك إضافة عدة فئات للعبة نفسها؛ أنشئ منتجاً لكل فئة وكرّر اسم الماب.</p></div>
               <div className="flex flex-col gap-2"><Label htmlFor={`catalog-map-thumbnail-${category}`}>رابط صورة مصغرة للماب (اختياري)</Label><Input id={`catalog-map-thumbnail-${category}`} type="url" inputMode="url" dir="ltr" value={mapThumbnailUrl} onChange={(event) => setMapThumbnailUrl(event.target.value)} maxLength={500} placeholder="https://..." /></div>
               <div className="flex flex-col gap-2"><Label htmlFor={`catalog-map-url-${category}`}>رابط الماب أو اللعبة (اختياري)</Label><Input id={`catalog-map-url-${category}`} type="url" inputMode="url" dir="ltr" value={mapUrl} onChange={(event) => setMapUrl(event.target.value)} maxLength={500} placeholder="https://www.roblox.com/games/..." /></div>
@@ -167,7 +174,7 @@ export function SellerCatalogManager({ category }: { category: CatalogCategory }
             <div className="flex flex-col gap-2"><Label htmlFor={`catalog-description-${category}`}>الوصف (اختياري)</Label><Textarea id={`catalog-description-${category}`} value={description} onChange={(event) => setDescription(event.target.value)} maxLength={2000} rows={4} placeholder="أضف تفاصيل تساعد المشتري على معرفة المنتج" /></div>
             <div className="flex flex-col gap-2"><Label htmlFor={`catalog-links-${category}`}>روابط المنتج (اختياري)</Label><Textarea id={`catalog-links-${category}`} value={links} onChange={(event) => setLinks(event.target.value)} rows={3} dir="ltr" placeholder={'https://...\nhttps://...'} /><p className="text-xs text-muted-foreground">رابط HTTPS واحد في كل سطر، حتى 5 روابط.</p></div>
           </div>
-          <div className="flex flex-wrap gap-2 md:col-span-2"><Button type="submit" disabled={saving || !image}>{saving ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}{saving ? 'جارٍ النشر…' : 'نشر في المتجر'}</Button><Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>إلغاء</Button></div>
+          <div className="flex flex-wrap gap-2 md:col-span-2"><Button type="submit" disabled={saving || !image || (category === 'map_item' && (gamesLoading || games.length === 0 || !gameId))}>{saving ? <Loader2 className="size-4 animate-spin" /> : <ImagePlus className="size-4" />}{saving ? 'جارٍ النشر…' : 'نشر في المتجر'}</Button><Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={saving}>إلغاء</Button></div>
         </form>
       )}
 
