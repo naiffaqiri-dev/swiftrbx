@@ -19,7 +19,7 @@ export default async function CatalogCategoryPage({ params }: { params: Promise<
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-8 sm:px-6 sm:py-12">
+      <main className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-8 px-4 py-8 sm:px-6 sm:py-12">
         <header className="flex flex-col gap-3 border-b border-border/60 pb-7">
           <p className="text-sm font-medium text-primary">متاجر SwiftRBX</p>
           <h1 className="text-balance text-3xl font-extrabold tracking-tight sm:text-4xl">{info.label}</h1>

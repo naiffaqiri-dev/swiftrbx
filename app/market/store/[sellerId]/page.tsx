@@ -21,7 +21,7 @@ export default async function SellerStorePage({ params }: { params: Promise<{ se
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
-      <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-8 px-4 py-8 sm:px-6 sm:py-12">
+      <main className="mx-auto flex w-full max-w-screen-2xl flex-1 flex-col gap-8 px-4 py-8 sm:px-6 sm:py-12">
         <header className="flex items-center gap-4 border-b border-border/60 pb-7">
           {seller.avatar_url ? <img src={seller.avatar_url} alt="" className="size-16 rounded-full object-cover" /> : <div className="flex size-16 items-center justify-center rounded-full bg-primary/15 text-xl font-bold text-primary">{(seller.display_name || seller.username).slice(0, 2).toUpperCase()}</div>}
           <div><p className="text-sm text-muted-foreground">متجر البائع</p><h1 className="mt-1 text-2xl font-extrabold">{seller.display_name || seller.username}</h1><p className="mt-1 text-sm text-muted-foreground">@{seller.username}</p></div>
