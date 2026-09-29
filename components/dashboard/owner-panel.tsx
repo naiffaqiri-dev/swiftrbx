@@ -9,6 +9,7 @@ import { AdminVerifyPanel } from './admin-verify-panel'
 import { TicketsList } from './tickets-list'
 import { CouponManager } from './coupon-manager'
 import { ReviewsAdmin } from './reviews-admin'
+import { MapCategoryManager } from './map-category-manager'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -27,6 +28,7 @@ import {
   Receipt,
   Ticket,
   MessageSquareQuote,
+  Gamepad2,
 } from 'lucide-react'
 
 const NAV = [
@@ -34,6 +36,7 @@ const NAV = [
   { key: 'verify', label: 'مراجعة التحويلات', icon: <Receipt className="h-4 w-4" /> },
   { key: 'tickets', label: 'التذاكر والنزاعات', icon: <Ticket className="h-4 w-4" /> },
   { key: 'sellers', label: 'الموردون', icon: <Store className="h-4 w-4" /> },
+  { key: 'map-categories', label: 'فئات المابات', icon: <Gamepad2 className="h-4 w-4" /> },
   { key: 'support', label: 'الدعم الفني', icon: <Headphones className="h-4 w-4" /> },
   { key: 'coupons', label: 'الكوبونات والإحالة', icon: <Ticket className="h-4 w-4" /> },
   { key: 'reviews', label: 'تقييمات الموقع', icon: <MessageSquareQuote className="h-4 w-4" /> },
@@ -309,6 +312,8 @@ export function OwnerPanel() {
       {active === 'verify' && <AdminVerifyPanel />}
 
       {active === 'tickets' && <TicketsList role="admin" />}
+
+      {active === 'map-categories' && <MapCategoryManager />}
 
       {active === 'sellers' && (
         <div className="space-y-4">

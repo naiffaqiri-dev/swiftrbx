@@ -92,9 +92,10 @@ export async function POST(request: Request) {
 
   const name = String(form.get('name') ?? '').trim()
   const description = String(form.get('description') ?? '').trim()
-  const game = String(form.get('game') ?? '').trim() || 'أغراض عامة'
+  const selectedGameId = String(form.get('gameId') ?? '').trim()
+  let game = 'أغراض عامة'
+  let gameEmoji: string | null = null
   const mapCategory = String(form.get('mapCategory') ?? '').trim()
-  const gameEmoji = String(form.get('gameEmoji') ?? '').trim()
   const mapCategoryEmoji = String(form.get('mapCategoryEmoji') ?? '').trim()
   const mapThumbnailUrl = String(form.get('mapThumbnailUrl') ?? '').trim()
   const mapUrl = String(form.get('mapUrl') ?? '').trim()
@@ -109,9 +110,20 @@ export async function POST(request: Request) {
 
   if (name.length < 2 || name.length > 100) return errorResponse('اسم المنتج يجب أن يكون بين حرفين و100 حرف', 400)
   if (description.length > 2000) return errorResponse('الوصف أطول من الحد المسموح', 400)
-  if (game.length < 2 || game.length > 40) return errorResponse('اسم اللعبة يجب أن يكون بين حرفين و40 حرفاً', 400)
+  if (category === 'map_item') {
+    if (!selectedGameId) return errorResponse('اختر ماباً معتمداً من الإدارة', 400)
+    const { data: selectedGame, error: gameError } = await current.admin.from('marketplace_games')
+      .select('id, name, emoji')
+      .eq('id', selectedGameId)
+      .eq('active', true)
+      .maybeSingle()
+    if (gameError) return errorResponse('تعذّر التحقق من الماب المعتمد', 500)
+    if (!selectedGame) return errorResponse('هذا الماب غير معتمد أو تم إيقافه. اختر ماباً متاحاً من القائمة.', 400)
+    game = selectedGame.name
+    gameEmoji = selectedGame.emoji
+  }
   if (category === 'map_item' && (mapCategory.length < 2 || mapCategory.length > 60)) return errorResponse('أدخل اسم فئة الماب (2–60 حرفاً)', 400)
-  if (gameEmoji.length > 16 || mapCategoryEmoji.length > 16) return errorResponse('الإيموجي أطول من الحد المسموح', 400)
+  if (mapCategoryEmoji.length > 16) return errorResponse('إيموجي الفئة أطول من الحد المسموح', 400)
   if (mapThumbnailUrl && !validHttpsLinks([mapThumbnailUrl])) return errorResponse('رابط الصورة المصغرة يجب أن يكون HTTPS صحيحاً', 400)
   if (mapUrl && !validHttpsLinks([mapUrl])) return errorResponse('رابط الماب يجب أن يكون HTTPS صحيحاً', 400)
   if (!isValidCatalogPrice(priceSar)) return errorResponse('أدخل سعراً صحيحاً بالريال السعودي', 400)
