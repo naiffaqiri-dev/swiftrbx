@@ -74,7 +74,7 @@ export async function POST(request: Request) {
       const receiptFilename = receiptUrl.startsWith(expectedReceiptPrefix)
         ? receiptUrl.slice(expectedReceiptPrefix.length)
         : ''
-      if (!/^[-a-z0-9]+\\.(jpg|png|webp)$/i.test(receiptFilename)) {
+      if (!/^[-a-z0-9]+\.(jpg|png|webp)$/i.test(receiptFilename)) {
         return errorResponse('رابط الإيصال غير صالح', 400)
       }
     }
