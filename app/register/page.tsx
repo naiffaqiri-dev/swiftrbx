@@ -7,6 +7,7 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { AuthShell } from '@/components/auth/auth-shell'
 import { SocialButtons } from '@/components/auth/social-buttons'
 import { useAuth } from '@/components/auth/mock-auth'
+import { authRouteHref, getAuthReturnPath } from '@/lib/auth-redirect'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -64,7 +65,7 @@ export default function RegisterPage() {
       setLoading(false)
       return
     }
-    router.push('/dashboard')
+    router.replace(getAuthReturnPath())
   }
 
   return (
@@ -76,6 +77,10 @@ export default function RegisterPage() {
           لديك حساب بالفعل؟{' '}
           <Link
             href="/login"
+            onClick={(event) => {
+              event.preventDefault()
+              router.push(authRouteHref('/login', getAuthReturnPath()))
+            }}
             className="font-semibold text-primary hover:underline"
           >
             سجّل الدخول

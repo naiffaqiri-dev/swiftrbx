@@ -7,6 +7,7 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { AuthShell } from '@/components/auth/auth-shell'
 import { SocialButtons } from '@/components/auth/social-buttons'
 import { useAuth } from '@/components/auth/mock-auth'
+import { authRouteHref, getAuthReturnPath } from '@/lib/auth-redirect'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -36,7 +37,7 @@ export default function LoginPage() {
         setLoading(false)
         return
       }
-      router.push('/dashboard')
+      router.replace(getAuthReturnPath())
     } catch {
       setError('حدث خطأ غير متوقع، يرجى المحاولة مرة أخرى بعد قليل.')
       setLoading(false)
@@ -52,6 +53,10 @@ export default function LoginPage() {
           ليس لديك حساب؟{' '}
           <Link
             href="/register"
+            onClick={(event) => {
+              event.preventDefault()
+              router.push(authRouteHref('/register', getAuthReturnPath()))
+            }}
             className="font-semibold text-primary hover:underline"
           >
             أنشئ حساباً الآن

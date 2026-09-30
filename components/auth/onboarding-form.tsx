@@ -12,9 +12,11 @@ import { BrandLogo } from '@/components/brand-logo'
 export function OnboardingForm({
   defaultEmail,
   provider,
+  nextPath,
 }: {
   defaultEmail: string
   provider: string
+  nextPath: string
 }) {
   const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
@@ -67,7 +69,7 @@ export function OnboardingForm({
         return
       }
       // إعادة تحميل كاملة حتى يلتقط سياق المصادقة الملف المحدّث
-      window.location.href = '/dashboard'
+      window.location.href = nextPath
     } catch {
       setError('تعذّر الاتصال، حاول لاحقاً')
       setLoading(false)

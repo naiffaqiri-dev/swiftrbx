@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { getAuthReturnPath } from '@/lib/auth-redirect'
 import { Button } from '@/components/ui/button'
 
 function GoogleIcon() {
@@ -34,15 +35,15 @@ export function SocialButtons() {
     setError(null)
     setPending(provider)
     const supabase = createClient()
-    // يمرّ عبر /auth/callback لتبادل الرمز بجلسة ثم يوجّه إلى لوحة المتجر الرسمية.
-    const redirectTo =
-      process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ??
-      'https://www.swiftrbx.site/auth/callback?next=/dashboard'
 
     try {
+      const redirectTo = new URL(
+        process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback`,
+      )
+      redirectTo.searchParams.set('next', getAuthReturnPath())
       const { error } = await supabase.auth.signInWithOAuth({
         provider,
-        options: { redirectTo },
+        options: { redirectTo: redirectTo.toString() },
       })
 
       if (error) {
