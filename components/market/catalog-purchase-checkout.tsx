@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import type { CatalogItem } from '@/lib/catalog'
+import { prepareReceiptImage } from '@/lib/receipt-image'
 import { CheckCircle2, Clock3, Copy, Landmark, Loader2, Upload, Wallet, X } from 'lucide-react'
 
 export function CatalogPurchaseCheckout({
@@ -41,8 +42,9 @@ export function CatalogPurchaseCheckout({
     setUploading(true)
     setError('')
     try {
+      const preparedFile = await prepareReceiptImage(file)
       const form = new FormData()
-      form.set('receipt', file)
+      form.set('receipt', preparedFile)
       const response = await fetch('/api/catalog/receipt', { method: 'POST', body: form })
       const result = await response.json()
       if (!response.ok) throw new Error(result.error ?? 'تعذّر رفع الإيصال')
@@ -153,11 +155,11 @@ export function CatalogPurchaseCheckout({
               <Input id="marketplace-sender" autoComplete="name" maxLength={120} value={senderName} onChange={(event) => setSenderName(event.target.value)} required />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="marketplace-receipt">إيصال التحويل (JPG، PNG أو WEBP، حتى 5 ميغابايت)</Label>
+              <Label htmlFor="marketplace-receipt">إيصال التحويل (JPG أو PNG أو WEBP أو HEIC، حتى 25 ميغابايت)</Label>
               <label htmlFor="marketplace-receipt" className="flex min-h-12 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-border/70 px-4 py-3 text-sm text-muted-foreground hover:border-primary/60">
                 {uploading ? <><Loader2 className="size-4 animate-spin" /> جارٍ رفع الإيصال</> : receiptUrl ? <><CheckCircle2 className="size-4 text-primary" /> تم رفع الإيصال</> : <><Upload className="size-4" /> اختر صورة الإيصال</>}
               </label>
-              <input id="marketplace-receipt" type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => { void uploadReceipt(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} />
+              <input id="marketplace-receipt" type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif" className="sr-only" onChange={(event) => { void uploadReceipt(event.currentTarget.files?.[0]); event.currentTarget.value = '' }} />
             </div>
           </div>
         )}

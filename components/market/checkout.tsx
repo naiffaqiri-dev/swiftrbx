@@ -7,6 +7,7 @@ import { DELIVERY_LABELS, applyCoupon, type DeliveryType, type Coupon } from '@/
 import { randomBank, type Bank } from '@/lib/banks'
 import { formatSar, formatUsd, sarToUsd } from '@/lib/currency'
 import { createClient } from '@/lib/supabase/client'
+import { prepareReceiptImage, ReceiptImageError } from '@/lib/receipt-image'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -83,18 +84,21 @@ export function Checkout() {
   }
 
   async function onReceipt(file: File | undefined) {
-    if (!file || !user) return
+    if (!file || !user || uploading) return
     setUploading(true)
     setError('')
     try {
+      const preparedFile = await prepareReceiptImage(file)
       const supabase = createClient()
-      const path = `${user.id}/${Date.now()}-${file.name.replace(/[^\w.-]/g, '_')}`
-      const { error: upErr } = await supabase.storage.from('receipts').upload(path, file, { upsert: false })
+      const path = `${user.id}/${Date.now()}-${preparedFile.name.replace(/[^\w.-]/g, '_')}`
+      const { error: upErr } = await supabase.storage.from('receipts').upload(path, preparedFile, { upsert: false })
       if (upErr) throw upErr
       const { data } = supabase.storage.from('receipts').getPublicUrl(path)
       setReceiptUrl(data.publicUrl)
-    } catch {
-      setError('تعذّر رفع الإيصال، حاول مرة أخرى.')
+    } catch (cause) {
+      setError(cause instanceof ReceiptImageError
+        ? cause.message
+        : 'تعذّر رفع الإيصال، تحقق من اتصالك ثم حاول مرة أخرى.')
     } finally {
       setUploading(false)
     }
@@ -266,7 +270,7 @@ export function Checkout() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>صورة الإيصال</Label>
+                    <Label>صورة الإيصال (JPG أو PNG أو WEBP أو HEIC، حتى 25 ميغابايت)</Label>
                     <label className="flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 p-4 text-sm text-muted-foreground hover:border-primary/50">
                       {uploading ? (
                         <>
@@ -283,9 +287,12 @@ export function Checkout() {
                       )}
                       <input
                         type="file"
-                        accept="image/*"
+                        accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif"
                         className="hidden"
-                        onChange={(e) => onReceipt(e.target.files?.[0])}
+                        onChange={(e) => {
+                          void onReceipt(e.target.files?.[0])
+                          e.currentTarget.value = ''
+                        }}
                       />
                     </label>
                   </div>
@@ -366,7 +373,7 @@ export function Checkout() {
           ) : totals.toPay === 0 ? (
             'إتمام الطلب بالرصيد'
           ) : (
-            `تأكيد الطلب (${formatSar(totals.toPay)})`
+            `تأكيد الط��ب (${formatSar(totals.toPay)})`
           )}
         </Button>
         <p className="text-center text-xs text-muted-foreground">
