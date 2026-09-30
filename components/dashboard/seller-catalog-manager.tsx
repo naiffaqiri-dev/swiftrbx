@@ -151,7 +151,7 @@ export function SellerCatalogManager({ category }: { category: CatalogCategory }
         <div>
           <p className="text-sm text-muted-foreground">متجرك · {CATALOG_CATEGORY_INFO[category].label}</p>
           <h2 className="mt-1 text-xl font-bold">إدارة المنتجات</h2>
-          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">أضف صورة ��لمنتج واسمه وسعره، وأكمل الوصف والروابط. لأكثر من فئة في الماب نفسه، أضف منتجاً لكل فئة.</p>
+          <p className="mt-1 text-sm leading-relaxed text-muted-foreground">أضف صورة للمنتج واسمه وسعره، وأكمل الوصف والروابط. لأكثر من فئة في الماب نفسه، أضف منتجاً لكل فئة.</p>
         </div>
         <Button onClick={startCreating}><Plus data-icon="inline-start" />إضافة {CATALOG_CATEGORY_INFO[category].singular}</Button>
       </div>

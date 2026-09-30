@@ -197,7 +197,7 @@ export function AccountView() {
       return
     }
     if (pw.next !== pw.confirm) {
-      setPwMsg({ type: 'err', text: 'كلمتا المرور غير م��طابقتين' })
+      setPwMsg({ type: 'err', text: 'كلمتا المرور غير متطابقتين' })
       return
     }
     setPwBusy(true)
@@ -552,7 +552,7 @@ export function AccountView() {
 
       {tab === 'affiliate' && (
         <div className="space-y-4 rounded-2xl border border-border/60 bg-card/40 p-6">
-          <h2 className="text-sm font-bold">برنامج الإحا��ة</h2>
+          <h2 className="text-sm font-bold">برنامج الإحالة</h2>
           <p className="text-sm text-muted-foreground">
             شارك كود الإحالة واحصل على عمولة من كل عملية شراء يقوم بها من تدعوهم.
           </p>

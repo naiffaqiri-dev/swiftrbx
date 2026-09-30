@@ -304,7 +304,7 @@ export function RobuxPurchase() {
         </div>
       </div>
 
-      {/* ملخص ال��لب */}
+      {/* ملخص الطلب */}
       <aside className="h-fit space-y-4 rounded-2xl border border-border/60 bg-card/40 p-6 lg:sticky lg:top-24">
         <h2 className="text-lg font-bold">ملخص الطلب</h2>
         <dl className="space-y-2.5 text-sm">

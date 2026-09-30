@@ -20,6 +20,8 @@ export async function POST(req: Request) {
     action: "deliver" | "confirm" | "auto_complete" | "dispute"
     rating?: number
     comment?: string
+    siteRating?: number
+    siteComment?: string
   }
   if (!orderId || !["deliver", "confirm", "auto_complete", "dispute"].includes(action))
     return NextResponse.json({ error: "بيانات غير صالحة" }, { status: 400 })
@@ -28,7 +30,7 @@ export async function POST(req: Request) {
   const { data: order } = await admin.from("orders").select("*").eq("id", orderId).single()
   if (!order) return NextResponse.json({ error: "الطلب غير موجود" }, { status: 404 })
 
-  const { data: me } = await admin.from("profiles").select("role").eq("id", user.id).single()
+  const { data: me } = await admin.from("profiles").select("role, username").eq("id", user.id).single()
   const isAdmin = !!me && ["owner", "admin"].includes(me.role)
   const isSeller = order.seller_id === user.id
   const isBuyer = order.buyer_id === user.id
@@ -64,6 +66,14 @@ export async function POST(req: Request) {
   if (action === "confirm" || action === "auto_complete") {
     if (action === "confirm" && !isBuyer && !isAdmin)
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
+    if (action === "confirm") {
+      if (!Number.isInteger(rating) || Number(rating) < 1 || Number(rating) > 5)
+        return NextResponse.json({ error: "اختر تقييماً للبائع من نجمة إلى خمس نجوم" }, { status: 400 })
+      if (!Number.isInteger(body.siteRating) || Number(body.siteRating) < 1 || Number(body.siteRating) > 5)
+        return NextResponse.json({ error: "اختر تقييماً للموقع من نجمة إلى خمس نجوم" }, { status: 400 })
+      if (typeof body.siteComment !== "string" || body.siteComment.trim().length < 3)
+        return NextResponse.json({ error: "اكتب رأيك في تجربتك مع الموقع" }, { status: 400 })
+    }
     if (order.status !== "delivered") return NextResponse.json({ ok: false, skipped: true })
 
     if (action === "auto_complete") {
@@ -72,18 +82,20 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: false, skipped: true })
     }
 
-    await admin.from("orders").update({ status: "completed", completed_at: now, updated_at: now }).eq("id", orderId)
+    const { data: completedOrder, error: completionError } = await admin
+      .from("orders")
+      .update({ status: "completed", completed_at: now, updated_at: now })
+      .eq("id", orderId)
+      .eq("status", "delivered")
+      .select("id")
+      .maybeSingle()
+    if (completionError || !completedOrder)
+      return NextResponse.json({ error: "تم تحديث الطلب مسبقاً، حدّث الصفحة" }, { status: 409 })
     await admin.from("tickets").update({ status: "completed", updated_at: now }).eq("order_id", orderId)
 
-    if (order.seller_id) {
-      const { data: sp } = await admin.from("profiles").select("sales").eq("id", order.seller_id).single()
-      await admin.from("profiles").update({ sales: Number(sp?.sales ?? 0) + 1 }).eq("id", order.seller_id)
-    }
-
-    // تقييم متبادل: المشتري يقيّم البائع
-    if (action === "confirm" && rating && order.seller_id) {
-      const stars = Math.max(1, Math.min(5, Math.round(Number(rating))))
-      await admin.from("reviews").upsert(
+    if (action === "confirm" && order.seller_id) {
+      const stars = Number(rating)
+      const { error: sellerReviewError } = await admin.from("reviews").upsert(
         {
           order_id: orderId,
           reviewer_id: order.buyer_id,
@@ -94,12 +106,40 @@ export async function POST(req: Request) {
         },
         { onConflict: "order_id,reviewer_id" },
       )
-      const { data: sp } = await admin.from("profiles").select("rating, rating_count").eq("id", order.seller_id).single()
-      const cnt = Number(sp?.rating_count ?? 0)
-      const avg = Number(sp?.rating ?? 0)
-      const newCnt = cnt + 1
-      const newAvg = +(((avg * cnt) + stars) / newCnt).toFixed(2)
-      await admin.from("profiles").update({ rating: newAvg, rating_count: newCnt }).eq("id", order.seller_id)
+      if (sellerReviewError) {
+        await admin.from("orders").update({ status: "delivered", completed_at: null, updated_at: now }).eq("id", orderId)
+        await admin.from("tickets").update({ status: "delivered", updated_at: now }).eq("order_id", orderId)
+        return NextResponse.json({ error: "تعذّر حفظ تقييم البائع، حاول مرة أخرى" }, { status: 500 })
+      }
+
+      const { data: buyerProfile } = await admin.from("profiles").select("username").eq("id", order.buyer_id).maybeSingle()
+      const { error: siteReviewError } = await admin.from("site_reviews").insert({
+        user_id: order.buyer_id,
+        username: buyerProfile?.username ?? "مستخدم",
+        rating: Number(body.siteRating),
+        comment: body.siteComment!.trim().slice(0, 500),
+      })
+      if (siteReviewError) {
+        await admin.from("orders").update({ status: "delivered", completed_at: null, updated_at: now }).eq("id", orderId)
+        await admin.from("tickets").update({ status: "delivered", updated_at: now }).eq("order_id", orderId)
+        return NextResponse.json({ error: "تعذّر حفظ تقييم الموقع، حاول مرة أخرى" }, { status: 500 })
+      }
+
+      const { data: sellerReviews } = await admin.from("reviews")
+        .select("rating")
+        .eq("reviewee_id", order.seller_id)
+        .eq("direction", "buyer_to_seller")
+      const ratings = sellerReviews ?? []
+      const count = ratings.length
+      const average = count
+        ? +(ratings.reduce((sum, review) => sum + Number(review.rating), 0) / count).toFixed(2)
+        : 0
+      await admin.from("profiles").update({ rating: average, rating_count: count }).eq("id", order.seller_id)
+    }
+
+    if (order.seller_id) {
+      const { data: sp } = await admin.from("profiles").select("sales").eq("id", order.seller_id).single()
+      await admin.from("profiles").update({ sales: Number(sp?.sales ?? 0) + 1 }).eq("id", order.seller_id)
     }
     return NextResponse.json({ ok: true })
   }

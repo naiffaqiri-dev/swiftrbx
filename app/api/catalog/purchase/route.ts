@@ -19,6 +19,8 @@ export async function POST(request: Request) {
     ticketId?: string
     rating?: number
     comment?: string
+    siteRating?: number
+    siteComment?: string
     useBalance?: boolean
     quantity?: number
     bankKey?: string | null
@@ -28,7 +30,7 @@ export async function POST(request: Request) {
   if (!body) return errorResponse('طلب غير صالح', 400)
 
   const admin = createAdminClient()
-  const { data: currentProfile } = await admin.from('profiles').select('role, active, balance').eq('id', user.id).maybeSingle()
+  const { data: currentProfile } = await admin.from('profiles').select('role, active, balance, username').eq('id', user.id).maybeSingle()
   if (!currentProfile?.active) return errorResponse('الحساب غير نشط', 403)
 
   if (body.action === 'purchase') {
@@ -147,9 +149,14 @@ export async function POST(request: Request) {
   if (!isBuyer) return errorResponse('غير مصرّح', 403)
   if (ticket.status !== 'delivered') return errorResponse('يجب أن يؤكد البائع التسليم أولاً', 409)
   if (!Number.isInteger(body.rating) || Number(body.rating) < 1 || Number(body.rating) > 5) {
-    return errorResponse('اختر تقييماً من نجمة إلى خمس نجوم', 400)
+    return errorResponse('اختر تقييماً للبائع من نجمة إلى خمس نجوم', 400)
+  }
+  if (!Number.isInteger(body.siteRating) || Number(body.siteRating) < 1 || Number(body.siteRating) > 5) {
+    return errorResponse('اختر تقييماً للموقع من نجمة إلى خمس نجوم', 400)
   }
   const comment = typeof body.comment === 'string' ? body.comment.trim().slice(0, 500) : ''
+  const siteComment = typeof body.siteComment === 'string' ? body.siteComment.trim().slice(0, 500) : ''
+  if (siteComment.length < 3) return errorResponse('اكتب رأيك في تجربتك مع الموقع', 400)
   const { data: updated, error: updateError } = await admin.from('tickets')
     .update({ status: 'completed', updated_at: now })
     .eq('id', ticket.id)
@@ -168,7 +175,19 @@ export async function POST(request: Request) {
   })
   if (reviewError) {
     await admin.from('tickets').update({ status: 'delivered', updated_at: new Date().toISOString() }).eq('id', ticket.id).eq('status', 'completed')
-    return errorResponse('تعذّر حفظ التقييم، حاول مرة أخرى', 500)
+    return errorResponse('تعذّر حفظ تقييم البائع، حاول مرة أخرى', 500)
+  }
+
+  const { error: siteReviewError } = await admin.from('site_reviews').insert({
+    user_id: user.id,
+    username: currentProfile.username ?? 'مستخدم',
+    rating: body.siteRating,
+    comment: siteComment,
+  })
+  if (siteReviewError) {
+    await admin.from('reviews').delete().eq('catalog_ticket_id', ticket.id).eq('reviewer_id', user.id)
+    await admin.from('tickets').update({ status: 'delivered', updated_at: new Date().toISOString() }).eq('id', ticket.id).eq('status', 'completed')
+    return errorResponse('تعذّر حفظ تقييم الموقع، حاول مرة أخرى', 500)
   }
 
   const { data: reviews } = await admin.from('reviews')
@@ -179,6 +198,6 @@ export async function POST(request: Request) {
   const count = total.length
   const average = count ? +(total.reduce((sum, review) => sum + Number(review.rating), 0) / count).toFixed(2) : 0
   await admin.from('profiles').update({ rating: average, rating_count: count }).eq('id', ticket.seller_id)
-  await admin.from('ticket_messages').insert({ ticket_id: ticket.id, sender_id: user.id, body: `أكد المشتري استلام المنتج وقيّم البائع بـ ${body.rating} من 5.` })
+  await admin.from('ticket_messages').insert({ ticket_id: ticket.id, sender_id: user.id, body: `أكد المشتري استلام المنتج وقيّم البائع بـ ${body.rating} من 5 وقيّم الموقع بـ ${body.siteRating} من 5.` })
   return NextResponse.json({ ok: true })
 }
