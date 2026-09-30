@@ -416,7 +416,7 @@ export function OwnerPanel() {
 
           <div className="space-y-4">
             <h2 className="text-sm font-bold text-muted-foreground">كل الحسابات ({users.length})</h2>
-            <UserTable rows={users} onToggleActive={toggleActive} onChangeRole={changeRole} onChangePermissions={changePermissions} onRemove={remove} />
+            <UserTable rows={users} onToggleActive={toggleActive} onChangeRole={changeRole} onChangePermissions={changePermissions} onRemove={remove} onBalanceUpdated={refreshUsers} />
           </div>
         </div>
       )}

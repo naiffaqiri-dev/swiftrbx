@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { Loader2, MailCheck } from 'lucide-react'
 import { AuthShell } from '@/components/auth/auth-shell'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
@@ -63,9 +63,9 @@ export default function ForgotPasswordPage() {
             إن كان هناك حساب مرتبط بهذا البريد، فقد أرسلنا إليه رابطاً لإعادة تعيين
             كلمة المرور. تحقق من صندوق الوارد ومجلد الرسائل غير المرغوبة.
           </p>
-          <Button asChild variant="secondary" className="w-full">
-            <Link href="/login">العودة لتسجيل الدخول</Link>
-          </Button>
+          <Link href="/login" className={buttonVariants({ variant: 'secondary', className: 'w-full' })}>
+            العودة لتسجيل الدخول
+          </Link>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">

@@ -100,6 +100,7 @@ type AuthContextValue = {
   users: ManagedUser[]
   ready: boolean
   refreshUsers: () => Promise<void>
+  refresh: () => Promise<void>
   login: (identifier: string, password: string) => Promise<{ error?: string }>
   register: (data: {
     username: string
@@ -296,6 +297,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       users,
       ready,
       refreshUsers,
+      refresh: refreshUsers,
       login,
       register,
       logout,
