@@ -224,7 +224,7 @@ function NewSupportTicket({
     await supabase
       .from('ticket_messages')
       .insert({ ticket_id: ticket.id, sender_id: user.id, body: message.trim() })
-    // إشعار ��ريق الدعم عبر Discord
+    // إشعار فريق الدعم عبر Discord
     fetch('/api/support', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

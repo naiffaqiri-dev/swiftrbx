@@ -237,7 +237,7 @@ export function Checkout() {
               required
             />
             <p className="text-xs text-muted-foreground">
-              يُستخدم لتسليم الروبوكس عبر {DELIVERY_LABELS[delivery]}. لا يمكن المتابعة بدونه.
+              يُستخدم لتسليم الروب��كس عبر {DELIVERY_LABELS[delivery]}. لا يمكن المتابعة بدونه.
             </p>
           </div>
         </div>
@@ -404,7 +404,7 @@ export function Checkout() {
           ) : totals.toPay === 0 ? (
             'إتمام الطلب بالرصيد'
           ) : (
-            `تأكيد الط��ب (${formatSar(totals.toPay)})`
+            `تأكيد الطلب (${formatSar(totals.toPay)})`
           )}
         </Button>
         <p className="text-center text-xs text-muted-foreground">

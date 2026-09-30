@@ -197,7 +197,7 @@ export function AccountView() {
       return
     }
     if (pw.next !== pw.confirm) {
-      setPwMsg({ type: 'err', text: 'كلمتا المرور غير م��طابقتين' })
+      setPwMsg({ type: 'err', text: 'كلمتا المرور غير متطابقتين' })
       return
     }
     setPwBusy(true)
