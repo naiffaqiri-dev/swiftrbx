@@ -373,6 +373,8 @@ export function TicketThread({
   const [stars, setStars] = useState(0)
   const [showRating, setShowRating] = useState(false)
   const [reviewComment, setReviewComment] = useState('')
+  const [siteStars, setSiteStars] = useState(0)
+  const [siteReviewComment, setSiteReviewComment] = useState('')
   const [actionError, setActionError] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
 
@@ -507,7 +509,13 @@ export function TicketThread({
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ orderId: order.id, action, ...extra }),
     })
-    return res.ok
+    if (!res.ok) {
+      const result = await res.json().catch(() => ({}))
+      setActionError(result.error ?? 'تعذّر تحديث الطلب')
+      return false
+    }
+    setActionError('')
+    return true
   }
 
   async function catalogTicketAction(action: 'deliver' | 'confirm', extra?: Record<string, unknown>) {
@@ -525,7 +533,7 @@ export function TicketThread({
     return true
   }
 
-  // البا��ع: تأكيد تسليم الطلب (يضيف الرصيد القابل للسحب للبائع فوراً على الخادم)
+  // البائع: تأكيد تسليم الطلب (يضيف الرصيد القابل للسحب للبائع فوراً على الخادم)
   async function markDelivered() {
     if (acting) return
     setActing(true)
@@ -543,19 +551,30 @@ export function TicketThread({
   // المشتري: تأكيد الاستلام + التقييم المتبادل
   async function confirmReceipt() {
     if ((!order && !ticket?.catalog_item_id) || acting) return
-    if (stars < 1) {
+    if (stars < 1 || siteStars < 1 || siteReviewComment.trim().length < 3) {
       setShowRating(true)
+      setActionError('قيّم البائع والموقع واكتب رأيك في الموقع قبل تأكيد الاستلام')
       return
     }
     setActing(true)
-    if (ticket?.catalog_item_id) {
-      await catalogTicketAction('confirm', { rating: stars, comment: reviewComment.trim() })
-    } else if (order) {
-      const ok = await orderAction('confirm', { rating: stars, comment: reviewComment.trim() })
-      if (ok) await postSystem(`أكد المشتري استلام الطلب وقيّم البائع بـ ${stars} من 5.`)
+    setActionError('')
+    const review = {
+      rating: stars,
+      comment: reviewComment.trim(),
+      siteRating: siteStars,
+      siteComment: siteReviewComment.trim(),
     }
-    await load()
-    onChanged()
+    let ok = false
+    if (ticket?.catalog_item_id) {
+      ok = await catalogTicketAction('confirm', review)
+    } else if (order) {
+      ok = await orderAction('confirm', review)
+      if (ok) await postSystem(`أكد المشتري استلام الطلب وقيّم البائع بـ ${stars} من 5 وقيّم الموقع بـ ${siteStars} من 5.`)
+    }
+    if (ok) {
+      await load()
+      onChanged()
+    }
     setActing(false)
   }
 
@@ -663,20 +682,42 @@ export function TicketThread({
                 <Star className="h-3.5 w-3.5" /> استلمت {ticket?.catalog_item_id ? 'المنتج' : 'طلبك'}؟ أكّد الاستلام وقيّم البائع
               </p>
               {(showRating || stars > 0) && (
-                <div className="space-y-2 py-1">
-                  <div className="flex justify-center">
-                    <StarInput value={stars} onChange={setStars} />
+                <div className="max-h-64 space-y-3 overflow-y-auto py-1">
+                  <div className="space-y-1">
+                    <p className="text-center text-xs font-medium">تقييم البائع</p>
+                    <div className="flex justify-center">
+                      <StarInput value={stars} onChange={setStars} />
+                    </div>
+                    <Input
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                      maxLength={500}
+                      placeholder="تعليق على تجربتك مع البائع (اختياري)"
+                    />
                   </div>
-                  <Input
-                    value={reviewComment}
-                    onChange={(e) => setReviewComment(e.target.value)}
-                    placeholder="أضف تعليقاً على تجربتك مع البائع (اختياري)"
-                  />
+                  {stars > 0 && (
+                    <div className="space-y-1 rounded-lg border border-border/60 bg-background/50 p-3">
+                      <p className="text-center text-sm font-semibold">والآن، كيف كانت تجربتك مع الموقع؟</p>
+                      <p className="text-center text-xs text-muted-foreground">سيظهر تقييمك ضمن آراء عملاء SwiftRBX</p>
+                      <div className="flex justify-center">
+                        <StarInput value={siteStars} onChange={setSiteStars} />
+                      </div>
+                      <textarea
+                        value={siteReviewComment}
+                        onChange={(event) => setSiteReviewComment(event.target.value)}
+                        rows={2}
+                        maxLength={500}
+                        aria-label="اكتب تقييمك للموقع"
+                        placeholder="اكتب رأيك في الموقع وتجربتك معنا"
+                        className="w-full resize-y rounded-md border border-border/60 bg-background px-3 py-2 text-sm leading-relaxed outline-none focus:border-primary"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
               <Button onClick={confirmReceipt} disabled={acting} className="w-full gap-2">
                 {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                {stars > 0 ? 'تأكيد الاستلام وإرسال التقييم' : 'تأكيد الاستلام والتقييم'}
+                تأكيد الاستلام وإرسال التقييمات
               </Button>
             </div>
           )}

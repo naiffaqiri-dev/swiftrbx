@@ -237,7 +237,7 @@ export function Checkout() {
               required
             />
             <p className="text-xs text-muted-foreground">
-              يُستخدم لتسليم الروب��كس عبر {DELIVERY_LABELS[delivery]}. لا يمكن المتابعة بدونه.
+              يُستخدم لتسليم الروبكس عبر {DELIVERY_LABELS[delivery]}. لا يمكن المتابعة بدونه.
             </p>
           </div>
         </div>
