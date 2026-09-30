@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useAuth } from '@/components/auth/mock-auth'
 import { createClient } from '@/lib/supabase/client'
 import { StarInput } from '@/components/reviews/star-rating'
@@ -18,6 +18,7 @@ import {
   PackageCheck,
   Star,
   ShieldCheck,
+  Paperclip,
 } from 'lucide-react'
 
 type TicketRole = 'buyer' | 'seller' | 'admin' | 'support'
@@ -223,7 +224,7 @@ function NewSupportTicket({
     await supabase
       .from('ticket_messages')
       .insert({ ticket_id: ticket.id, sender_id: user.id, body: message.trim() })
-    // إشعار فريق الدعم عبر Discord
+    // إشعار ��ريق الدعم عبر Discord
     fetch('/api/support', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -272,6 +273,80 @@ function NewSupportTicket({
   )
 }
 
+function renderLinkedText(text: string, keyPrefix: string): ReactNode[] {
+  const nodes: ReactNode[] = []
+  const urlPattern = /https?:\/\/[^\s<]+/gi
+  let cursor = 0
+  let linkIndex = 0
+
+  for (const match of text.matchAll(urlPattern)) {
+    const start = match.index ?? 0
+    const rawUrl = match[0]
+    const url = rawUrl.replace(/[.,!?;:)\]}،؟]+$/u, '')
+    if (!url) continue
+
+    nodes.push(text.slice(cursor, start))
+    try {
+      const parsedUrl = new URL(url)
+      if (parsedUrl.protocol === 'http:' || parsedUrl.protocol === 'https:') {
+        nodes.push(
+          <a
+            key={`${keyPrefix}-link-${linkIndex++}`}
+            href={parsedUrl.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="break-all text-link underline decoration-link/50 underline-offset-2 hover:decoration-link"
+          >
+            {url}
+          </a>,
+        )
+      } else {
+        nodes.push(url)
+      }
+    } catch {
+      nodes.push(url)
+    }
+    nodes.push(rawUrl.slice(url.length))
+    cursor = start + rawUrl.length
+  }
+
+  nodes.push(text.slice(cursor))
+  return nodes
+}
+
+function renderMessageBody(body: string, ticketId: string): ReactNode[] {
+  const nodes: ReactNode[] = []
+  const attachmentPattern = /\[\[ticket-image:([^\]]+)\]\]/g
+  let cursor = 0
+  let attachmentIndex = 0
+
+  for (const match of body.matchAll(attachmentPattern)) {
+    const start = match.index ?? 0
+    const pathname = match[1]
+    nodes.push(...renderLinkedText(body.slice(cursor, start), `message-${start}`))
+    const imageUrl = `/api/tickets/${encodeURIComponent(ticketId)}/attachments?pathname=${encodeURIComponent(pathname)}`
+    nodes.push(
+      <a
+        key={`attachment-${attachmentIndex++}`}
+        href={imageUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-2 block w-fit"
+      >
+        <img
+          src={imageUrl}
+          alt="صورة مرفقة في محادثة الطلب"
+          className="max-h-64 max-w-full rounded-lg border border-border object-contain"
+        />
+      </a>,
+    )
+    cursor = start + match[0].length
+  }
+
+  nodes.push(...renderLinkedText(body.slice(cursor), `message-${cursor}`))
+  return nodes
+}
+
 export function TicketThread({
   ticketId,
   role,
@@ -290,8 +365,10 @@ export function TicketThread({
   const [order, setOrder] = useState<OrderRow | null>(null)
   const [sellerName, setSellerName] = useState<string>('')
   const [text, setText] = useState('')
+  const [attachment, setAttachment] = useState<File | null>(null)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
+  const attachmentInputRef = useRef<HTMLInputElement>(null)
   const [acting, setActing] = useState(false)
   const [stars, setStars] = useState(0)
   const [showRating, setShowRating] = useState(false)
@@ -381,13 +458,39 @@ export function TicketThread({
   }, [ticketId, load])
 
   async function send() {
-    if (!text.trim() || !user || sending) return
+    if ((!text.trim() && !attachment) || !user || sending) return
     setSending(true)
-    const body = text.trim()
-    setText('')
+    setActionError('')
+    let body = text.trim()
+
+    if (attachment) {
+      const formData = new FormData()
+      formData.set('file', attachment)
+      const upload = await fetch(`/api/tickets/${encodeURIComponent(ticketId)}/attachments`, {
+        method: 'POST',
+        body: formData,
+      })
+      const result = await upload.json().catch(() => ({}))
+      if (!upload.ok || typeof result.pathname !== 'string') {
+        setActionError(result.error ?? 'تعذّر إرفاق الصورة، حاول مرة أخرى')
+        setSending(false)
+        return
+      }
+      body = [body, `[[ticket-image:${result.pathname}]]`].filter(Boolean).join('\n')
+    }
+
     const supabase = createClient()
-    await supabase.from('ticket_messages').insert({ ticket_id: ticketId, sender_id: user.id, body })
+    const { error } = await supabase
+      .from('ticket_messages')
+      .insert({ ticket_id: ticketId, sender_id: user.id, body })
+    if (error) {
+      setActionError('تعذّر إرسال الرسالة، حاول مرة أخرى')
+      setSending(false)
+      return
+    }
     await supabase.from('tickets').update({ updated_at: new Date().toISOString() }).eq('id', ticketId)
+    setText('')
+    setAttachment(null)
     setSending(false)
   }
 
@@ -422,7 +525,7 @@ export function TicketThread({
     return true
   }
 
-  // البائع: تأكيد تسليم الطلب (يضيف الرصيد القابل للسحب للبائع فوراً على الخادم)
+  // البا��ع: تأكيد تسليم الطلب (يضيف الرصيد القابل للسحب للبائع فوراً على الخادم)
   async function markDelivered() {
     if (acting) return
     setActing(true)
@@ -509,7 +612,7 @@ export function TicketThread({
                   {mine && (
                     <div className="max-w-[80%] rounded-2xl bg-primary px-3.5 py-2 text-sm text-primary-foreground">
                       <div className="mb-1 text-xs font-semibold">{senderName}</div>
-                      <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                      <p className="whitespace-pre-wrap break-words">{renderMessageBody(m.body, ticketId)}</p>
                       <div className="mt-1 text-[10px] text-primary-foreground/70">
                         {new Date(m.created_at).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}
                       </div>
@@ -524,7 +627,7 @@ export function TicketThread({
                   {!mine && (
                     <div className="max-w-[80%] rounded-2xl bg-muted px-3.5 py-2 text-sm text-foreground">
                       <div className="mb-1 text-xs font-semibold">{senderName}</div>
-                      <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                      <p className="whitespace-pre-wrap break-words">{renderMessageBody(m.body, ticketId)}</p>
                       <div className="mt-1 text-[10px] text-muted-foreground">
                         {new Date(m.created_at).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}
                       </div>
@@ -588,7 +691,54 @@ export function TicketThread({
             </button>
           )}
 
-          <div className="flex gap-2">
+          {attachment && (
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-xs">
+              <span className="min-w-0 truncate">الصورة المرفقة: {attachment.name}</span>
+              <button
+                type="button"
+                onClick={() => setAttachment(null)}
+                disabled={sending}
+                aria-label="إزالة الصورة المرفقة"
+                className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <input
+              ref={attachmentInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
+              className="sr-only"
+              aria-label="اختر صورة لإرفاقها بالتذكرة"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0] ?? null
+                event.currentTarget.value = ''
+                if (!file) return
+                if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'].includes(file.type)) {
+                  setActionError('اختر صورة بصيغة PNG أو JPG أو WEBP أو GIF أو AVIF')
+                  return
+                }
+                if (file.size === 0 || file.size > 8 * 1024 * 1024) {
+                  setActionError('حجم الصورة يجب ألا يتجاوز 8 ميغابايت')
+                  return
+                }
+                setActionError('')
+                setAttachment(file)
+              }}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="shrink-0 gap-2"
+              onClick={() => attachmentInputRef.current?.click()}
+              disabled={sending}
+            >
+              <Paperclip className="size-4" />
+              إرفاق صورة
+            </Button>
             <Input
               value={text}
               onChange={(e) => setText(e.target.value)}
@@ -600,8 +750,8 @@ export function TicketThread({
               }}
               placeholder="اكتب رسالتك…"
             />
-            <Button onClick={send} disabled={sending || !text.trim()} size="icon">
-              {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            <Button onClick={send} disabled={sending || (!text.trim() && !attachment)} size="icon" aria-label="إرسال الرسالة">
+              {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             </Button>
           </div>
         </div>
