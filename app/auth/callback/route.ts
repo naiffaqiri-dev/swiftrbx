@@ -1,11 +1,12 @@
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { NextRequest, NextResponse } from 'next/server'
+import { safeInternalPath } from '@/lib/auth-redirect'
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = request.nextUrl
   const code = searchParams.get('code')
-  const next = searchParams.get('next') ?? '/'
+  const next = safeInternalPath(searchParams.get('next'), '/')
 
   if (code) {
     const supabase = await createClient()
@@ -24,7 +25,7 @@ export async function GET(request: NextRequest) {
           .eq('id', user.id)
           .maybeSingle()
         if (!profile?.onboarded) {
-          return NextResponse.redirect(`${origin}/onboarding`)
+          return NextResponse.redirect(`${origin}/onboarding?${new URLSearchParams({ next }).toString()}`)
         }
       }
 

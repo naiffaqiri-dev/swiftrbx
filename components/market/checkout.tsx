@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/components/auth/mock-auth'
+import { AuthRequiredDialog } from '@/components/auth/auth-required-dialog'
 import { DELIVERY_LABELS, applyCoupon, type DeliveryType, type Coupon } from '@/lib/mock-data'
 import { randomBank, type Bank } from '@/lib/banks'
 import { formatSar, formatUsd, sarToUsd } from '@/lib/currency'
@@ -29,7 +30,7 @@ type PayMethod = 'balance' | 'bank_transfer'
 export function Checkout() {
   const router = useRouter()
   const params = useSearchParams()
-  const { user, refresh } = useAuth()
+  const { user, ready, refresh } = useAuth()
 
   const amount = Number(params.get('amount') ?? 0)
   const delivery = (params.get('delivery') ?? 'group') as DeliveryType
@@ -155,6 +156,25 @@ export function Checkout() {
         <Button className="mt-4" onClick={() => router.push('/market')}>
           اذهب للسوق
         </Button>
+      </div>
+    )
+  }
+
+  if (!ready) {
+    return <p role="status" className="text-center text-muted-foreground">جارٍ التحقق من الحساب…</p>
+  }
+
+  if (!user) {
+    return (
+      <div className="flex min-h-64 items-center justify-center rounded-2xl border border-border/60 bg-card/40 p-8 text-center">
+        <p className="text-muted-foreground">سجّل الدخول أو أنشئ حساباً للمتابعة في الشراء.</p>
+        <AuthRequiredDialog
+          open
+          onOpenChange={(open) => {
+            if (!open) router.push('/market')
+          }}
+          returnTo={`/checkout?${params.toString()}`}
+        />
       </div>
     )
   }

@@ -6,6 +6,7 @@ import useSWR from 'swr'
 import { useMemo, useState } from 'react'
 import { ArrowUpRight, Gamepad2, Search, Store } from 'lucide-react'
 import { useAuth } from '@/components/auth/mock-auth'
+import { AuthRequiredDialog } from '@/components/auth/auth-required-dialog'
 import { TicketThread } from '@/components/dashboard/tickets-list'
 import { StarDisplay } from '@/components/reviews/star-rating'
 import { CatalogPurchaseCheckout } from '@/components/market/catalog-purchase-checkout'
@@ -28,12 +29,13 @@ const gamesFetcher = async (url: string): Promise<{ maps: MarketplaceGame[] }> =
 }
 
 export function CatalogBrowser({ category, sellerId }: { category: CatalogCategory; sellerId?: string }) {
-  const { user } = useAuth()
+  const { user, ready } = useAuth()
   const [search, setSearch] = useState('')
   const [purchaseBusyId, setPurchaseBusyId] = useState<string | null>(null)
   const [purchaseError, setPurchaseError] = useState('')
   const [ticketId, setTicketId] = useState<string | null>(null)
   const [checkoutItem, setCheckoutItem] = useState<CatalogItem | null>(null)
+  const [authDialogOpen, setAuthDialogOpen] = useState(false)
   const [selectedGame, setSelectedGame] = useState('')
   const [selectedMapCategory, setSelectedMapCategory] = useState('')
   const url = `/api/catalog?${new URLSearchParams({ category, ...(sellerId ? { sellerId } : {}) })}`
@@ -65,7 +67,11 @@ export function CatalogBrowser({ category, sellerId }: { category: CatalogCatego
   const groupedSellers = useMemo(() => [...new Set(filtered.map((item) => item.seller.id))].length, [filtered])
 
   function beginPurchase(item: CatalogItem) {
-    if (!user || purchaseBusyId) return
+    if (purchaseBusyId) return
+    if (!user) {
+      setAuthDialogOpen(true)
+      return
+    }
     setPurchaseError('')
     setCheckoutItem(item)
   }
@@ -156,18 +162,21 @@ export function CatalogBrowser({ category, sellerId }: { category: CatalogCatego
                   </div>
                 </div>
                 {(item.map_url || item.links.length > 0) && <div className="flex flex-wrap gap-2">{item.map_url && <a href={item.map_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-full border border-primary/40 px-3 py-1.5 text-xs text-primary hover:bg-primary/10">رابط الماب<ArrowUpRight className="size-3" /></a>}{item.links.map((href, index) => <a key={`${item.id}-${index}`} href={href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-full border border-border/70 px-3 py-1.5 text-xs text-muted-foreground hover:text-primary">رابط {index + 1}<ArrowUpRight className="size-3" /></a>)}</div>}
-                {item.seller.id !== user?.id && (user ? (
-                  <Button onClick={() => beginPurchase(item)} disabled={purchaseBusyId !== null || item.price_sar === null || item.stock_quantity < 1} className="w-full">
+                {item.seller.id !== user?.id && (
+                  <Button onClick={() => beginPurchase(item)} disabled={!ready || purchaseBusyId !== null || item.price_sar === null || item.stock_quantity < 1} className="w-full">
                     {item.stock_quantity < 1 ? 'نفدت الكمية' : item.price_sar === null ? 'بانتظار تحديد السعر' : 'شراء المنتج'}
                   </Button>
-                ) : (
-                  <Link href="/login" className="inline-flex h-10 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90">سجّل الدخول للشراء</Link>
-                ))}
+                )}
               </div>
             </article>
           ))}
         </div>
       )}
+      <AuthRequiredDialog
+        open={authDialogOpen}
+        onOpenChange={setAuthDialogOpen}
+        returnTo={sellerId ? `/market/store/${sellerId}` : CATALOG_PATHS[category]}
+      />
       {checkoutItem && (
         <CatalogPurchaseCheckout
           item={checkoutItem}

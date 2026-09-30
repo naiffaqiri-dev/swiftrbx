@@ -13,6 +13,8 @@ import {
   type DeliveryType,
 } from '@/lib/mock-data'
 import { createClient } from '@/lib/supabase/client'
+import { useAuth } from '@/components/auth/mock-auth'
+import { AuthRequiredDialog } from '@/components/auth/auth-required-dialog'
 import { ProfileAvatar } from '@/components/profile-avatar'
 import { formatMoney } from '@/lib/currency'
 import { DeliveryAvailability, MarketplaceAvailabilitySummary } from '@/components/market/marketplace-availability'
@@ -31,6 +33,9 @@ type SellerProfile = {
 
 export function RobuxPurchase() {
   const router = useRouter()
+  const { user, ready } = useAuth()
+  const [authDialogOpen, setAuthDialogOpen] = useState(false)
+  const [authReturnTo, setAuthReturnTo] = useState('/market')
   const [amount, setAmount] = useState<number>(5000)
   const [delivery, setDelivery] = useState<DeliveryType>('group')
   const [selected, setSelected] = useState<string | null>(null)
@@ -96,7 +101,7 @@ export function RobuxPurchase() {
   const chosen = matched.find((s) => s.id === selected) ?? matched[0] ?? null
 
   function proceed() {
-    if (!chosen) return
+    if (!chosen || !ready) return
     const params = new URLSearchParams({
       amount: String(amount),
       delivery,
@@ -104,7 +109,13 @@ export function RobuxPurchase() {
       seller: chosen.username,
       price: String(chosen.price),
     })
-    router.push(`/checkout?${params.toString()}`)
+    const checkoutPath = `/checkout?${params.toString()}`
+    if (!user) {
+      setAuthReturnTo(checkoutPath)
+      setAuthDialogOpen(true)
+      return
+    }
+    router.push(checkoutPath)
   }
 
   return (
@@ -316,13 +327,14 @@ export function RobuxPurchase() {
             <span className="text-2xl font-bold text-primary">{formatMoney(chosen?.price ?? 0)}</span>
           </div>
         </div>
-        <Button className="w-full" size="lg" disabled={!chosen} onClick={proceed}>
+        <Button className="w-full" size="lg" disabled={!ready || !chosen} onClick={proceed}>
           المتابعة للدفع
         </Button>
         <p className="text-center text-xs text-muted-foreground">
           تُفتح تذكرة تلقائياً بعد الدفع لمتابعة التسليم مع الدعم.
         </p>
       </aside>
+      <AuthRequiredDialog open={authDialogOpen} onOpenChange={setAuthDialogOpen} returnTo={authReturnTo} />
     </div>
   )
 }
