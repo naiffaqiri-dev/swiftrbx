@@ -14,6 +14,45 @@ function tempPassword() {
   return `Swift-${Math.random().toString(36).slice(2, 8)}${Math.floor(Math.random() * 90 + 10)}`
 }
 
+export async function GET() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user || user.email?.toLowerCase() !== OWNER_EMAIL.toLowerCase()) {
+    return NextResponse.json({ error: 'غير مصرّح' }, { status: 403 })
+  }
+
+  const admin = createAdminClient()
+  const { data: actor, error: actorError } = await admin
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle()
+  if (actorError || actor?.role !== 'owner') {
+    return NextResponse.json({ error: 'غير مصرّح' }, { status: 403 })
+  }
+
+  const { data: profiles, error } = await admin
+    .from('profiles')
+    .select('id, email, balance')
+    .neq('role', 'owner')
+  if (error) {
+    return NextResponse.json({ error: 'تعذّر تحميل بيانات الموظفين' }, { status: 500 })
+  }
+
+  return NextResponse.json(
+    {
+      users: (profiles ?? []).map((profile) => ({
+        id: profile.id,
+        email: profile.email,
+        balance: Number(profile.balance ?? 0),
+      })),
+    },
+    { headers: { 'Cache-Control': 'private, no-store' } },
+  )
+}
+
 export async function POST(req: Request) {
   // التحقق أن الطالب هو المالك فقط
   const supabase = await createClient()

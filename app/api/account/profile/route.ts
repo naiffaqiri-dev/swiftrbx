@@ -13,6 +13,44 @@ function daysLeft(sinceIso: string | null, cooldownMs: number): number {
   return Math.ceil((cooldownMs - elapsed) / (24 * 60 * 60 * 1000))
 }
 
+export async function GET() {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 })
+  }
+
+  const admin = createAdminClient()
+  const { data: profile, error } = await admin
+    .from('profiles')
+    .select('id, email, balance, commission, two_factor_enabled, referral_code')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (error) {
+    return NextResponse.json({ error: 'تعذّر تحميل بيانات الحساب' }, { status: 500 })
+  }
+  if (!profile) {
+    return NextResponse.json({ error: 'الملف الشخصي غير موجود' }, { status: 404 })
+  }
+
+  return NextResponse.json(
+    {
+      profile: {
+        id: profile.id,
+        email: profile.email,
+        balance: Number(profile.balance ?? 0),
+        commission: Number(profile.commission ?? 0),
+        two_factor_enabled: !!profile.two_factor_enabled,
+        referral_code: profile.referral_code,
+      },
+    },
+    { headers: { 'Cache-Control': 'private, no-store' } },
+  )
+}
+
 export async function POST(req: Request) {
   const supabase = await createClient()
   const {
