@@ -8,7 +8,7 @@ import { SupportButton } from '@/components/support-button'
 import { SiteReviews } from '@/components/reviews/site-reviews'
 import { buttonVariants } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/server'
-import { CATALOG_CATEGORIES, CATALOG_CATEGORY_INFO, CATALOG_PATHS } from '@/lib/catalog'
+import { CATALOG_CATEGORIES, CATALOG_PATHS } from '@/lib/catalog'
 
 const features = {
   ar: [
@@ -39,6 +39,11 @@ export default async function HomePage() {
         liveSupport: 'Live support',
         activeSeller: 'Active sellers',
         imageAlt: 'SwiftRBX — your trusted Robux store',
+        sellersHeading: 'Seller stores',
+        categoriesHeading: 'Explore marketplace categories',
+        marketLink: 'Robux marketplace',
+        categoryLabels: { limited: 'Limiteds', account: 'Roblox accounts', map_item: 'Map items' },
+        storesLabel: 'SwiftRBX stores',
       }
     : {
         badge: 'متجرك الأمثل للروبكس في الشرق الأوسط',
@@ -50,6 +55,11 @@ export default async function HomePage() {
         liveSupport: 'دعم مباشر',
         activeSeller: 'بائع نشط',
         imageAlt: 'SwiftRBX — متجرك الأمثل للروبكس',
+        sellersHeading: 'متاجر البائعين',
+        categoriesHeading: 'تصفّح أقسام السوق',
+        marketLink: 'سوق الروبكس',
+        categoryLabels: { limited: 'اللميتدز', account: 'حسابات Roblox', map_item: 'أغراض المابات' },
+        storesLabel: 'متاجر SwiftRBX',
       }
   const supabase = await createClient()
   const {
@@ -158,17 +168,17 @@ export default async function HomePage() {
         <section className="mx-auto w-full max-w-6xl px-6 pb-16">
           <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
             <div>
-              <p className="text-sm font-medium text-primary">متاجر البائعين</p>
-              <h2 className="mt-1 text-2xl font-extrabold">تصفّح أقسام السوق</h2>
+              <p className="text-sm font-medium text-primary">{copy.sellersHeading}</p>
+              <h2 className="mt-1 text-2xl font-extrabold">{copy.categoriesHeading}</h2>
             </div>
-            <Link href="/market" className={buttonVariants({ variant: 'ghost', className: 'gap-2' })}>سوق الروبكس <span aria-hidden="true">←</span></Link>
+            <Link href="/market" className={buttonVariants({ variant: 'ghost', className: 'gap-2' })}>{copy.marketLink} <span aria-hidden="true">←</span></Link>
           </div>
           <div className="grid gap-4 sm:grid-cols-3">
             {CATALOG_CATEGORIES.map((category) => (
               <Link key={category} href={CATALOG_PATHS[category]} className="group flex min-h-36 flex-col justify-between rounded-2xl border border-border/60 bg-card/40 p-5 transition-colors hover:border-primary/50 hover:bg-card/70">
-                <span className="text-xs font-medium text-muted-foreground">متاجر SwiftRBX</span>
+                <span className="text-xs font-medium text-muted-foreground">{copy.storesLabel}</span>
                 <span className="flex items-center justify-between gap-3 text-lg font-bold">
-                  {CATALOG_CATEGORY_INFO[category].label}
+                  {copy.categoryLabels[category]}
                   <span className="text-primary transition-transform group-hover:-translate-x-1" aria-hidden="true">←</span>
                 </span>
               </Link>

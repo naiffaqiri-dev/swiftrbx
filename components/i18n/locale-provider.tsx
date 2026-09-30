@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react'
+import { useRouter } from 'next/navigation'
 import { Languages } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -11,6 +12,9 @@ type Dict = Record<string, { ar: string; en: string }>
 // Shared navigation and interface strings used across pages.
 const DICT: Dict = {
   'nav.market': { ar: 'السوق', en: 'Market' },
+  'nav.category.limited': { ar: 'اللميتدز', en: 'Limiteds' },
+  'nav.category.account': { ar: 'حسابات Roblox', en: 'Roblox accounts' },
+  'nav.category.map_item': { ar: 'أغراض المابات', en: 'Map items' },
   'nav.tickets': { ar: 'التذاكر', en: 'Tickets' },
   'nav.dashboard': { ar: 'لوحة التحكم', en: 'Dashboard' },
   'auth.login': { ar: 'تسجيل الدخول', en: 'Sign in' },
@@ -64,17 +68,20 @@ export function LocaleProvider({
   initialLang: Lang
 }) {
   const [lang, setLangState] = useState<Lang>(initialLang)
+  const router = useRouter()
 
   useEffect(() => {
-    const dir = lang === 'ar' ? 'rtl' : 'ltr'
     document.documentElement.lang = lang
-    document.documentElement.dir = dir
-    const secure = window.location.protocol === 'https:' ? '; Secure' : ''
-    document.cookie = `${STORAGE_KEY}=${lang}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`
+    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr'
   }, [lang])
 
-  const setLang = useCallback((l: Lang) => setLangState(l), [])
-  const toggle = useCallback(() => setLangState((l) => (l === 'ar' ? 'en' : 'ar')), [])
+  const setLang = useCallback((nextLang: Lang) => {
+    const secure = window.location.protocol === 'https:' ? '; Secure' : ''
+    document.cookie = `${STORAGE_KEY}=${nextLang}; Path=/; Max-Age=31536000; SameSite=Lax${secure}`
+    setLangState(nextLang)
+    router.refresh()
+  }, [router])
+  const toggle = useCallback(() => setLang(lang === 'ar' ? 'en' : 'ar'), [lang, setLang])
   const t = useCallback((key: string) => DICT[key]?.[lang] ?? key, [lang])
 
   return (
