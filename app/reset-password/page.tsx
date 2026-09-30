@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { AuthShell } from '@/components/auth/auth-shell'
 import { createClient } from '@/lib/supabase/client'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 
@@ -154,9 +154,9 @@ export default function ResetPasswordPage() {
           <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-3 text-sm text-destructive">
             انتهت صلاحية رابط الاستعادة أو أنه غير صالح. يرجى طلب رابط جديد.
           </p>
-          <Button asChild variant="secondary" className="w-full">
-            <Link href="/forgot-password">طلب رابط جديد</Link>
-          </Button>
+          <Link href="/forgot-password" className={buttonVariants({ variant: 'secondary', className: 'w-full' })}>
+            طلب رابط جديد
+          </Link>
         </div>
       ) : (
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">

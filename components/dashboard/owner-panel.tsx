@@ -10,6 +10,7 @@ import { TicketsList } from './tickets-list'
 import { CouponManager } from './coupon-manager'
 import { ReviewsAdmin } from './reviews-admin'
 import { MapCategoryManager } from './map-category-manager'
+import { AdminUserActions } from './admin-user-actions'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -97,12 +98,14 @@ function UserTable({
   onChangeRole,
   onChangePermissions,
   onRemove,
+  onBalanceUpdated,
 }: {
   rows: ManagedUser[]
   onToggleActive: (u: ManagedUser) => void
   onChangeRole: (u: ManagedUser, role: Role) => void
   onChangePermissions: (u: ManagedUser, permissions: CatalogCategory[]) => void
   onRemove: (u: ManagedUser) => void
+  onBalanceUpdated: () => Promise<void>
 }) {
   if (rows.length === 0) {
     return <p className="rounded-xl border border-border/60 bg-card/40 p-8 text-center text-sm text-muted-foreground">لا يوجد سجلات</p>
@@ -150,6 +153,7 @@ function UserTable({
             </div>
             {u.role !== 'owner' && <SellerPermissionEditor user={u} onChange={onChangePermissions} />}
             <div className="mt-3 flex flex-wrap gap-2">
+              <AdminUserActions user={u} onBalanceUpdated={onBalanceUpdated} />
               <button
                 type="button"
                 onClick={() => onRemove(u)}
@@ -208,14 +212,17 @@ function UserTable({
                 </button>
               </td>
               <td className="p-3">
-                <button
+                <div className="flex flex-wrap items-center gap-2">
+                  <AdminUserActions user={u} onBalanceUpdated={onBalanceUpdated} />
+                  <button
                   onClick={() => onRemove(u)}
                   disabled={u.role === 'owner'}
                   className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-destructive/90 transition-colors hover:bg-destructive/10 disabled:opacity-40"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   حذف
-                </button>
+                  </button>
+                </div>
               </td>
             </tr>
           ))}
@@ -227,7 +234,7 @@ function UserTable({
 }
 
 export function OwnerPanel() {
-  const { users, addStaff, updateUser, removeUser } = useAuth()
+  const { users, addStaff, updateUser, removeUser, refreshUsers } = useAuth()
   const [active, setActive] = useState('overview')
 
   const [form, setForm] = useState<{ username: string; email: string; role: Role }>({
@@ -304,6 +311,7 @@ export function OwnerPanel() {
               onChangeRole={changeRole}
               onChangePermissions={changePermissions}
               onRemove={remove}
+              onBalanceUpdated={refreshUsers}
             />
           </div>
         </div>
@@ -318,14 +326,14 @@ export function OwnerPanel() {
       {active === 'sellers' && (
         <div className="space-y-4">
           <h2 className="text-sm font-bold text-muted-foreground">كل الموردين ({sellers.length})</h2>
-          <UserTable rows={sellers} onToggleActive={toggleActive} onChangeRole={changeRole} onChangePermissions={changePermissions} onRemove={remove} />
+          <UserTable rows={sellers} onToggleActive={toggleActive} onChangeRole={changeRole} onChangePermissions={changePermissions} onRemove={remove} onBalanceUpdated={refreshUsers} />
         </div>
       )}
 
       {active === 'support' && (
         <div className="space-y-4">
           <h2 className="text-sm font-bold text-muted-foreground">فريق الدعم الفني ({support.length})</h2>
-          <UserTable rows={support} onToggleActive={toggleActive} onChangeRole={changeRole} onChangePermissions={changePermissions} onRemove={remove} />
+          <UserTable rows={support} onToggleActive={toggleActive} onChangeRole={changeRole} onChangePermissions={changePermissions} onRemove={remove} onBalanceUpdated={refreshUsers} />
         </div>
       )}
 
@@ -408,7 +416,7 @@ export function OwnerPanel() {
 
           <div className="space-y-4">
             <h2 className="text-sm font-bold text-muted-foreground">كل الحسابات ({users.length})</h2>
-            <UserTable rows={users} onToggleActive={toggleActive} onChangeRole={changeRole} onChangePermissions={changePermissions} onRemove={remove} />
+            <UserTable rows={users} onToggleActive={toggleActive} onChangeRole={changeRole} onChangePermissions={changePermissions} onRemove={remove} onBalanceUpdated={refreshUsers} />
           </div>
         </div>
       )}

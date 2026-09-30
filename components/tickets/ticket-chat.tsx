@@ -59,7 +59,7 @@ export function TicketChat({ ticketId }: { ticketId: string }) {
 
   function send(e: React.FormEvent) {
     e.preventDefault()
-    if (!body.trim() || !user) return
+    if (!body.trim() || !user || !ticket) return
     addMessage(ticket.id, { author: user.username, role: user.role, body: body.trim() })
     setBody('')
   }

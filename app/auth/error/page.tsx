@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import { AlertTriangle } from 'lucide-react'
 import { AuthShell } from '@/components/auth/auth-shell'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 
 export default function AuthErrorPage() {
   return (
@@ -26,12 +26,12 @@ export default function AuthErrorPage() {
           جديد لإعادة تعيين كلمة المرور.
         </p>
         <div className="flex w-full flex-col gap-2">
-          <Button asChild className="w-full">
-            <Link href="/login">تسجيل الدخول</Link>
-          </Button>
-          <Button asChild variant="secondary" className="w-full">
-            <Link href="/forgot-password">طلب رابط استعادة جديد</Link>
-          </Button>
+          <Link href="/login" className={buttonVariants({ className: 'w-full' })}>
+            تسجيل الدخول
+          </Link>
+          <Link href="/forgot-password" className={buttonVariants({ variant: 'secondary', className: 'w-full' })}>
+            طلب رابط استعادة جديد
+          </Link>
         </div>
       </div>
     </AuthShell>

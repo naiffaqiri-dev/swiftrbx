@@ -2,7 +2,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { BrandLogo } from '@/components/brand-logo'
-import { Button } from '@/components/ui/button'
+import { buttonVariants } from '@/components/ui/button'
 
 export function AuthShell({
   title,
@@ -41,9 +41,9 @@ export function AuthShell({
         <div className="mx-auto flex w-full max-w-sm flex-col gap-8">
           <div className="flex items-center justify-between">
             <BrandLogo />
-            <Button variant="ghost" size="sm" asChild>
-              <Link href="/">الرئيسية</Link>
-            </Button>
+            <Link href="/" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
+              الرئيسية
+            </Link>
           </div>
 
           <div className="flex flex-col gap-2">
