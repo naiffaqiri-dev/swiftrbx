@@ -720,7 +720,7 @@ export function TicketThread({
                   setActionError('اختر صورة بصيغة PNG أو JPG أو WEBP أو GIF أو AVIF')
                   return
                 }
-                if (file.size > 8 * 1024 * 1024) {
+                if (file.size === 0 || file.size > 8 * 1024 * 1024) {
                   setActionError('حجم الصورة يجب ألا يتجاوز 8 ميغابايت')
                   return
                 }

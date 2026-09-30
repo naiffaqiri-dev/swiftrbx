@@ -17,14 +17,20 @@ type RouteContext = { params: Promise<{ ticketId: string }> }
 async function authorizeTicket(ticketId: string, userId: string) {
   const admin = createAdminClient()
   const [{ data: ticket }, { data: profile }] = await Promise.all([
-    admin.from('tickets').select('id, buyer_id, seller_id').eq('id', ticketId).maybeSingle(),
-    admin.from('profiles').select('role').eq('id', userId).maybeSingle(),
+    admin.from('tickets').select('id, type, buyer_id, seller_id').eq('id', ticketId).maybeSingle(),
+    admin.from('profiles').select('role, active').eq('id', userId).maybeSingle(),
   ])
 
   const isParticipant = ticket?.buyer_id === userId || ticket?.seller_id === userId
-  const isStaff = ['owner', 'admin', 'support'].includes(profile?.role ?? '')
+  const isPrivilegedStaff = ['owner', 'admin'].includes(profile?.role ?? '')
+  const isSupportStaff = profile?.role === 'support' && ['support', 'dispute'].includes(ticket?.type ?? '')
+  const isActive = profile?.active !== false
 
-  return { admin, ticket, authorized: Boolean(ticket && (isParticipant || isStaff)) }
+  return {
+    admin,
+    ticket,
+    authorized: Boolean(ticket && isActive && (isParticipant || isPrivilegedStaff || isSupportStaff)),
+  }
 }
 
 export async function POST(request: NextRequest, { params }: RouteContext) {
