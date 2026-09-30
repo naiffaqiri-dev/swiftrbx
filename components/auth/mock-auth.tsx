@@ -47,21 +47,28 @@ type ProfileRow = {
   username: string
   display_name: string | null
   avatar_url: string | null
-  email: string | null
   role: Role
-  balance: string | number
-  active: boolean
   rating: string | number
   rating_count: number
   sales: number
-  commission: string | number
-  referral_code: string | null
-  two_factor_enabled: boolean | null
-  onboarded: boolean | null
-  username_changed_at: string | null
-  display_name_changed_at: string | null
+  active: boolean
   created_at: string
   seller_permissions?: unknown
+}
+
+type OwnPrivateProfile = {
+  id: string
+  email: string | null
+  balance: string | number
+  commission: string | number
+  two_factor_enabled: boolean | null
+  referral_code: string | null
+}
+
+type AdminPrivateProfile = {
+  id: string
+  email: string | null
+  balance: string | number
 }
 
 function mapRow(r: ProfileRow): ManagedUser {
@@ -72,20 +79,13 @@ function mapRow(r: ProfileRow): ManagedUser {
     username: r.username,
     displayName: r.display_name ?? undefined,
     avatarUrl: r.avatar_url ?? undefined,
-    email: r.email ?? undefined,
     role: r.role,
-    balance: Number(r.balance ?? 0),
+    balance: 0,
     active: r.active,
     createdAt: Date.parse(r.created_at) || Date.now(),
     ratingCount: count,
     ratingSum: Math.round(avg * count),
     totalSales: r.sales ?? 0,
-    commission: Number(r.commission ?? 0),
-    referralCode: r.referral_code ?? undefined,
-    twoFactorEnabled: !!r.two_factor_enabled,
-    onboarded: r.onboarded ?? true,
-    usernameChangedAt: r.username_changed_at ? Date.parse(r.username_changed_at) : null,
-    displayNameChangedAt: r.display_name_changed_at ? Date.parse(r.display_name_changed_at) : null,
     sellerPermissions: normalizeSellerPermissions(r.seller_permissions),
   }
 }
@@ -122,7 +122,7 @@ type AuthContextValue = {
 const AuthContext = createContext<AuthContextValue | null>(null)
 
 const PROFILE_COLUMNS =
-  'id, username, display_name, avatar_url, email, role, seller_permissions, balance, active, rating, rating_count, sales, commission, referral_code, two_factor_enabled, onboarded, username_changed_at, display_name_changed_at, created_at'
+  'id, username, display_name, avatar_url, role, seller_permissions, rating, rating_count, sales, active, created_at'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = useMemo(() => createClient(), [])
@@ -130,12 +130,71 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null)
   const [ready, setReady] = useState(false)
 
-  const refreshUsers = useCallback(async () => {
-    const { data } = await supabase
+  const refreshUsers = useCallback(async (currentUserId?: string) => {
+    let authenticatedUserId = currentUserId
+    if (!authenticatedUserId) {
+      const {
+        data: { user: currentUser },
+      } = await supabase.auth.getUser()
+      authenticatedUserId = currentUser?.id
+    }
+    if (!authenticatedUserId) {
+      setUsers([])
+      return
+    }
+
+    const { data, error } = await supabase
       .from('profiles')
       .select(PROFILE_COLUMNS)
       .order('created_at', { ascending: true })
-    if (data) setUsers((data as ProfileRow[]).map(mapRow))
+    if (error || !data) {
+      setUsers([])
+      return
+    }
+
+    const publicUsers = (data as ProfileRow[]).map(mapRow)
+    const ownProfileResponse = await fetch('/api/account/profile', { cache: 'no-store' }).catch(() => null)
+    let ownProfile: OwnPrivateProfile | null = null
+    if (ownProfileResponse?.ok) {
+      const payload = await ownProfileResponse.json().catch(() => null)
+      if (payload?.profile?.id === authenticatedUserId) ownProfile = payload.profile as OwnPrivateProfile
+    }
+
+    const currentPublicProfile = publicUsers.find((profile) => profile.id === authenticatedUserId)
+    let adminProfiles = new Map<string, AdminPrivateProfile>()
+    if (currentPublicProfile?.role === 'owner') {
+      const adminResponse = await fetch('/api/admin/staff', { cache: 'no-store' }).catch(() => null)
+      if (adminResponse?.ok) {
+        const payload = await adminResponse.json().catch(() => null)
+        adminProfiles = new Map(
+          ((payload?.users ?? []) as AdminPrivateProfile[]).map((profile) => [profile.id, profile] as const),
+        )
+      }
+    }
+
+    setUsers(
+      publicUsers.map((profile) => {
+        if (profile.id === authenticatedUserId && ownProfile) {
+          return {
+            ...profile,
+            email: ownProfile.email ?? undefined,
+            balance: Number(ownProfile.balance ?? 0),
+            commission: Number(ownProfile.commission ?? 0),
+            referralCode: ownProfile.referral_code ?? undefined,
+            twoFactorEnabled: !!ownProfile.two_factor_enabled,
+          }
+        }
+
+        const adminProfile = adminProfiles.get(profile.id)
+        return adminProfile
+          ? {
+              ...profile,
+              email: adminProfile.email ?? undefined,
+              balance: Number(adminProfile.balance ?? 0),
+            }
+          : profile
+      }),
+    )
   }, [supabase])
 
   useEffect(() => {
@@ -147,7 +206,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } = await supabase.auth.getUser()
       if (!activeSub) return
       setUserId(user?.id ?? null)
-      if (user) await refreshUsers()
+      if (user) await refreshUsers(user.id)
       setReady(true)
     }
     boot()
@@ -157,7 +216,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUserId(session?.user?.id ?? null)
       if (session?.user) {
-        refreshUsers()
+        refreshUsers(session.user.id)
       } else {
         setUsers([])
       }
@@ -262,7 +321,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const dbPatch: Record<string, unknown> = {}
-      if (patch.email !== undefined) dbPatch.email = patch.email
       if (patch.active !== undefined) dbPatch.active = patch.active
       if (patch.role !== undefined) dbPatch.role = patch.role
       if (Object.keys(dbPatch).length > 0) await supabase.from('profiles').update(dbPatch).eq('id', id)
