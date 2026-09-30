@@ -99,6 +99,7 @@ type AuthContextValue = {
   user: ManagedUser | null
   users: ManagedUser[]
   ready: boolean
+  refreshUsers: () => Promise<void>
   login: (identifier: string, password: string) => Promise<{ error?: string }>
   register: (data: {
     username: string
@@ -263,7 +264,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (patch.email !== undefined) dbPatch.email = patch.email
       if (patch.active !== undefined) dbPatch.active = patch.active
       if (patch.role !== undefined) dbPatch.role = patch.role
-      if (patch.balance !== undefined) dbPatch.balance = patch.balance
       if (Object.keys(dbPatch).length > 0) await supabase.from('profiles').update(dbPatch).eq('id', id)
       await refreshUsers()
     },
@@ -295,6 +295,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       user,
       users,
       ready,
+      refreshUsers,
       login,
       register,
       logout,
@@ -303,7 +304,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       removeUser,
       rateUser,
     }),
-    [user, users, ready, login, register, logout, addStaff, updateUser, removeUser, rateUser],
+    [user, users, ready, refreshUsers, login, register, logout, addStaff, updateUser, removeUser, rateUser],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
