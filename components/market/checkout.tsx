@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/components/auth/mock-auth'
 import { AuthRequiredDialog } from '@/components/auth/auth-required-dialog'
-import { DELIVERY_LABELS, applyCoupon, type DeliveryType, type Coupon } from '@/lib/mock-data'
+import { DELIVERY_LABELS, type DeliveryType } from '@/lib/mock-data'
 import { randomBank, type Bank } from '@/lib/banks'
 import { formatSar, formatUsd, sarToUsd } from '@/lib/currency'
 import { createClient } from '@/lib/supabase/client'
@@ -26,6 +26,7 @@ import {
 } from 'lucide-react'
 
 type PayMethod = 'balance' | 'bank_transfer'
+type AppliedCoupon = { code: string; discount: number; subtotal: number }
 
 export function Checkout() {
   const router = useRouter()
@@ -42,8 +43,9 @@ export function Checkout() {
   const [method, setMethod] = useState<PayMethod>('balance')
   const [useBalance, setUseBalance] = useState(true)
   const [couponInput, setCouponInput] = useState('')
-  const [coupon, setCoupon] = useState<{ coupon: Coupon; discount: number } | null>(null)
+  const [coupon, setCoupon] = useState<AppliedCoupon | null>(null)
   const [couponError, setCouponError] = useState('')
+  const [validatingCoupon, setValidatingCoupon] = useState(false)
 
   const [bank] = useState<Bank>(() => randomBank())
   const [copied, setCopied] = useState<string | null>(null)
@@ -58,7 +60,7 @@ export function Checkout() {
   const balance = user?.balance ?? 0
 
   const totals = useMemo(() => {
-    const discount = coupon?.discount ?? 0
+    const discount = coupon?.subtotal === subtotal ? coupon.discount : 0
     const afterCoupon = Math.max(0, +(subtotal - discount).toFixed(2))
     const balanceUsed = useBalance ? Math.min(balance, afterCoupon) : 0
     const toPay = +(afterCoupon - balanceUsed).toFixed(2)
@@ -67,15 +69,24 @@ export function Checkout() {
 
   const needsBank = totals.toPay > 0
 
-  function checkCoupon() {
+  async function checkCoupon() {
     setCouponError('')
-    const res = applyCoupon(couponInput, subtotal)
-    if (!res) {
-      setCoupon(null)
-      setCouponError('كود الخصم أو الإحالة غير صالح')
-      return
+    setCoupon(null)
+    setValidatingCoupon(true)
+    try {
+      const response = await fetch('/api/coupons/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: couponInput, subtotal }),
+      })
+      const body = await response.json()
+      if (!response.ok) throw new Error(body.error ?? 'تعذّر التحقق من الكوبون')
+      setCoupon({ code: body.code, discount: Number(body.discount), subtotal })
+    } catch (cause) {
+      setCouponError(cause instanceof Error ? cause.message : 'تعذّر التحقق من الكوبون')
+    } finally {
+      setValidatingCoupon(false)
     }
-    setCoupon(res)
   }
 
   async function copy(text: string, key: string) {
@@ -131,7 +142,7 @@ export function Checkout() {
           delivery,
           robloxUsername: robloxUsername.trim(),
           useBalance,
-          couponCode: coupon?.coupon.code ?? null,
+          couponCode: coupon?.subtotal === subtotal ? coupon.code : null,
           paymentMethod: needsBank ? 'bank_transfer' : 'balance',
           bankKey: needsBank ? bank.key : null,
           receiptUrl: needsBank ? receiptUrl : null,
@@ -330,15 +341,15 @@ export function Checkout() {
           </h2>
           <div className="flex gap-2">
             <Input value={couponInput} onChange={(e) => setCouponInput(e.target.value)} placeholder="أدخل الكود" />
-            <Button variant="secondary" onClick={checkCoupon}>
-              تطبيق
+            <Button variant="secondary" onClick={() => void checkCoupon()} disabled={validatingCoupon || !couponInput.trim()}>
+              {validatingCoupon ? <Loader2 className="size-4 animate-spin" /> : 'تطبيق'}
             </Button>
           </div>
           {couponError && <p className="mt-2 text-xs text-destructive">{couponError}</p>}
-          {coupon && (
+          {coupon?.subtotal === subtotal && (
             <p className="mt-2 flex items-center gap-1 text-xs text-primary">
               <CheckCircle2 className="h-3.5 w-3.5" />
-              تم تطبيق {coupon.coupon.code} — خصم {formatSar(coupon.discount)}
+              تم تطبيق {coupon.code} — خصم {formatSar(coupon.discount)}
             </p>
           )}
         </div>

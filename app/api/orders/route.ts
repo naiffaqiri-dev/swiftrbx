@@ -53,15 +53,34 @@ export async function POST(req: Request) {
 
   const price = +((requested / 1000) * Number(offer.rate)).toFixed(2)
 
-  // Coupon (server-side).
-  let discount = 0
-  const coupons: Record<string, { type: "percent" | "flat"; value: number }> = {
-    SWIFT10: { type: "percent", value: 10 },
-    WELCOME5: { type: "flat", value: 5 },
+  const normalizedCouponCode = typeof couponCode === "string" ? couponCode.trim().toUpperCase() : null
+  if (couponCode !== null && couponCode !== undefined &&
+      (typeof couponCode !== "string" || !/^[A-Z0-9_-]{3,32}$/i.test(couponCode.trim()))) {
+    return NextResponse.json({ error: "رمز الكوبون غير صالح" }, { status: 400 })
   }
-  if (couponCode && coupons[String(couponCode).toUpperCase()]) {
-    const c = coupons[String(couponCode).toUpperCase()]
-    discount = c.type === "percent" ? +(price * (c.value / 100)).toFixed(2) : Math.min(c.value, price)
+
+  let discount = 0
+  if (normalizedCouponCode) {
+    const { data, error: couponError } = await admin.rpc("redeem_coupon", {
+      p_code: normalizedCouponCode,
+      p_user_id: user.id,
+      p_subtotal: price,
+    })
+    if (couponError) {
+      const reason = couponError.message ?? ""
+      const message = reason.includes("COUPON_LIMIT_REACHED")
+        ? "انتهت مرات استخدام هذا الكوبون"
+        : reason.includes("COUPON_USER_LIMIT_REACHED")
+          ? "استنفدت مرات استخدامك لهذا الكوبون"
+          : reason.includes("COUPON_NOT_ELIGIBLE")
+            ? "هذا الكوبون غير متاح لحسابك أو لهذه القيمة"
+            : "الكوبون غير صالح أو غير متاح"
+      return NextResponse.json({ error: message }, { status: 409 })
+    }
+    discount = Number(data)
+    if (!Number.isFinite(discount) || discount < 0 || discount > price) {
+      return NextResponse.json({ error: "تعذّر التحقق من قيمة الكوبون" }, { status: 409 })
+    }
   }
   const afterCoupon = Math.max(0, +(price - discount).toFixed(2))
 
@@ -89,7 +108,7 @@ export async function POST(req: Request) {
       roblox_username: robloxUsername.trim(),
       delivery_method: delivery,
       price_sar: afterCoupon,
-      coupon_code: couponCode,
+      coupon_code: normalizedCouponCode,
       payment_method: paidFully ? "balance" : paymentMethod,
       bank_key: paidFully ? null : bankKey,
       receipt_url: receiptUrl,
@@ -100,6 +119,28 @@ export async function POST(req: Request) {
     .single()
 
   if (error || !order) return NextResponse.json({ error: "تعذّر إنشاء الطلب" }, { status: 500 })
+
+  if (normalizedCouponCode) {
+    const { error: redemptionError } = await admin.rpc("redeem_coupon", {
+      p_code: normalizedCouponCode,
+      p_user_id: user.id,
+      p_subtotal: price,
+      p_order_id: order.id,
+      p_expected_discount: discount,
+    })
+    if (redemptionError) {
+      await admin.from("orders").delete().eq("id", order.id).eq("buyer_id", user.id)
+      const reason = redemptionError.message ?? ""
+      const message = reason.includes("COUPON_LIMIT_REACHED")
+        ? "انتهت مرات استخدام هذا الكوبون قبل إتمام الطلب"
+        : reason.includes("COUPON_USER_LIMIT_REACHED")
+          ? "استنفدت مرات استخدامك لهذا الكوبون"
+          : reason.includes("COUPON_NOT_ELIGIBLE")
+            ? "لم يعد هذا الكوبون متاحاً لحسابك أو لهذه القيمة"
+            : "تغيرت صلاحية الكوبون؛ أعد التحقق منه ثم حاول مجدداً"
+      return NextResponse.json({ error: message }, { status: 409 })
+    }
+  }
 
   // Deduct balance immediately if used.
   if (balanceUsed > 0) {
