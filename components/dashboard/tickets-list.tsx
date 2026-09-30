@@ -7,6 +7,7 @@ import { StarInput } from '@/components/reviews/star-rating'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { ProfileAvatar } from '@/components/profile-avatar'
 import {
   Loader2,
   MessageSquare,
@@ -41,6 +42,12 @@ type MessageRow = {
   sender_id: string
   body: string
   created_at: string
+}
+
+type SenderProfile = {
+  id: string
+  username: string
+  avatar_url: string | null
 }
 
 type OrderRow = {
@@ -278,6 +285,7 @@ export function TicketThread({
 }) {
   const { user } = useAuth()
   const [messages, setMessages] = useState<MessageRow[]>([])
+  const [senderProfiles, setSenderProfiles] = useState<Record<string, SenderProfile>>({})
   const [ticket, setTicket] = useState<TicketRow | null>(null)
   const [order, setOrder] = useState<OrderRow | null>(null)
   const [sellerName, setSellerName] = useState<string>('')
@@ -298,8 +306,21 @@ export function TicketThread({
       supabase.from('ticket_messages').select('*').eq('ticket_id', ticketId).order('created_at', { ascending: true }),
     ])
     const tk = (t.data as TicketRow) ?? null
+    const loadedMessages = (m.data ?? []) as MessageRow[]
     setTicket(tk)
-    setMessages((m.data ?? []) as MessageRow[])
+    setMessages(loadedMessages)
+
+    const senderIds = [...new Set(loadedMessages.map((message) => message.sender_id))]
+    if (senderIds.length > 0) {
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, username, avatar_url')
+        .in('id', senderIds)
+      setSenderProfiles(Object.fromEntries((profiles ?? []).map((profile) => [profile.id, profile as SenderProfile])))
+    } else {
+      setSenderProfiles({})
+    }
+
     if (tk?.order_id) {
       const { data: o } = await supabase
         .from('orders')
@@ -338,9 +359,18 @@ export function TicketThread({
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'ticket_messages', filter: `ticket_id=eq.${ticketId}` },
         (payload) => {
-          setMessages((prev) =>
-            prev.some((x) => x.id === (payload.new as MessageRow).id) ? prev : [...prev, payload.new as MessageRow],
-          )
+          const message = payload.new as MessageRow
+          setMessages((prev) => (prev.some((x) => x.id === message.id) ? prev : [...prev, message]))
+          void supabase
+            .from('profiles')
+            .select('id, username, avatar_url')
+            .eq('id', message.sender_id)
+            .maybeSingle()
+            .then(({ data }) => {
+              if (data) {
+                setSenderProfiles((prev) => ({ ...prev, [data.id]: data as SenderProfile }))
+              }
+            })
           setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
         },
       )
@@ -471,18 +501,35 @@ export function TicketThread({
           ) : (
             messages.map((m) => {
               const mine = m.sender_id === user?.id
+              const profile = senderProfiles[m.sender_id]
+              const senderName = profile?.username ?? (mine ? user?.username : undefined) ?? 'مستخدم'
+              const avatarUrl = profile?.avatar_url ?? (mine ? user?.avatarUrl : undefined)
               return (
-                <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                  <div
-                    className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-sm ${
-                      mine ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
-                    }`}
-                  >
-                    {m.body}
-                    <div className={`mt-1 text-[10px] ${mine ? 'text-primary-foreground/70' : 'text-muted-foreground'}`}>
-                      {new Date(m.created_at).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}
+                <div key={m.id} className={`flex items-end gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
+                  {mine && (
+                    <div className="max-w-[80%] rounded-2xl bg-primary px-3.5 py-2 text-sm text-primary-foreground">
+                      <div className="mb-1 text-xs font-semibold">{senderName}</div>
+                      <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                      <div className="mt-1 text-[10px] text-primary-foreground/70">
+                        {new Date(m.created_at).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
                     </div>
-                  </div>
+                  )}
+                  <ProfileAvatar
+                    src={avatarUrl}
+                    name={senderName}
+                    alt={`الصورة الشخصية لـ ${senderName}`}
+                    className="size-8 border border-border/60 text-[10px]"
+                  />
+                  {!mine && (
+                    <div className="max-w-[80%] rounded-2xl bg-muted px-3.5 py-2 text-sm text-foreground">
+                      <div className="mb-1 text-xs font-semibold">{senderName}</div>
+                      <p className="whitespace-pre-wrap break-words">{m.body}</p>
+                      <div className="mt-1 text-[10px] text-muted-foreground">
+                        {new Date(m.created_at).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )
             })
