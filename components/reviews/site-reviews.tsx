@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/components/auth/mock-auth'
+import { useLocale } from '@/components/i18n/locale-provider'
 import { createClient } from '@/lib/supabase/client'
 import { StarDisplay, StarInput } from './star-rating'
 import { Button } from '@/components/ui/button'
@@ -17,6 +18,8 @@ type SiteReview = {
 
 export function SiteReviews({ compact = false }: { compact?: boolean }) {
   const { user } = useAuth()
+  const { lang } = useLocale()
+  const isEnglish = lang === 'en'
   const [reviews, setReviews] = useState<SiteReview[]>([])
   const [loading, setLoading] = useState(true)
   const [stars, setStars] = useState(0)
@@ -69,20 +72,20 @@ export function SiteReviews({ compact = false }: { compact?: boolean }) {
       <div className="flex flex-col items-center gap-2 text-center">
         <h2 className="flex items-center gap-2 text-2xl font-bold text-balance">
           <MessageSquareQuote className="h-6 w-6 text-primary" />
-          آراء العملاء
+          {isEnglish ? 'Customer reviews' : 'آراء العملاء'}
         </h2>
         {reviews.length > 0 && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <StarDisplay value={avg} size={18} />
             <span className="font-bold text-foreground">{avg}</span>
-            <span>من {reviews.length} تقييم</span>
+            <span>{isEnglish ? `${reviews.length} reviews` : `من ${reviews.length} تقييم`}</span>
           </div>
         )}
       </div>
 
       {user && (
         <div className="mx-auto w-full max-w-lg space-y-3 rounded-2xl border border-border/60 bg-card/40 p-5">
-          <p className="text-sm font-medium">شاركنا تجربتك مع الموقع</p>
+          <p className="text-sm font-medium">{isEnglish ? 'Share your experience' : 'شاركنا تجربتك مع الموقع'}</p>
           <div className="flex justify-center">
             <StarInput value={stars} onChange={setStars} />
           </div>
@@ -91,22 +94,23 @@ export function SiteReviews({ compact = false }: { compact?: boolean }) {
             onChange={(e) => setComment(e.target.value)}
             rows={3}
             maxLength={500}
-            placeholder="اكتب رأيك في خدمتنا…"
+            placeholder={isEnglish ? 'Tell us what you think…' : 'اكتب رأيك في خدمتنا…'}
+            aria-label={isEnglish ? 'Your review' : 'رأيك في الخدمة'}
             className="w-full resize-none rounded-lg border border-border/60 bg-background p-3 text-sm outline-none focus:border-primary/60"
           />
           <Button onClick={submit} disabled={saving || stars < 1 || !comment.trim()} className="w-full gap-2">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-            {done ? 'شكراً لتقييمك!' : 'إرسال التقييم'}
+            {done ? (isEnglish ? 'Thanks for your review!' : 'شكراً لتقييمك!') : (isEnglish ? 'Submit review' : 'إرسال التقييم')}
           </Button>
         </div>
       )}
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> جارٍ التحميل…
+          <Loader2 className="h-4 w-4 animate-spin" /> {isEnglish ? 'Loading reviews…' : 'جارٍ التحميل…'}
         </div>
       ) : reviews.length === 0 ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">لا توجد تقييمات بعد — كن أول من يقيّم!</p>
+        <p className="py-6 text-center text-sm text-muted-foreground">{isEnglish ? 'No reviews yet — be the first to leave one!' : 'لا توجد تقييمات بعد — كن أول من يقيّم!'}</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {reviews.map((r) => (
@@ -117,7 +121,7 @@ export function SiteReviews({ compact = false }: { compact?: boolean }) {
               </div>
               <p className="text-sm leading-relaxed text-muted-foreground">{r.comment}</p>
               <span className="mt-auto text-[11px] text-muted-foreground/70">
-                {new Date(r.created_at).toLocaleDateString('ar')}
+                {new Date(r.created_at).toLocaleDateString(isEnglish ? 'en' : 'ar')}
               </span>
             </div>
           ))}

@@ -9,7 +9,7 @@ import { LogoutConfirmation } from '@/components/auth/logout-confirmation'
 import { useAuth, ROLE_LABELS } from '@/components/auth/mock-auth'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { LanguageToggle, useLocale } from '@/components/i18n/locale-provider'
-import { CATALOG_CATEGORIES, CATALOG_CATEGORY_INFO, CATALOG_PATHS } from '@/lib/catalog'
+import { CATALOG_CATEGORIES, CATALOG_PATHS } from '@/lib/catalog'
 
 export function SiteHeader() {
   const { user, ready, logout } = useAuth()
@@ -34,7 +34,7 @@ export function SiteHeader() {
               </Link>
               {CATALOG_CATEGORIES.map((category) => (
                 <Link key={category} href={CATALOG_PATHS[category]} className={buttonVariants({ variant: 'ghost', size: 'sm', className: 'px-2 text-xs' })}>
-                  {CATALOG_CATEGORY_INFO[category].label}
+                  {t(`nav.category.${category}`)}
                 </Link>
               ))}
               <Link href="/tickets" className={buttonVariants({ variant: 'ghost', className: 'gap-2' })}>
@@ -83,7 +83,7 @@ export function SiteHeader() {
               <LanguageToggle />
               {CATALOG_CATEGORIES.map((category) => (
                 <Link key={category} href={CATALOG_PATHS[category]} className={buttonVariants({ variant: 'ghost', size: 'sm', className: 'px-2 text-xs' })}>
-                  {CATALOG_CATEGORY_INFO[category].label}
+                  {t(`nav.category.${category}`)}
                 </Link>
               ))}
               <Link href="/login" className={buttonVariants({ variant: 'ghost' })}>
