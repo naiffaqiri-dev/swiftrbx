@@ -472,9 +472,9 @@ export function TicketThread({
   }, [ticketId, load])
 
   function selectAttachment(file: File) {
-    const supportedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif']
+    const supportedTypes = ['image/png', 'image/jpeg', 'image/webp']
     if (!supportedTypes.includes(file.type)) {
-      setActionError('اختر صورة بصيغة PNG أو JPG أو WEBP أو GIF أو AVIF')
+      setActionError('اختر صورة بصيغة PNG أو JPG أو WEBP')
       return
     }
     if (file.size === 0 || file.size > 8 * 1024 * 1024) {
@@ -818,7 +818,7 @@ export function TicketThread({
             <input
               ref={attachmentInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif,image/avif"
+              accept="image/png,image/jpeg,image/webp"
               className="sr-only"
               aria-label="اختر صورة لإرفاقها بالتذكرة"
               onChange={(event) => {
