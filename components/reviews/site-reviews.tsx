@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
+import useSWR from 'swr'
 import { useAuth } from '@/components/auth/mock-auth'
 import { useLocale } from '@/components/i18n/locale-provider'
 import { createClient } from '@/lib/supabase/client'
@@ -20,46 +21,51 @@ export function SiteReviews({ compact = false }: { compact?: boolean }) {
   const { user } = useAuth()
   const { lang } = useLocale()
   const isEnglish = lang === 'en'
-  const [reviews, setReviews] = useState<SiteReview[]>([])
-  const [loading, setLoading] = useState(true)
   const [stars, setStars] = useState(0)
   const [comment, setComment] = useState('')
   const [saving, setSaving] = useState(false)
   const [done, setDone] = useState(false)
-
-  const load = useCallback(async () => {
-    const supabase = createClient()
-    const { data } = await supabase
-      .from('site_reviews')
-      .select('id, username, rating, comment, created_at')
-      .eq('approved', true)
-      .order('created_at', { ascending: false })
-      .limit(compact ? 6 : 30)
-    setReviews((data ?? []) as SiteReview[])
-    setLoading(false)
-  }, [compact])
-
-  useEffect(() => {
-    load()
-  }, [load])
+  const [submitError, setSubmitError] = useState(false)
+  const {
+    data: reviews = [],
+    error: reviewsError,
+    isLoading: loading,
+    mutate: refreshReviews,
+  } = useSWR<SiteReview[]>(
+    ['site-reviews', compact],
+    async () => {
+      const { data, error } = await createClient()
+        .from('site_reviews')
+        .select('id, username, rating, comment, created_at')
+        .eq('approved', true)
+        .order('created_at', { ascending: false })
+        .limit(compact ? 6 : 30)
+      if (error) throw error
+      return (data ?? []) as SiteReview[]
+    },
+  )
 
   async function submit() {
     if (!user || stars < 1 || !comment.trim() || saving) return
     setSaving(true)
-    const supabase = createClient()
-    const { error } = await supabase.from('site_reviews').insert({
-      user_id: user.id,
-      username: user.username,
-      rating: stars,
-      comment: comment.trim().slice(0, 500),
-    })
-    setSaving(false)
-    if (!error) {
+    setSubmitError(false)
+    try {
+      const { error } = await createClient().from('site_reviews').insert({
+        user_id: user.id,
+        username: user.username,
+        rating: stars,
+        comment: comment.trim().slice(0, 500),
+      })
+      if (error) throw error
       setStars(0)
       setComment('')
       setDone(true)
       setTimeout(() => setDone(false), 3000)
-      load()
+      void refreshReviews().catch(() => undefined)
+    } catch {
+      setSubmitError(true)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -91,13 +97,21 @@ export function SiteReviews({ compact = false }: { compact?: boolean }) {
           </div>
           <textarea
             value={comment}
-            onChange={(e) => setComment(e.target.value)}
+            onChange={(e) => {
+              setComment(e.target.value)
+              setSubmitError(false)
+            }}
             rows={3}
             maxLength={500}
             placeholder={isEnglish ? 'Tell us what you think…' : 'اكتب رأيك في خدمتنا…'}
             aria-label={isEnglish ? 'Your review' : 'رأيك في الخدمة'}
             className="w-full resize-none rounded-lg border border-border/60 bg-background p-3 text-sm outline-none focus:border-primary/60"
           />
+          {submitError && (
+            <p role="alert" className="text-sm text-destructive">
+              {isEnglish ? 'Could not submit your review. Please try again.' : 'تعذّر إرسال التقييم. حاول مرة أخرى.'}
+            </p>
+          )}
           <Button onClick={submit} disabled={saving || stars < 1 || !comment.trim()} className="w-full gap-2">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             {done ? (isEnglish ? 'Thanks for your review!' : 'شكراً لتقييمك!') : (isEnglish ? 'Submit review' : 'إرسال التقييم')}
@@ -106,8 +120,17 @@ export function SiteReviews({ compact = false }: { compact?: boolean }) {
       )}
 
       {loading ? (
-        <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
+        <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground" role="status">
           <Loader2 className="h-4 w-4 animate-spin" /> {isEnglish ? 'Loading reviews…' : 'جارٍ التحميل…'}
+        </div>
+      ) : reviewsError ? (
+        <div className="flex flex-col items-center gap-3 py-8 text-center" role="alert">
+          <p className="text-sm text-muted-foreground">
+            {isEnglish ? 'Reviews could not be loaded.' : 'تعذّر تحميل التقييمات.'}
+          </p>
+          <Button variant="outline" size="sm" onClick={() => void refreshReviews().catch(() => undefined)}>
+            {isEnglish ? 'Try again' : 'إعادة المحاولة'}
+          </Button>
         </div>
       ) : reviews.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted-foreground">{isEnglish ? 'No reviews yet — be the first to leave one!' : 'لا توجد تقييمات بعد — كن أول من يقيّم!'}</p>

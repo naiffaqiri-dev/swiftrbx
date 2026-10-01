@@ -645,7 +645,7 @@ export function TicketThread({
       await load()
       onChanged()
     } catch {
-      setActionError('تعذّ�� الاتصال بالخادم لتحويل التذكرة')
+      setActionError('تعذّر الاتصال بالخادم لتحويل التذكرة')
     } finally {
       setActing(false)
     }
