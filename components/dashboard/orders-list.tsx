@@ -4,7 +4,9 @@ import { useState } from 'react'
 import { DELIVERY_LABELS, type DeliveryType } from '@/lib/mock-data'
 import { formatSar } from '@/lib/currency'
 import { Package } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { TicketThread } from './tickets-list'
+import { OrderConfirmationDialog } from './order-confirmation-dialog'
 
 export type OrderRow = {
   id: string
@@ -36,6 +38,7 @@ export function OrdersList({
   onChanged?: () => void
 }) {
   const [openTicketId, setOpenTicketId] = useState<string | null>(null)
+  const [confirmOrderId, setConfirmOrderId] = useState<string | null>(null)
 
   if (orders.length === 0) {
     return (
@@ -65,9 +68,14 @@ export function OrdersList({
                 </div>
               </div>
             </div>
-            <div className="flex items-center justify-between gap-4 sm:justify-end">
+            <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
               <span className="font-semibold">{formatSar(Number(o.price_sar))}</span>
               <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${st.cls}`}>{st.label}</span>
+              {o.status === 'delivered' && (
+                <Button type="button" size="sm" onClick={() => setConfirmOrderId(o.id)} className="shrink-0">
+                  تأكيد الاستلام
+                </Button>
+              )}
               {isCompletedAndOpenable && <span className="text-xs font-medium text-primary">عرض التفاصيل</span>}
             </div>
           </>
@@ -91,6 +99,14 @@ export function OrdersList({
       })}
       {openTicketId && (
         <TicketThread ticketId={openTicketId} role="buyer" onClose={() => setOpenTicketId(null)} onChanged={onChanged ?? (() => {})} />
+      )}
+      {confirmOrderId && (
+        <OrderConfirmationDialog
+          orderId={confirmOrderId}
+          open
+          onOpenChange={(open) => { if (!open) setConfirmOrderId(null) }}
+          onComplete={() => { setConfirmOrderId(null); onChanged?.() }}
+        />
       )}
     </div>
   )
