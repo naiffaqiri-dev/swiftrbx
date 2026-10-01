@@ -59,7 +59,8 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
       { access: 'private', addRandomSuffix: false, contentType: file.type },
     )
     return NextResponse.json({ pathname: blob.pathname }, { status: 201 })
-  } catch {
+  } catch (cause) {
+    console.error('[ticket-attachments] Blob upload failed', cause)
     return NextResponse.json({ error: 'تعذّر رفع الصورة، حاول مرة أخرى' }, { status: 500 })
   }
 }

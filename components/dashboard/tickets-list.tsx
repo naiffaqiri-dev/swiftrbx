@@ -366,6 +366,7 @@ export function TicketThread({
   const [sellerName, setSellerName] = useState<string>('')
   const [text, setText] = useState('')
   const [attachment, setAttachment] = useState<File | null>(null)
+  const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
   const attachmentInputRef = useRef<HTMLInputElement>(null)
@@ -377,6 +378,17 @@ export function TicketThread({
   const [siteReviewComment, setSiteReviewComment] = useState('')
   const [actionError, setActionError] = useState('')
   const endRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!attachment) {
+      setAttachmentPreviewUrl(null)
+      return
+    }
+
+    const previewUrl = URL.createObjectURL(attachment)
+    setAttachmentPreviewUrl(previewUrl)
+    return () => URL.revokeObjectURL(previewUrl)
+  }, [attachment])
 
   const load = useCallback(async () => {
     const supabase = createClient()
@@ -459,41 +471,90 @@ export function TicketThread({
     }
   }, [ticketId, load])
 
+  function selectAttachment(file: File) {
+    const supportedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif']
+    if (!supportedTypes.includes(file.type)) {
+      setActionError('اختر صورة بصيغة PNG أو JPG أو WEBP أو GIF أو AVIF')
+      return
+    }
+    if (file.size === 0 || file.size > 8 * 1024 * 1024) {
+      setActionError('حجم الصورة يجب ألا يتجاوز 8 ميغابايت')
+      return
+    }
+    setActionError('')
+    setAttachment(file)
+  }
+
+  async function pasteClipboardImage() {
+    if (!navigator.clipboard?.read) {
+      setActionError('تعذّر الوصول إلى الحافظة. استخدم Ctrl+V أو زر إرفاق صورة.')
+      return
+    }
+
+    try {
+      const clipboardItems = await navigator.clipboard.read()
+      for (const item of clipboardItems) {
+        const imageType = item.types.find((type) => type.startsWith('image/'))
+        if (!imageType) continue
+
+        const image = await item.getType(imageType)
+        const extension = imageType === 'image/jpeg' ? 'jpg' : imageType.split('/')[1] || 'png'
+        selectAttachment(new File([image], `pasted-image-${Date.now()}.${extension}`, { type: imageType }))
+        return
+      }
+      setActionError('لم أعثر على صورة في الحافظة. انسخ الصورة ثم اضغط Alt+V أو Ctrl+V.')
+    } catch {
+      setActionError('تعذّر الوصول إلى الحافظة. استخدم Ctrl+V أو زر إرفاق صورة.')
+    }
+  }
+
+  function pasteImageFromClipboard(event: React.ClipboardEvent<HTMLInputElement>) {
+    const imageItem = Array.from(event.clipboardData.items).find((item) => item.type.startsWith('image/'))
+    const file = imageItem?.getAsFile()
+    if (!file) return
+
+    event.preventDefault()
+    selectAttachment(file)
+  }
+
   async function send() {
     if ((!text.trim() && !attachment) || !user || sending) return
     setSending(true)
     setActionError('')
     let body = text.trim()
 
-    if (attachment) {
-      const formData = new FormData()
-      formData.set('file', attachment)
-      const upload = await fetch(`/api/tickets/${encodeURIComponent(ticketId)}/attachments`, {
-        method: 'POST',
-        body: formData,
-      })
-      const result = await upload.json().catch(() => ({}))
-      if (!upload.ok || typeof result.pathname !== 'string') {
-        setActionError(result.error ?? 'تعذّر إرفاق الصورة، حاول مرة أخرى')
-        setSending(false)
+    try {
+      if (attachment) {
+        const formData = new FormData()
+        formData.set('file', attachment)
+        const upload = await fetch(`/api/tickets/${encodeURIComponent(ticketId)}/attachments`, {
+          method: 'POST',
+          body: formData,
+        })
+        const result = await upload.json().catch(() => ({}))
+        if (!upload.ok || typeof result.pathname !== 'string') {
+          setActionError(result.error ?? 'تعذّر إرفاق الصورة، حاول مرة أخرى')
+          return
+        }
+        body = [body, `[[ticket-image:${result.pathname}]]`].filter(Boolean).join('\n')
+      }
+
+      const supabase = createClient()
+      const { error } = await supabase
+        .from('ticket_messages')
+        .insert({ ticket_id: ticketId, sender_id: user.id, body })
+      if (error) {
+        setActionError('تعذّر إرسال الرسالة، حاول مرة أخرى')
         return
       }
-      body = [body, `[[ticket-image:${result.pathname}]]`].filter(Boolean).join('\n')
-    }
-
-    const supabase = createClient()
-    const { error } = await supabase
-      .from('ticket_messages')
-      .insert({ ticket_id: ticketId, sender_id: user.id, body })
-    if (error) {
-      setActionError('تعذّر إرسال الرسالة، حاول مرة أخرى')
+      await supabase.from('tickets').update({ updated_at: new Date().toISOString() }).eq('id', ticketId)
+      setText('')
+      setAttachment(null)
+    } catch {
+      setActionError(attachment ? 'تعذّر رفع الصورة. أعد المحاولة أو اختر صورة أصغر.' : 'تعذّر إرسال الرسالة، حاول مرة أخرى')
+    } finally {
       setSending(false)
-      return
     }
-    await supabase.from('tickets').update({ updated_at: new Date().toISOString() }).eq('id', ticketId)
-    setText('')
-    setAttachment(null)
-    setSending(false)
   }
 
   async function postSystem(body: string) {
@@ -733,8 +794,15 @@ export function TicketThread({
           )}
 
           {attachment && (
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-xs">
-              <span className="min-w-0 truncate">الصورة المرفقة: {attachment.name}</span>
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-background/60 px-3 py-2 text-xs">
+              {attachmentPreviewUrl && (
+                <img
+                  src={attachmentPreviewUrl}
+                  alt="معاينة الصورة المرفقة"
+                  className="size-10 shrink-0 rounded-md border border-border/60 object-cover"
+                />
+              )}
+              <span className="min-w-0 flex-1 truncate">الصورة المرفقة: {attachment.name}</span>
               <button
                 type="button"
                 onClick={() => setAttachment(null)}
@@ -754,19 +822,9 @@ export function TicketThread({
               className="sr-only"
               aria-label="اختر صورة لإرفاقها بالتذكرة"
               onChange={(event) => {
-                const file = event.currentTarget.files?.[0] ?? null
+                const file = event.currentTarget.files?.[0]
                 event.currentTarget.value = ''
-                if (!file) return
-                if (!['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/avif'].includes(file.type)) {
-                  setActionError('اختر صورة بصيغة PNG أو JPG أو WEBP أو GIF أو AVIF')
-                  return
-                }
-                if (file.size === 0 || file.size > 8 * 1024 * 1024) {
-                  setActionError('حجم الصورة يجب ألا يتجاوز 8 ميغابايت')
-                  return
-                }
-                setActionError('')
-                setAttachment(file)
+                if (file) selectAttachment(file)
               }}
             />
             <Button
@@ -783,7 +841,13 @@ export function TicketThread({
             <Input
               value={text}
               onChange={(e) => setText(e.target.value)}
+              onPaste={pasteImageFromClipboard}
               onKeyDown={(e) => {
+                if (e.altKey && (e.key.toLowerCase() === 'v' || e.code === 'KeyV')) {
+                  e.preventDefault()
+                  void pasteClipboardImage()
+                  return
+                }
                 if (e.key === 'Enter' && !e.nativeEvent.isComposing && e.keyCode !== 229) {
                   e.preventDefault()
                   send()
@@ -791,6 +855,7 @@ export function TicketThread({
               }}
               placeholder="اكتب رسالتك…"
             />
+            <span className="sr-only">يمكن لصق صورة من الحافظة عبر Alt+V أو Ctrl+V</span>
             <Button onClick={send} disabled={sending || (!text.trim() && !attachment)} size="icon" aria-label="إرسال الرسالة">
               {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             </Button>
