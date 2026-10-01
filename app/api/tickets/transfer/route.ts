@@ -4,17 +4,6 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
-type QueueRow = {
-  ticket_id: string
-  subject: string | null
-  transferred_at: string | null
-  transfer_reason: string | null
-  robux_amount: number | string
-  roblox_username: string
-  delivery_method: string | null
-  price_sar: number | string
-}
-
 async function getActiveSeller() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -37,52 +26,65 @@ export async function GET() {
   const { user, admin, error: authError } = await getActiveSeller()
   if (authError || !user || !admin) return authError
 
-  const supabase = await createClient()
-  const { data: queue, error } = await supabase.rpc('list_transferred_ticket_queue')
-  if (error) {
+  const { data: ticketRows, error: ticketError } = await admin
+    .from('tickets')
+    .select('id, subject, order_id, transferred_at, transfer_reason, transfer_previous_seller_id')
+    .eq('type', 'order')
+    .eq('status', 'transferred')
+    .is('seller_id', null)
+    .not('order_id', 'is', null)
+  if (ticketError) {
     return NextResponse.json({ error: 'تعذّر تحميل قائمة التذاكر المحوّلة' }, { status: 500 })
   }
-  const queueRows = (queue ?? []) as QueueRow[]
-  if (!queueRows.length) return NextResponse.json({ tickets: [] })
+  if (!ticketRows?.length) return NextResponse.json({ tickets: [] })
 
-  const ticketIds = queueRows.map((ticket) => ticket.ticket_id)
-  const { data: ticketDetails } = await admin
-    .from('tickets')
-    .select('id, order_id, transfer_previous_seller_id')
-    .in('id', ticketIds)
-  const orderIds = [...new Set((ticketDetails ?? []).map((ticket) => ticket.order_id).filter((id): id is string => Boolean(id)))]
-  const { data: orders } = orderIds.length
-    ? await admin.from('orders').select('id, buyer_id').in('id', orderIds)
-    : { data: [] }
+  const orderIds = [...new Set(ticketRows.map((ticket) => ticket.order_id).filter((id): id is string => Boolean(id)))]
+  const { data: orders, error: orderError } = await admin
+    .from('orders')
+    .select('id, buyer_id, robux_amount, roblox_username, delivery_method, price_sar')
+    .in('id', orderIds)
+    .is('seller_id', null)
+    .eq('status', 'processing')
+  if (orderError) {
+    return NextResponse.json({ error: 'تعذّر تحميل بيانات الطلبات المحوّلة' }, { status: 500 })
+  }
+
+  const ordersById = new Map((orders ?? []).map((order) => [order.id, order]))
+  const visibleTickets = ticketRows.filter((ticket) => ticket.order_id && ordersById.has(ticket.order_id))
+  if (!visibleTickets.length) return NextResponse.json({ tickets: [] })
 
   const profileIds = [...new Set([
-    ...(ticketDetails ?? []).map((ticket) => ticket.transfer_previous_seller_id),
-    ...(orders ?? []).map((order) => order.buyer_id),
+    ...visibleTickets.map((ticket) => ticket.transfer_previous_seller_id),
+    ...visibleTickets.map((ticket) => {
+      const order = ticket.order_id ? ordersById.get(ticket.order_id) : null
+      return order?.buyer_id ?? null
+    }),
   ].filter((id): id is string => Boolean(id)))]
-  const { data: profiles } = profileIds.length
+  const { data: profiles, error: profileError } = profileIds.length
     ? await admin.from('profiles').select('id, username').in('id', profileIds)
-    : { data: [] }
+    : { data: [], error: null }
+  if (profileError) {
+    return NextResponse.json({ error: 'تعذّر تحميل أسماء أطراف الطلب' }, { status: 500 })
+  }
 
   const usernameById = new Map((profiles ?? []).map((profile) => [profile.id, profile.username]))
-  const ticketById = new Map((ticketDetails ?? []).map((ticket) => [ticket.id, ticket]))
-  const buyerByOrderId = new Map((orders ?? []).map((order) => [order.id, usernameById.get(order.buyer_id) ?? '']))
-
-  const tickets = queueRows.map((ticket) => {
-    const details = ticketById.get(ticket.ticket_id)
-    return {
-      ticketId: ticket.ticket_id,
+  const tickets = visibleTickets.flatMap((ticket) => {
+    const order = ticket.order_id ? ordersById.get(ticket.order_id) : null
+    if (!order) return []
+    return [{
+      ticketId: ticket.id,
       subject: ticket.subject,
       transferredAt: ticket.transferred_at,
       transferReason: ticket.transfer_reason,
-      robuxAmount: Number(ticket.robux_amount),
-      robloxUsername: ticket.roblox_username,
-      deliveryMethod: ticket.delivery_method,
-      priceSar: Number(ticket.price_sar),
-      buyerUsername: details?.order_id ? buyerByOrderId.get(details.order_id) ?? '' : '',
-      previousSellerUsername: details?.transfer_previous_seller_id
-        ? usernameById.get(details.transfer_previous_seller_id) ?? ''
+      robuxAmount: Number(order.robux_amount),
+      robloxUsername: order.roblox_username,
+      deliveryMethod: order.delivery_method,
+      priceSar: Number(order.price_sar),
+      buyerUsername: usernameById.get(order.buyer_id) ?? '',
+      previousSellerUsername: ticket.transfer_previous_seller_id
+        ? usernameById.get(ticket.transfer_previous_seller_id) ?? ''
         : '',
-    }
+    }]
   })
 
   return NextResponse.json({ tickets })
