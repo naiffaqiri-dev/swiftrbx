@@ -4,6 +4,17 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
+type QueueRow = {
+  ticket_id: string
+  subject: string | null
+  transferred_at: string | null
+  transfer_reason: string | null
+  robux_amount: number | string
+  roblox_username: string
+  delivery_method: string | null
+  price_sar: number | string
+}
+
 async function getActiveSeller() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -31,9 +42,10 @@ export async function GET() {
   if (error) {
     return NextResponse.json({ error: 'تعذّر تحميل قائمة التذاكر المحوّلة' }, { status: 500 })
   }
-  if (!queue?.length) return NextResponse.json({ tickets: [] })
+  const queueRows = (queue ?? []) as QueueRow[]
+  if (!queueRows.length) return NextResponse.json({ tickets: [] })
 
-  const ticketIds = queue.map((ticket) => ticket.ticket_id)
+  const ticketIds = queueRows.map((ticket) => ticket.ticket_id)
   const { data: ticketDetails } = await admin
     .from('tickets')
     .select('id, order_id, transfer_previous_seller_id')
@@ -55,7 +67,7 @@ export async function GET() {
   const ticketById = new Map((ticketDetails ?? []).map((ticket) => [ticket.id, ticket]))
   const buyerByOrderId = new Map((orders ?? []).map((order) => [order.id, usernameById.get(order.buyer_id) ?? '']))
 
-  const tickets = queue.map((ticket) => {
+  const tickets = queueRows.map((ticket) => {
     const details = ticketById.get(ticket.ticket_id)
     return {
       ticketId: ticket.ticket_id,

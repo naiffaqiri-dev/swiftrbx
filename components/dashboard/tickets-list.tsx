@@ -641,12 +641,11 @@ export function TicketThread({
         setActionError(result.error || 'تعذّر تحويل التذكرة')
         return
       }
-      await postSystem(`حوّل البائع التذكرة إلى قائمة التذاكر المحوّلة${transferReason.trim() ? `؛ السبب: ${transferReason.trim()}` : ''}.`)
       setTransferOpen(false)
       await load()
       onChanged()
     } catch {
-      setActionError('تعذّر الاتصال بالخادم لتحويل التذكرة')
+      setActionError('تعذّ�� الاتصال بالخادم لتحويل التذكرة')
     } finally {
       setActing(false)
     }
