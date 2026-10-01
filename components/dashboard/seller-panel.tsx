@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { DashboardShell, StatCard } from './dashboard-shell'
 import { MarketplaceAvailabilitySummary } from '@/components/market/marketplace-availability'
 import { TicketsList } from './tickets-list'
+import { TransferredTicketQueue } from './transferred-ticket-queue'
 import { StarDisplay } from '@/components/reviews/star-rating'
 import { DELIVERY_TYPES, DELIVERY_LABELS, DELIVERY_NOTES, GAMEPASS_GUIDE_URL, isHttpsLink, isRobloxGroupLink, type DeliveryType } from '@/lib/mock-data'
 import { Button } from '@/components/ui/button'
@@ -20,6 +21,7 @@ import { SellerCatalogManager } from './seller-catalog-manager'
 const NAV = [
   { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard className="h-4 w-4" /> },
   { key: 'orders', label: 'التذاكر النشطة', icon: <Ticket className="h-4 w-4" /> },
+  { key: 'transferred', label: 'التذاكر المحوّلة', icon: <Ticket className="h-4 w-4" /> },
   { key: 'stock', label: 'عرض البيع', icon: <Package className="h-4 w-4" /> },
   { key: 'wallet', label: 'المحفظة والعمولة', icon: <Wallet className="h-4 w-4" /> },
 ]
@@ -258,6 +260,8 @@ export function SellerPanel() {
           <TicketsList role="seller" />
         </div>
       )}
+
+      {active === 'transferred' && <TransferredTicketQueue />}
 
       {active === 'stock' && (
         <div className="space-y-4">

@@ -19,6 +19,7 @@ import {
   Star,
   ShieldCheck,
   Paperclip,
+  ArrowLeftRight,
 } from 'lucide-react'
 
 type TicketRole = 'buyer' | 'seller' | 'admin' | 'support'
@@ -69,6 +70,7 @@ const TICKET_STATUS: Record<string, { label: string; cls: string }> = {
   completed: { label: 'مكتملة', cls: 'bg-muted text-muted-foreground' },
   disputed: { label: 'نزاع', cls: 'bg-destructive/15 text-destructive' },
   closed: { label: 'مغلقة', cls: 'bg-muted text-muted-foreground' },
+  transferred: { label: 'محوّلة', cls: 'bg-amber-500/15 text-amber-400' },
 }
 
 export function TicketsList({
@@ -86,6 +88,7 @@ export function TicketsList({
 }) {
   const { user } = useAuth()
   const [tickets, setTickets] = useState<TicketRow[]>([])
+  const [sellerNames, setSellerNames] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -117,6 +120,17 @@ export function TicketsList({
       visibleTickets = visibleTickets.filter((ticket) => ticket.order_id && rejectedOrderIds.has(ticket.order_id))
     }
     setTickets(visibleTickets)
+    if (role === 'buyer') {
+      const sellerIds = [...new Set(visibleTickets.map((ticket) => ticket.seller_id).filter((id): id is string => Boolean(id)))]
+      if (sellerIds.length > 0) {
+        const { data: sellers } = await supabase.from('profiles').select('id, username').in('id', sellerIds)
+        setSellerNames(Object.fromEntries((sellers ?? []).map((seller) => [seller.id, seller.username])))
+      } else {
+        setSellerNames({})
+      }
+    } else {
+      setSellerNames({})
+    }
     setLoading(false)
   }, [user, role, typeFilter, statusFilter, onlyRejectedTransfers])
 
@@ -165,6 +179,7 @@ export function TicketsList({
                   <div className="font-medium">{t.subject || 'تذكرة دعم'}</div>
                   <div className="text-xs text-muted-foreground">
                     {new Date(t.created_at).toLocaleDateString('ar')}
+                    {role === 'buyer' && t.seller_id && sellerNames[t.seller_id] ? ` · البائع: ${sellerNames[t.seller_id]}` : ''}
                   </div>
                 </div>
               </div>
@@ -371,6 +386,8 @@ export function TicketThread({
   const [sending, setSending] = useState(false)
   const attachmentInputRef = useRef<HTMLInputElement>(null)
   const [acting, setActing] = useState(false)
+  const [transferOpen, setTransferOpen] = useState(false)
+  const [transferReason, setTransferReason] = useState('')
   const [stars, setStars] = useState(0)
   const [showRating, setShowRating] = useState(false)
   const [reviewComment, setReviewComment] = useState('')
@@ -609,6 +626,32 @@ export function TicketThread({
     setActing(false)
   }
 
+  async function transferTicket() {
+    if (!ticket || acting) return
+    setActing(true)
+    setActionError('')
+    try {
+      const response = await fetch('/api/tickets/transfer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticketId: ticket.id, action: 'transfer', reason: transferReason.trim() }),
+      })
+      const result = await response.json()
+      if (!response.ok) {
+        setActionError(result.error || 'تعذّر تحويل التذكرة')
+        return
+      }
+      await postSystem(`حوّل البائع التذكرة إلى قائمة التذاكر المحوّلة${transferReason.trim() ? `؛ السبب: ${transferReason.trim()}` : ''}.`)
+      setTransferOpen(false)
+      await load()
+      onChanged()
+    } catch {
+      setActionError('تعذّر الاتصال بالخادم لتحويل التذكرة')
+    } finally {
+      setActing(false)
+    }
+  }
+
   // المشتري: تأكيد الاستلام + التقييم المتبادل
   async function confirmReceipt() {
     if ((!order && !ticket?.catalog_item_id) || acting) return
@@ -654,6 +697,9 @@ export function TicketThread({
   const buyerCanConfirm = role === 'buyer' && ticket?.type === 'order' && (order?.status === 'delivered' || (Boolean(ticket?.catalog_item_id) && ticket?.status === 'delivered'))
   const buyerCanDispute =
     role === 'buyer' && ticket?.order_id && ticket.type === 'order' && order?.status !== 'completed'
+  const sellerCanTransfer =
+    role === 'seller' && ticket?.type === 'order' && ticket.seller_id === user?.id && order?.status === 'processing' &&
+    !['completed', 'closed', 'resolved', 'delivered'].includes(ticket.status)
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
@@ -735,6 +781,38 @@ export function TicketThread({
               {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
               {ticket?.catalog_item_id ? 'تأكيد تسليم المنتج للمشتري' : 'تأكيد تسليم الطلب'}
             </Button>
+          )}
+
+          {sellerCanTransfer && (
+            <div className="flex flex-col gap-2 rounded-xl border border-border/60 bg-background/50 p-3">
+              {transferOpen ? (
+                <>
+                  <label htmlFor="transfer-reason" className="text-xs font-medium">سبب التحويل (اختياري)</label>
+                  <textarea
+                    id="transfer-reason"
+                    value={transferReason}
+                    onChange={(event) => setTransferReason(event.target.value)}
+                    maxLength={500}
+                    rows={2}
+                    className="w-full resize-y rounded-md border border-border/60 bg-background px-3 py-2 text-sm leading-relaxed outline-none focus:border-primary"
+                    placeholder="اشرح باختصار سبب عدم قدرتك على إكمال الطلب"
+                  />
+                  <div className="flex gap-2">
+                    <Button type="button" onClick={() => void transferTicket()} disabled={acting} className="flex-1">
+                      {acting ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <ArrowLeftRight data-icon="inline-start" />}
+                      تحويل التذكرة
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => setTransferOpen(false)} disabled={acting}>
+                      إلغاء
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <Button type="button" variant="outline" onClick={() => setTransferOpen(true)} disabled={acting} className="w-full">
+                  <ArrowLeftRight data-icon="inline-start" /> لا أستطيع إكمال الطلب — تحويل التذكرة
+                </Button>
+              )}
+            </div>
           )}
 
           {buyerCanConfirm && (
