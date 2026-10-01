@@ -30,7 +30,7 @@ export function AuthShell({
         <div className="absolute inset-0 bg-gradient-to-l from-background via-background/50 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 p-10">
           <p className="max-w-md text-balance text-lg font-medium text-foreground/90">
-            متجرك الأمثل لشراء الروبكس — تسليم فوري، أسعار منافسة، ودعم مباشر على
+            متجرك الأمثل لشراء الروبوكس — تسليم فوري، أسعار منافسة، ودعم مباشر على
             مدار الساعة.
           </p>
         </div>

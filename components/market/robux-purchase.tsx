@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
 import {
   DELIVERY_LABELS,
@@ -31,72 +32,70 @@ type SellerProfile = {
   sales: number | null
 }
 
+type MarketplaceData = {
+  offers: ActiveOffer[]
+  sellerProfiles: Record<string, SellerProfile>
+  groupLinks: Record<string, string[]>
+  gamepassLinks: Record<string, string[]>
+}
+
 export function RobuxPurchase() {
   const router = useRouter()
   const { user, ready } = useAuth()
   const [authDialogOpen, setAuthDialogOpen] = useState(false)
   const [authReturnTo, setAuthReturnTo] = useState('/market')
-  const [amount, setAmount] = useState<number>(5000)
+  const [amount, setAmount] = useState<number>(1000)
   const [delivery, setDelivery] = useState<DeliveryType>('group')
   const [selected, setSelected] = useState<string | null>(null)
-  const [offers, setOffers] = useState<ActiveOffer[]>([])
-  const [sellerProfiles, setSellerProfiles] = useState<Record<string, SellerProfile>>({})
-  const [groupLinks, setGroupLinks] = useState<Record<string, string[]>>({})
-  const [gamepassLinks, setGamepassLinks] = useState<Record<string, string[]>>({})
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let active = true
+  const {
+    data: marketplaceData,
+    error: marketplaceError,
+    isLoading: loading,
+    mutate: retryMarketplace,
+  } = useSWR<MarketplaceData>('marketplace-purchase-data', async () => {
     const supabase = createClient()
-    supabase.rpc('active_offers').then(async ({ data }) => {
-      if (!active) return
-      const rows = (data ?? []) as ActiveOffer[]
-      setOffers(rows)
-      setLoading(false)
-      const sellerIds = [...new Set(rows.map((offer) => offer.seller_id).filter(Boolean))]
-      if (sellerIds.length) {
-        const [{ data: publicLinks }, { data: publicGamepassLinks }, publicSellerProfiles] = await Promise.all([
-          supabase.rpc('active_seller_group_links'),
-          supabase.rpc('active_seller_gamepass_links'),
-          fetch(`/api/market/seller-profiles?sellerIds=${encodeURIComponent(sellerIds.join(','))}`, { cache: 'no-store' })
-            .then(async (response) => {
-              if (!response.ok) return [] as SellerProfile[]
-              const result = await response.json() as { sellers?: SellerProfile[] }
-              return result.sellers ?? []
-            })
-            .catch(() => [] as SellerProfile[]),
-        ])
-        if (!active) return
-        if (publicSellerProfiles.length) {
-          setSellerProfiles(Object.fromEntries(publicSellerProfiles.map((profile) => [profile.id, profile])))
-        }
-        if (publicLinks) {
-          const sellerLinkRows = publicLinks as { seller_id: string; group_links: unknown }[]
-          setGroupLinks(
-            Object.fromEntries(
-              sellerLinkRows
-                .filter((row) => sellerIds.includes(row.seller_id) && Array.isArray(row.group_links) && row.group_links.every(isRobloxGroupLink))
-                .map((row) => [row.seller_id, row.group_links as string[]]),
-            ),
-          )
-        }
-        if (publicGamepassLinks) {
-          const sellerGamepassLinkRows = publicGamepassLinks as { seller_id: string; gamepass_links: unknown }[]
-          setGamepassLinks(
-            Object.fromEntries(
-              sellerGamepassLinkRows
-                .filter((row) => sellerIds.includes(row.seller_id) && Array.isArray(row.gamepass_links) && row.gamepass_links.every(isHttpsLink))
-                .map((row) => [row.seller_id, row.gamepass_links as string[]]),
-            ),
-          )
-        }
-      }
-    })
-    return () => {
-      active = false
-    }
-  }, [])
+    const { data, error } = await supabase.rpc('active_offers')
+    if (error) throw error
 
+    const offers = (data ?? []) as ActiveOffer[]
+    const sellerIds = [...new Set(offers.map((offer) => offer.seller_id).filter(Boolean))]
+    if (sellerIds.length === 0) {
+      return { offers, sellerProfiles: {}, groupLinks: {}, gamepassLinks: {} }
+    }
+
+    const [{ data: publicLinks }, { data: publicGamepassLinks }, publicSellerProfiles] = await Promise.all([
+      supabase.rpc('active_seller_group_links'),
+      supabase.rpc('active_seller_gamepass_links'),
+      fetch(`/api/market/seller-profiles?sellerIds=${encodeURIComponent(sellerIds.join(','))}`, { cache: 'no-store' })
+        .then(async (response) => {
+          if (!response.ok) return [] as SellerProfile[]
+          const result = await response.json() as { sellers?: SellerProfile[] }
+          return result.sellers ?? []
+        })
+        .catch(() => [] as SellerProfile[]),
+    ])
+
+    const sellerProfiles = Object.fromEntries(publicSellerProfiles.map((profile) => [profile.id, profile]))
+    const sellerLinkRows = (publicLinks ?? []) as { seller_id: string; group_links: unknown }[]
+    const groupLinks = Object.fromEntries(
+      sellerLinkRows
+        .filter((row) => sellerIds.includes(row.seller_id) && Array.isArray(row.group_links) && row.group_links.every(isRobloxGroupLink))
+        .map((row) => [row.seller_id, row.group_links as string[]]),
+    )
+    const sellerGamepassLinkRows = (publicGamepassLinks ?? []) as { seller_id: string; gamepass_links: unknown }[]
+    const gamepassLinks = Object.fromEntries(
+      sellerGamepassLinkRows
+        .filter((row) => sellerIds.includes(row.seller_id) && Array.isArray(row.gamepass_links) && row.gamepass_links.every(isHttpsLink))
+        .map((row) => [row.seller_id, row.gamepass_links as string[]]),
+    )
+
+    return { offers, sellerProfiles, groupLinks, gamepassLinks }
+  })
+
+  const offers = marketplaceData?.offers ?? []
+  const sellerProfiles = marketplaceData?.sellerProfiles ?? {}
+  const groupLinks = marketplaceData?.groupLinks ?? {}
+  const gamepassLinks = marketplaceData?.gamepassLinks ?? {}
   const matched = useMemo(() => matchOffers(offers, amount, delivery), [offers, amount, delivery])
   const chosen = matched.find((s) => s.id === selected) ?? matched[0] ?? null
 
@@ -206,9 +205,16 @@ export function RobuxPurchase() {
           </div>
 
           {loading ? (
-            <div className="flex items-center justify-center gap-2 rounded-xl border border-border/60 bg-card/40 p-8 text-sm text-muted-foreground">
+            <div className="flex items-center justify-center gap-2 rounded-xl border border-border/60 bg-card/40 p-8 text-sm text-muted-foreground" role="status">
               <Loader2 className="h-4 w-4 animate-spin" />
               جارٍ تحميل البائعين…
+            </div>
+          ) : marketplaceError ? (
+            <div className="flex flex-col items-center gap-3 rounded-xl border border-border/60 bg-card/40 p-8 text-center" role="alert">
+              <p className="text-sm text-muted-foreground">تعذّر تحميل عروض البائعين. تحقق من اتصالك ثم حاول مرة أخرى.</p>
+              <Button variant="outline" size="sm" onClick={() => void retryMarketplace().catch(() => undefined)}>
+                إعادة المحاولة
+              </Button>
             </div>
           ) : matched.length === 0 ? (
             <p className="rounded-xl border border-border/60 bg-card/40 p-8 text-center text-sm text-muted-foreground">

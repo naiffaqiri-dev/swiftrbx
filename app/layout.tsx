@@ -18,10 +18,10 @@ export async function generateMetadata(): Promise<Metadata> {
   const isEnglish = cookieStore.get('swiftrbx.lang')?.value === 'en'
 
   return {
-    title: isEnglish ? 'SwiftRBX | The trusted Robux store' : 'SwiftRBX | متجر الروبكس الأول',
+    title: isEnglish ? 'SwiftRBX | The trusted Robux store' : 'SwiftRBX | متجر الروبوكس الأول',
     description: isEnglish
       ? 'Buy Robux quickly and securely in the Middle East. Fast delivery and live support.'
-      : 'SwiftRBX — متجرك الأمثل لشراء الروبكس بسرعة وأمان في الشرق الأوسط. تسليم فوري ودعم مباشر.',
+      : 'SwiftRBX — متجرك الأمثل لشراء الروبوكس بسرعة وأمان في الشرق الأوسط. تسليم فوري ودعم مباشر.',
     generator: 'v0.app',
   }
 }

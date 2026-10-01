@@ -9,7 +9,7 @@ export default function MarketPage() {
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
         <div className="mb-8">
           <h1 className="text-3xl font-extrabold tracking-tight">
-            اشترِ <span className="text-primary">الروبكس</span>
+            اشترِ <span className="text-primary">الروبوكس</span>
           </h1>
           <p className="mt-2 text-muted-foreground">
             حدّد الكمية ونوع التسليم، وسنعرض لك البائعين المطابقين تلقائياً مرتّبين حسب الأفضل.
