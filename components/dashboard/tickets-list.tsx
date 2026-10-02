@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useAuth } from '@/components/auth/mock-auth'
+import { useLocale } from '@/components/i18n/locale-provider'
 import { createClient } from '@/lib/supabase/client'
 import { StarInput } from '@/components/reviews/star-rating'
 import { Button } from '@/components/ui/button'
@@ -86,6 +87,7 @@ export function TicketsList({
   onlyRejectedTransfers?: boolean
   allowCreate?: boolean
 }) {
+  const { t, lang } = useLocale()
   const { user } = useAuth()
   const [tickets, setTickets] = useState<TicketRow[]>([])
   const [sellerNames, setSellerNames] = useState<Record<string, string>>({})
@@ -143,47 +145,47 @@ export function TicketsList({
       {allowCreate && (
         <div className="flex justify-end">
           <Button onClick={() => setCreating(true)} className="gap-2">
-            <Plus className="h-4 w-4" /> فتح تذكرة دعم جديدة
+            <Plus className="h-4 w-4" /> {t('فتح تذكرة دعم جديدة')}
           </Button>
         </div>
       )}
 
       {loading ? (
         <div className="flex items-center justify-center gap-2 rounded-xl border border-border/60 bg-card/40 p-8 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" /> جارٍ التحميل…
+          <Loader2 className="h-4 w-4 animate-spin" /> {t('جارٍ التحميل…')}
         </div>
       ) : tickets.length === 0 ? (
         <p className="rounded-xl border border-border/60 bg-card/40 p-8 text-center text-sm text-muted-foreground">
-          {onlyRejectedTransfers ? 'لا توجد تذاكر لطلبات مرفوضة.' : statusFilter ? 'لا توجد تذاكر نشطة.' : 'لا توجد تذاكر.'}
+          {onlyRejectedTransfers ? t('لا توجد تذاكر لطلبات مرفوضة.') : statusFilter ? t('لا توجد تذاكر نشطة.') : t('لا توجد تذاكر.')}
         </p>
       ) : (
-        tickets.map((t) => {
-          const st = TICKET_STATUS[t.status] ?? { label: t.status, cls: 'bg-muted text-muted-foreground' }
+        tickets.map((ticketItem) => {
+          const st = TICKET_STATUS[ticketItem.status] ?? { label: ticketItem.status, cls: 'bg-muted text-muted-foreground' }
           return (
             <button
-              key={t.id}
-              onClick={() => setOpenId(t.id)}
-              className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-card/40 p-4 text-right transition-colors hover:border-primary/40"
+              key={ticketItem.id}
+              onClick={() => setOpenId(ticketItem.id)}
+              className="flex w-full items-center justify-between rounded-xl border border-border/60 bg-card/40 p-4 text-start transition-colors hover:border-primary/40"
             >
               <div className="flex items-center gap-3">
                 <span className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/15 text-primary">
-                  {t.type === 'dispute' ? (
+                  {ticketItem.type === 'dispute' ? (
                     <AlertTriangle className="h-5 w-5" />
-                  ) : t.type === 'order' ? (
+                  ) : ticketItem.type === 'order' ? (
                     <PackageCheck className="h-5 w-5" />
                   ) : (
                     <MessageSquare className="h-5 w-5" />
                   )}
                 </span>
                 <div>
-                  <div className="font-medium">{t.subject || 'تذكرة دعم'}</div>
+                  <div className="font-medium">{ticketItem.subject || t('تذكرة دعم')}</div>
                   <div className="text-xs text-muted-foreground">
-                    {new Date(t.created_at).toLocaleDateString('ar')}
-                    {role === 'buyer' && t.seller_id && sellerNames[t.seller_id] ? ` · البائع: ${sellerNames[t.seller_id]}` : ''}
+                    {new Date(ticketItem.created_at).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US')}
+                    {role === 'buyer' && ticketItem.seller_id && sellerNames[ticketItem.seller_id] ? ` · ${t('البائع:')} ${sellerNames[ticketItem.seller_id]}` : ''}
                   </div>
                 </div>
               </div>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${st.cls}`}>{st.label}</span>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${st.cls}`}>{t(st.label)}</span>
             </button>
           )
         })
@@ -213,6 +215,7 @@ function NewSupportTicket({
   onClose: () => void
   onCreated: (id: string) => void
 }) {
+  const { t } = useLocale()
   const { user } = useAuth()
   const [subject, setSubject] = useState('')
   const [message, setMessage] = useState('')
@@ -221,8 +224,8 @@ function NewSupportTicket({
 
   async function submit() {
     if (!user || busy) return
-    if (subject.trim().length < 3) return setError('اكتب عنواناً موجزاً للمشكلة')
-    if (message.trim().length < 3) return setError('اكتب تفاصيل المشكلة')
+    if (subject.trim().length < 3) return setError(t('اكتب عنواناً موجزاً للمشكلة'))
+    if (message.trim().length < 3) return setError(t('اكتب تفاصيل المشكلة'))
     setBusy(true)
     setError('')
     const supabase = createClient()
@@ -233,7 +236,7 @@ function NewSupportTicket({
       .single()
     if (err || !ticket) {
       setBusy(false)
-      setError('تعذّر فتح التذكرة، حاول مرة أخرى')
+      setError(t('تعذّر فتح التذكرة، حاول مرة أخرى'))
       return
     }
     await supabase
@@ -257,31 +260,31 @@ function NewSupportTicket({
       >
         <div className="flex items-center justify-between">
           <h2 className="flex items-center gap-2 font-bold">
-            <MessageSquare className="h-5 w-5 text-primary" /> تذكرة دعم جديدة
+            <MessageSquare className="h-5 w-5 text-primary" /> {t('تذكرة دعم جديدة')}
           </h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X className="h-5 w-5" />
           </button>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="t-subject">الموضوع</Label>
-          <Input id="t-subject" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="مثال: مشكلة في استلام الطلب" />
+          <Label htmlFor="t-subject">{t('الموضوع')}</Label>
+          <Input id="t-subject" value={subject} onChange={(e) => setSubject(e.target.value)} placeholder={t('مثال: مشكلة في استلام الطلب')} />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="t-message">تفاصيل المشكلة</Label>
+          <Label htmlFor="t-message">{t('تفاصيل المشكلة')}</Label>
           <textarea
             id="t-message"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={4}
             className="w-full rounded-md border border-border/60 bg-background px-3 py-2 text-sm outline-none focus:border-primary"
-            placeholder="اشرح مشكلتك بالتفصيل…"
+            placeholder={t('اشرح مشكلتك بالتفصيل…')}
           />
         </div>
         {error && <p className="text-xs text-destructive">{error}</p>}
         <Button onClick={submit} disabled={busy} className="w-full gap-2">
           {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          إرسال التذكرة للدعم الفني
+          {t('إرسال التذكرة للدعم الفني')}
         </Button>
       </div>
     </div>
@@ -329,7 +332,7 @@ function renderLinkedText(text: string, keyPrefix: string): ReactNode[] {
   return nodes
 }
 
-function renderMessageBody(body: string, ticketId: string): ReactNode[] {
+function renderMessageBody(body: string, ticketId: string, imageAlt: string): ReactNode[] {
   const nodes: ReactNode[] = []
   const attachmentPattern = /\[\[ticket-image:([^\]]+)\]\]/g
   let cursor = 0
@@ -350,7 +353,7 @@ function renderMessageBody(body: string, ticketId: string): ReactNode[] {
       >
         <img
           src={imageUrl}
-          alt="صورة مرفقة في محادثة الطلب"
+          alt={imageAlt}
           className="max-h-64 max-w-full rounded-lg border border-border object-contain"
         />
       </a>,
@@ -373,6 +376,7 @@ export function TicketThread({
   onClose: () => void
   onChanged: () => void
 }) {
+  const { t, lang } = useLocale()
   const { user } = useAuth()
   const [messages, setMessages] = useState<MessageRow[]>([])
   const [senderProfiles, setSenderProfiles] = useState<Record<string, SenderProfile>>({})
@@ -491,11 +495,11 @@ export function TicketThread({
   function selectAttachment(file: File) {
     const supportedTypes = ['image/png', 'image/jpeg', 'image/webp']
     if (!supportedTypes.includes(file.type)) {
-      setActionError('اختر صورة بصيغة PNG أو JPG أو WEBP')
+      setActionError(t('اختر صورة بصيغة PNG أو JPG أو WEBP'))
       return
     }
     if (file.size === 0 || file.size > 8 * 1024 * 1024) {
-      setActionError('حجم الصورة يجب ألا يتجاوز 8 ميغابايت')
+      setActionError(t('حجم الصورة يجب ألا يتجاوز 8 ميغابايت'))
       return
     }
     setActionError('')
@@ -504,7 +508,7 @@ export function TicketThread({
 
   async function pasteClipboardImage() {
     if (!navigator.clipboard?.read) {
-      setActionError('تعذّر الوصول إلى الحافظة. استخدم Ctrl+V أو زر إرفاق صورة.')
+      setActionError(t('تعذّر الوصول إلى الحافظة. استخدم Ctrl+V أو زر إرفاق صورة.'))
       return
     }
 
@@ -519,9 +523,9 @@ export function TicketThread({
         selectAttachment(new File([image], `pasted-image-${Date.now()}.${extension}`, { type: imageType }))
         return
       }
-      setActionError('لم أعثر على صورة في الحافظة. انسخ الصورة ثم اضغط Alt+V أو Ctrl+V.')
+      setActionError(t('لم أعثر على صورة في الحافظة. انسخ الصورة ثم اضغط Alt+V أو Ctrl+V.'))
     } catch {
-      setActionError('تعذّر الوصول إلى الحافظة. استخدم Ctrl+V أو زر إرفاق صورة.')
+      setActionError(t('تعذّر الوصول إلى الحافظة. استخدم Ctrl+V أو زر إرفاق صورة.'))
     }
   }
 
@@ -561,14 +565,14 @@ export function TicketThread({
         .from('ticket_messages')
         .insert({ ticket_id: ticketId, sender_id: user.id, body })
       if (error) {
-        setActionError('تعذّر إرسال الرسالة، حاول مرة أخرى')
+        setActionError(t('تعذّر إرسال الرسالة، حاول مرة أخرى'))
         return
       }
       await supabase.from('tickets').update({ updated_at: new Date().toISOString() }).eq('id', ticketId)
       setText('')
       setAttachment(null)
     } catch {
-      setActionError(attachment ? 'تعذّر رفع الصورة. أعد المحاولة أو اختر صورة أصغر.' : 'تعذّر إرسال الرسالة، حاول مرة أخرى')
+      setActionError(attachment ? t('تعذّر رفع الصورة. أعد المحاولة أو اختر صورة أصغر.') : t('تعذّر إرسال الرسالة، حاول مرة أخرى'))
     } finally {
       setSending(false)
     }
@@ -589,7 +593,7 @@ export function TicketThread({
     })
     if (!res.ok) {
       const result = await res.json().catch(() => ({}))
-      setActionError(result.error ?? 'تعذّر تحديث الطلب')
+      setActionError(t(result.error ?? 'تعذّر تحديث الطلب'))
       return false
     }
     setActionError('')
@@ -604,7 +608,7 @@ export function TicketThread({
     })
     if (!res.ok) {
       const result = await res.json().catch(() => ({}))
-      setActionError(result.error ?? 'تعذّر تحديث الطلب')
+      setActionError(t(result.error ?? 'تعذّر تحديث الطلب'))
       return false
     }
     setActionError('')
@@ -638,25 +642,25 @@ export function TicketThread({
       })
       const result = await response.json()
       if (!response.ok) {
-        setActionError(result.error || 'تعذّر تحويل التذكرة')
+        setActionError(t(result.error || 'تعذّر تحويل التذكرة'))
         return
       }
       setTransferOpen(false)
       await load()
       onChanged()
     } catch {
-      setActionError('تعذّر الاتصال بالخادم لتحويل التذكرة')
+      setActionError(t('تعذّر الاتصال بالخادم لتحويل التذكرة'))
     } finally {
       setActing(false)
     }
   }
 
-  // المشتري: تأكيد الاستلام + التقييم المتبادل
+  // المشتري: تأكيد الاستلام + التقي��م المتبادل
   async function confirmReceipt() {
     if ((!order && !ticket?.catalog_item_id) || acting) return
     if (stars < 1 || siteStars < 1 || siteReviewComment.trim().length < 3) {
       setShowRating(true)
-      setActionError('قيّم البائع والموقع واكتب رأيك في الموقع قبل تأكيد الاستلام')
+      setActionError(t('قيّم البائع والموقع واكتب رأيك في الموقع قبل تأكيد الاستلام'))
       return
     }
     setActing(true)
@@ -708,12 +712,12 @@ export function TicketThread({
       >
         <div className="flex items-center justify-between border-b border-border/60 p-4">
           <div>
-            <h2 className="font-bold">{ticket?.subject || 'تذكرة'}</h2>
+            <h2 className="font-bold">{ticket?.subject || t('تذكرة')}</h2>
             <p className="text-xs text-muted-foreground">
-              رقم {ticketId.slice(0, 8)}
-              {sellerName && role !== 'seller' ? ` · البائع: ${sellerName}` : ''}
-              {ticket?.catalog_item_id ? ` · الكمية: ${Number(ticket.catalog_quantity ?? 1).toLocaleString('ar-SA')}` : ''}
-              {ticket?.purchase_price_sar !== null && ticket?.purchase_price_sar !== undefined ? ` · ${Number(ticket.purchase_price_sar).toFixed(2)} ر.س` : ''}
+              {t('رقم')} {ticketId.slice(0, 8)}
+              {sellerName && role !== 'seller' ? ` · ${t('البائع:')} ${sellerName}` : ''}
+              {ticket?.catalog_item_id ? ` · ${t('الكمية:')} ${Number(ticket.catalog_quantity ?? 1).toLocaleString(lang === 'ar' ? 'ar-SA' : 'en-US')}` : ''}
+              {ticket?.purchase_price_sar !== null && ticket?.purchase_price_sar !== undefined ? ` · ${Number(ticket.purchase_price_sar).toFixed(2)} ${lang === 'ar' ? 'ر.س' : 'SAR'}` : ''}
             </p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -724,37 +728,37 @@ export function TicketThread({
         <div className="flex-1 space-y-3 overflow-y-auto p-4">
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> جارٍ التحميل…
+<Loader2 className="h-4 w-4 animate-spin" /> {t('جارٍ التحميل…')}
             </div>
           ) : (
             messages.map((m) => {
               const mine = m.sender_id === user?.id
               const profile = senderProfiles[m.sender_id]
-              const senderName = profile?.username ?? (mine ? user?.username : undefined) ?? 'مستخدم'
+              const senderName = profile?.username ?? (mine ? user?.username : undefined) ?? t('مستخدم')
               const avatarUrl = profile?.avatar_url ?? (mine ? user?.avatarUrl : undefined)
               return (
                 <div key={m.id} className={`flex items-end gap-2 ${mine ? 'justify-end' : 'justify-start'}`}>
                   {mine && (
                     <div className="max-w-[80%] rounded-2xl bg-primary px-3.5 py-2 text-sm text-primary-foreground">
                       <div className="mb-1 text-xs font-semibold">{senderName}</div>
-                      <p className="whitespace-pre-wrap break-words">{renderMessageBody(m.body, ticketId)}</p>
+                      <p className="whitespace-pre-wrap break-words">{renderMessageBody(m.body, ticketId, t('صورة مرفقة في محادثة الطلب'))}</p>
                       <div className="mt-1 text-[10px] text-primary-foreground/70">
-                        {new Date(m.created_at).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(m.created_at).toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
                   )}
                   <ProfileAvatar
                     src={avatarUrl}
                     name={senderName}
-                    alt={`الصورة الشخصية لـ ${senderName}`}
+                    alt={`${t('الصورة الشخصية لـ')} ${senderName}`}
                     className="size-8 border border-border/60 text-[10px]"
                   />
                   {!mine && (
                     <div className="max-w-[80%] rounded-2xl bg-muted px-3.5 py-2 text-sm text-foreground">
                       <div className="mb-1 text-xs font-semibold">{senderName}</div>
-                      <p className="whitespace-pre-wrap break-words">{renderMessageBody(m.body, ticketId)}</p>
+                      <p className="whitespace-pre-wrap break-words">{renderMessageBody(m.body, ticketId, t('صورة مرفقة في محادثة الطلب'))}</p>
                       <div className="mt-1 text-[10px] text-muted-foreground">
-                        {new Date(m.created_at).toLocaleTimeString('ar', { hour: '2-digit', minute: '2-digit' })}
+                        {new Date(m.created_at).toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
                       </div>
                     </div>
                   )}
@@ -771,14 +775,14 @@ export function TicketThread({
             (ticket?.close_reason || order?.close_reason) && (
               <div className="flex items-start gap-2 rounded-xl border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive">
                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-                <span>سبب الإغلاق: {ticket?.close_reason || order?.close_reason}</span>
+                <span>{t('سبب الإغلاق:')} {ticket?.close_reason || order?.close_reason}</span>
               </div>
             )}
 
           {sellerCanDeliver && (
             <Button onClick={markDelivered} disabled={acting} className="w-full gap-2">
               {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
-              {ticket?.catalog_item_id ? 'تأكيد تسليم المنتج للمشتري' : 'تأكيد تسليم الطلب'}
+              {ticket?.catalog_item_id ? t('تأكيد تسليم المنتج للمشتري') : t('تأكيد تسليم الطلب')}
             </Button>
           )}
 
@@ -786,7 +790,7 @@ export function TicketThread({
             <div className="flex flex-col gap-2 rounded-xl border border-border/60 bg-background/50 p-3">
               {transferOpen ? (
                 <>
-                  <label htmlFor="transfer-reason" className="text-xs font-medium">سبب التحويل (اختياري)</label>
+                  <label htmlFor="transfer-reason" className="text-xs font-medium">{t('سبب التحويل (اختياري)')}</label>
                   <textarea
                     id="transfer-reason"
                     value={transferReason}
@@ -794,21 +798,21 @@ export function TicketThread({
                     maxLength={500}
                     rows={2}
                     className="w-full resize-y rounded-md border border-border/60 bg-background px-3 py-2 text-sm leading-relaxed outline-none focus:border-primary"
-                    placeholder="اشرح باختصار سبب عدم قدرتك على إكمال الطلب"
+                    placeholder={t('اشرح باختصار سبب عدم قدرتك على إكمال الطلب')}
                   />
                   <div className="flex gap-2">
                     <Button type="button" onClick={() => void transferTicket()} disabled={acting} className="flex-1">
                       {acting ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <ArrowLeftRight data-icon="inline-start" />}
-                      تحويل التذكرة
+                      {t('تحويل التذكرة')}
                     </Button>
                     <Button type="button" variant="outline" onClick={() => setTransferOpen(false)} disabled={acting}>
-                      إلغاء
+                      {t('إلغاء')}
                     </Button>
                   </div>
                 </>
               ) : (
                 <Button type="button" variant="outline" onClick={() => setTransferOpen(true)} disabled={acting} className="w-full">
-                  <ArrowLeftRight data-icon="inline-start" /> لا أستطيع إكمال الطلب — تحويل التذكرة
+                  <ArrowLeftRight data-icon="inline-start" /> {t('لا أستطيع إكمال الطلب — تحويل التذكرة')}
                 </Button>
               )}
             </div>
@@ -817,12 +821,12 @@ export function TicketThread({
           {buyerCanConfirm && (
             <div className="space-y-2 rounded-xl border border-primary/30 bg-primary/5 p-3">
               <p className="flex items-center gap-1.5 text-xs font-medium text-primary">
-                <Star className="h-3.5 w-3.5" /> استلمت {ticket?.catalog_item_id ? 'المنتج' : 'طلبك'}؟ أكّد الاستلام وقيّم البائع
+                <Star className="h-3.5 w-3.5" /> {t('استلمت')} {ticket?.catalog_item_id ? t('المنتج') : t('طلبك')}{t('؟ أكّد الاستلام وقيّم البائع')}
               </p>
               {(showRating || stars > 0) && (
                 <div className="max-h-64 space-y-3 overflow-y-auto py-1">
                   <div className="space-y-1">
-                    <p className="text-center text-xs font-medium">تقييم البائع</p>
+                    <p className="text-center text-xs font-medium">{t('تقييم البائع')}</p>
                     <div className="flex justify-center">
                       <StarInput value={stars} onChange={setStars} />
                     </div>
@@ -830,13 +834,13 @@ export function TicketThread({
                       value={reviewComment}
                       onChange={(e) => setReviewComment(e.target.value)}
                       maxLength={500}
-                      placeholder="تعليق على تجربتك مع البائع (اختياري)"
+                      placeholder={t('تعليق على تجربتك مع البائع (اختياري)')}
                     />
                   </div>
                   {stars > 0 && (
                     <div className="space-y-1 rounded-lg border border-border/60 bg-background/50 p-3">
-                      <p className="text-center text-sm font-semibold">والآن، كيف كانت تجربتك مع الموقع؟</p>
-                      <p className="text-center text-xs text-muted-foreground">سيظهر تقييمك ضمن آراء عملاء SwiftRBX</p>
+                      <p className="text-center text-sm font-semibold">{t('والآن، كيف كانت تجربتك مع الموقع؟')}</p>
+                      <p className="text-center text-xs text-muted-foreground">{t('سيظهر تقييمك ضمن آراء عملاء SwiftRBX')}</p>
                       <div className="flex justify-center">
                         <StarInput value={siteStars} onChange={setSiteStars} />
                       </div>
@@ -845,8 +849,8 @@ export function TicketThread({
                         onChange={(event) => setSiteReviewComment(event.target.value)}
                         rows={2}
                         maxLength={500}
-                        aria-label="اكتب تقييمك للموقع"
-                        placeholder="اكتب رأيك في الموقع وتجربتك معنا"
+                        aria-label={t('اكتب تقييمك للموقع')}
+                        placeholder={t('اكتب رأيك في الموقع وتجربتك معنا')}
                         className="w-full resize-y rounded-md border border-border/60 bg-background px-3 py-2 text-sm leading-relaxed outline-none focus:border-primary"
                       />
                     </div>
@@ -855,7 +859,7 @@ export function TicketThread({
               )}
               <Button onClick={confirmReceipt} disabled={acting} className="w-full gap-2">
                 {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
-                تأكيد الاستلام وإرسال التقييمات
+                {t('تأكيد الاستلام وإرسال التقييمات')}
               </Button>
             </div>
           )}
@@ -866,7 +870,7 @@ export function TicketThread({
               disabled={acting}
               className="flex items-center gap-1 text-xs text-destructive hover:underline"
             >
-              <AlertTriangle className="h-3.5 w-3.5" /> فتح نزاع على هذا الطلب
+              <AlertTriangle className="h-3.5 w-3.5" /> {t('فتح نزاع على هذا الطلب')}
             </button>
           )}
 
@@ -875,16 +879,16 @@ export function TicketThread({
               {attachmentPreviewUrl && (
                 <img
                   src={attachmentPreviewUrl}
-                  alt="معاينة الصورة المرفقة"
+                  alt={t('معاينة الصورة المرفقة')}
                   className="size-10 shrink-0 rounded-md border border-border/60 object-cover"
                 />
               )}
-              <span className="min-w-0 flex-1 truncate">الصورة المرفقة: {attachment.name}</span>
+              <span className="min-w-0 flex-1 truncate">{t('الصورة المرفقة:')} {attachment.name}</span>
               <button
                 type="button"
                 onClick={() => setAttachment(null)}
                 disabled={sending}
-                aria-label="إزالة الصورة المرفقة"
+                aria-label={t('إزالة الصورة المرفقة')}
                 className="shrink-0 rounded p-1 text-muted-foreground hover:text-foreground"
               >
                 <X className="size-4" />
@@ -897,7 +901,7 @@ export function TicketThread({
               type="file"
               accept="image/png,image/jpeg,image/webp"
               className="sr-only"
-              aria-label="اختر صورة لإرفاقها بالتذكرة"
+              aria-label={t('اختر صورة لإرفاقها بالتذكرة')}
               onChange={(event) => {
                 const file = event.currentTarget.files?.[0]
                 event.currentTarget.value = ''
@@ -913,7 +917,7 @@ export function TicketThread({
               disabled={sending}
             >
               <Paperclip className="size-4" />
-              إرفاق صورة
+              {t('إرفاق صورة')}
             </Button>
             <Input
               value={text}
@@ -930,10 +934,10 @@ export function TicketThread({
                   send()
                 }
               }}
-              placeholder="اكتب رسالتك…"
+              placeholder={t('اكتب رسالتك…')}
             />
-            <span className="sr-only">يمكن لصق صورة من الحافظة عبر Alt+V أو Ctrl+V</span>
-            <Button onClick={send} disabled={sending || (!text.trim() && !attachment)} size="icon" aria-label="إرسال الرسالة">
+            <span className="sr-only">{t('يمكن لصق صورة من الحافظة عبر Alt+V أو Ctrl+V')}</span>
+            <Button onClick={send} disabled={sending || (!text.trim() && !attachment)} size="icon" aria-label={t('إرسال الرسالة')}>
               {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
             </Button>
           </div>

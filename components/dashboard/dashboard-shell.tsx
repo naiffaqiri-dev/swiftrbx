@@ -40,7 +40,7 @@ export function DashboardShell({
     <div className="flex min-h-[calc(100svh-3.5rem)] bg-background text-foreground">
       <MessageNotifier />
       <SupportButton />
-      <aside className="hidden w-64 shrink-0 flex-col border-l border-border/60 bg-card/40 p-4 md:flex">
+      <aside className="hidden w-64 shrink-0 flex-col border-s border-border/60 bg-card/40 p-4 md:flex">
         <div className="mb-6 px-2">
           <BrandLogo />
         </div>
@@ -91,7 +91,7 @@ export function DashboardShell({
               <h1 className="text-balance text-lg font-bold">{title}</h1>
               {user && (
                 <p className="truncate text-xs text-muted-foreground">
-                  {user.username} · {ROLE_LABELS[user.role]}
+                  {user.username} · {t(ROLE_LABELS[user.role])}
                 </p>
               )}
             </div>
@@ -124,7 +124,7 @@ export function DashboardShell({
                 type="button"
                 onClick={() => onNavigate(item.key)}
                 aria-current={active === item.key ? 'page' : undefined}
-                className={`flex min-h-11 min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-right text-xs font-medium leading-5 transition-colors ${active === item.key ? 'bg-primary/15 text-primary' : 'bg-muted/30 text-muted-foreground'}`}
+                className={`flex min-h-11 min-w-0 items-center gap-2 rounded-lg px-3 py-2 text-start text-xs font-medium leading-5 transition-colors ${active === item.key ? 'bg-primary/15 text-primary' : 'bg-muted/30 text-muted-foreground'}`}
               >
                 <span className="shrink-0">{item.icon}</span>
                 <span className="min-w-0">{item.label}</span>

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth, ROLE_LABELS, ratingOf } from '@/components/auth/mock-auth'
 import { createClient } from '@/lib/supabase/client'
+import { useLocale } from '@/components/i18n/locale-provider'
 import { StarDisplay } from '@/components/reviews/star-rating'
 import { ProfileAvatar } from '@/components/profile-avatar'
 import { Button } from '@/components/ui/button'
@@ -27,6 +28,7 @@ function fallbackRef(seed: string) {
 export function AccountView() {
   const router = useRouter()
   const { user, ready, updateUser } = useAuth()
+  const { t } = useLocale()
   const [tab, setTab] = useState<'profile' | 'security' | 'affiliate'>('profile')
   const [copied, setCopied] = useState(false)
 
@@ -69,7 +71,7 @@ export function AccountView() {
   }, [user])
 
   if (!ready || !user) {
-    return <p className="p-8 text-center text-sm text-muted-foreground">جارٍ التحميل…</p>
+    return <p className="p-8 text-center text-sm text-muted-foreground">{t('جارٍ التحميل…')}</p>
   }
 
   const rating = ratingOf(user)
@@ -92,18 +94,18 @@ export function AccountView() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setProfileMsg({ type: 'err', text: data.error ?? 'تعذّر الحفظ' })
+        setProfileMsg({ type: 'err', text: t(data.error ?? 'تعذّر الحفظ') })
         return
       }
       if (action === 'displayName') {
         updateUser(user!.id, { displayName: value, displayNameChangedAt: data.changedAt })
-        setProfileMsg({ type: 'ok', text: 'تم تحديث الاسم المستعار بنجاح.' })
+        setProfileMsg({ type: 'ok', text: t('تم تحديث الاسم المستعار بنجاح.') })
       } else {
         updateUser(user!.id, { username: value, usernameChangedAt: data.changedAt })
-        setProfileMsg({ type: 'ok', text: 'تم تحديث اسم المستخدم بنجاح.' })
+        setProfileMsg({ type: 'ok', text: t('تم تحديث اسم المستخدم بنجاح.') })
       }
     } catch {
-      setProfileMsg({ type: 'err', text: 'تعذّر الاتصال، حاول لاحقاً' })
+      setProfileMsg({ type: 'err', text: t('تعذّر الاتصال، حاول لاحقاً') })
     } finally {
       setProfileBusy(null)
     }
@@ -112,11 +114,11 @@ export function AccountView() {
   async function uploadAvatar(file: File) {
     setProfileMsg(null)
     if (!file.type.startsWith('image/')) {
-      setProfileMsg({ type: 'err', text: 'يرجى اختيار ملف صورة صالح' })
+      setProfileMsg({ type: 'err', text: t('يرجى اختيار ملف صورة صالح') })
       return
     }
     if (file.size > 3 * 1024 * 1024) {
-      setProfileMsg({ type: 'err', text: 'حجم الصورة يجب ألا يتجاوز 3 ميجابايت' })
+      setProfileMsg({ type: 'err', text: t('حجم الصورة يجب ألا يتجاوز 3 ميجابايت') })
       return
     }
     setProfileBusy('avatar')
@@ -129,13 +131,13 @@ export function AccountView() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setProfileMsg({ type: 'err', text: data.error ?? 'تعذّر رفع الصورة، حاول مرة أخرى' })
+        setProfileMsg({ type: 'err', text: t(data.error ?? 'تعذّر رفع الصورة، حاول مرة أخرى') })
         return
       }
       updateUser(user!.id, { avatarUrl: data.avatarUrl })
-      setProfileMsg({ type: 'ok', text: 'تم تحديث الصورة الشخصية بنجاح.' })
+      setProfileMsg({ type: 'ok', text: t('تم تحديث الصورة الشخصية بنجاح.') })
     } catch {
-      setProfileMsg({ type: 'err', text: 'تعذّر الاتصال، حاول لاحقاً' })
+      setProfileMsg({ type: 'err', text: t('تعذّر الاتصال، حاول لاحقاً') })
     } finally {
       setProfileBusy(null)
     }
@@ -152,13 +154,13 @@ export function AccountView() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setEmailMsg({ type: 'err', text: data.error ?? 'تعذّر الإرسال' })
+        setEmailMsg({ type: 'err', text: t(data.error ?? 'تعذّر الإرسال') })
         return
       }
       setEmailStage('code')
-      setEmailMsg({ type: 'ok', text: 'أرسلنا رمز التحقق إلى البريد الجديد.' })
+      setEmailMsg({ type: 'ok', text: t('أرسلنا رمز التحقق إلى البريد الجديد.') })
     } catch {
-      setEmailMsg({ type: 'err', text: 'تعذّر الاتصال، حاول لاحقاً' })
+      setEmailMsg({ type: 'err', text: t('تعذّر الاتصال، حاول لاحقاً') })
     } finally {
       setEmailBusy(false)
     }
@@ -175,16 +177,16 @@ export function AccountView() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setEmailMsg({ type: 'err', text: data.error ?? 'رمز غير صحيح' })
+        setEmailMsg({ type: 'err', text: t(data.error ?? 'رمز غير صحيح') })
         return
       }
       updateUser(user!.id, { email: data.email })
       setEmailStage('idle')
       setEmailCode('')
       setNewEmail('')
-      setEmailMsg({ type: 'ok', text: 'تم تحديث بريدك الإلكتروني بنجاح.' })
+      setEmailMsg({ type: 'ok', text: t('تم تحديث بريدك الإلكتروني بنجاح.') })
     } catch {
-      setEmailMsg({ type: 'err', text: 'تعذّر الاتصال، حاول لاحقاً' })
+      setEmailMsg({ type: 'err', text: t('تعذّر الاتصال، حاول لاحقاً') })
     } finally {
       setEmailBusy(false)
     }
@@ -193,11 +195,11 @@ export function AccountView() {
   async function updatePassword() {
     setPwMsg(null)
     if (pw.next.length < 6) {
-      setPwMsg({ type: 'err', text: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' })
+      setPwMsg({ type: 'err', text: t('كلمة المرور يجب أن تكون 6 أحرف على الأقل') })
       return
     }
     if (pw.next !== pw.confirm) {
-      setPwMsg({ type: 'err', text: 'كلمتا المرور غير متطابقتين' })
+      setPwMsg({ type: 'err', text: t('كلمتا المرور غير متطابقتين') })
       return
     }
     setPwBusy(true)
@@ -205,11 +207,11 @@ export function AccountView() {
       const supabase = createClient()
       const { error } = await supabase.auth.updateUser({ password: pw.next })
       if (error) {
-        setPwMsg({ type: 'err', text: 'تعذّر تحديث كلمة المرور' })
+        setPwMsg({ type: 'err', text: t('تعذّر تحديث كلمة المرور') })
         return
       }
       setPw({ next: '', confirm: '' })
-      setPwMsg({ type: 'ok', text: 'تم تحديث كلمة المرور بنجاح.' })
+      setPwMsg({ type: 'ok', text: t('تم تحديث كلمة المرور بنجاح.') })
     } finally {
       setPwBusy(false)
     }
@@ -227,13 +229,13 @@ export function AccountView() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setFaMsg({ type: 'err', text: data.error ?? 'تعذّر الإرسال' })
+        setFaMsg({ type: 'err', text: t(data.error ?? 'تعذّر الإرسال') })
         return
       }
       setFaStage('code')
-      setFaMsg({ type: 'ok', text: 'أرسلنا رمز التحقق إلى بريدك.' })
+      setFaMsg({ type: 'ok', text: t('أرسلنا رمز التحقق إلى بريدك.') })
     } catch {
-      setFaMsg({ type: 'err', text: 'تعذّر الاتصال، حاول لاحقاً' })
+      setFaMsg({ type: 'err', text: t('تعذّر الاتصال، حاول لاحقاً') })
     } finally {
       setFaBusy(false)
     }
@@ -250,25 +252,25 @@ export function AccountView() {
       })
       const data = await res.json()
       if (!res.ok) {
-        setFaMsg({ type: 'err', text: data.error ?? 'رمز غير صحيح' })
+        setFaMsg({ type: 'err', text: t(data.error ?? 'رمز غير صحيح') })
         return
       }
       setTwoFA(!!data.enabled)
       updateUser(user!.id, { twoFactorEnabled: !!data.enabled })
       setFaStage('idle')
       setFaCode('')
-      setFaMsg({ type: 'ok', text: data.enabled ? 'تم تفعيل التحقق بخطوتين.' : 'تم تعطيل التحقق بخطوتين.' })
+      setFaMsg({ type: 'ok', text: data.enabled ? t('تم تفعيل التحقق بخطوتين.') : t('تم تعطيل التحقق بخطوتين.') })
     } catch {
-      setFaMsg({ type: 'err', text: 'تعذّر الاتصال، حاول لاحقاً' })
+      setFaMsg({ type: 'err', text: t('تعذّر الاتصال، حاول لاحقاً') })
     } finally {
       setFaBusy(false)
     }
   }
 
   const tabs = [
-    { key: 'profile' as const, label: 'الملف الشخصي', icon: <UserIcon className="h-4 w-4" /> },
-    { key: 'security' as const, label: 'الأمان', icon: <Shield className="h-4 w-4" /> },
-    { key: 'affiliate' as const, label: 'الإحالة والعمولة', icon: <Wallet className="h-4 w-4" /> },
+    { key: 'profile' as const, label: t('الملف الشخصي'), icon: <UserIcon className="h-4 w-4" /> },
+    { key: 'security' as const, label: t('الأمان'), icon: <Shield className="h-4 w-4" /> },
+    { key: 'affiliate' as const, label: t('الإحالة والعمولة'), icon: <Wallet className="h-4 w-4" /> },
   ]
 
   return (
@@ -286,7 +288,7 @@ export function AccountView() {
             <AtSign className="h-3.5 w-3.5" />
             <span dir="ltr">{user.username}</span>
             <span className="mx-1">·</span>
-            {ROLE_LABELS[user.role]}
+            {t(ROLE_LABELS[user.role])}
           </p>
           {user.role === 'seller' && (
             <div className="mt-1 flex items-center gap-2">
@@ -296,7 +298,7 @@ export function AccountView() {
           )}
         </div>
         <div className="ms-auto text-left">
-          <div className="text-xs text-muted-foreground">الرصيد</div>
+          <div className="text-xs text-muted-foreground">{t('الرصيد')}</div>
           <div className="text-lg font-bold text-primary">{formatMoney(user.balance)}</div>
         </div>
       </div>
@@ -340,13 +342,13 @@ export function AccountView() {
               )}
             </div>
             <div>
-              <Label htmlFor="avatar-input" className="mb-1.5 block">الصورة الشخصية</Label>
+              <Label htmlFor="avatar-input" className="mb-1.5 block">{t('الصورة الشخصية')}</Label>
               <label
                 htmlFor="avatar-input"
                 className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border/60 bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
               >
                 <Camera className="h-4 w-4 text-primary" />
-                تغيير الصورة
+                {t('تغيير الصورة')}
               </label>
               <input
                 id="avatar-input"
@@ -360,7 +362,7 @@ export function AccountView() {
                   e.target.value = ''
                 }}
               />
-              <p className="mt-1 text-xs text-muted-foreground">يمكنك تغييرها في أي وقت — بحد أقصى 3 ميجابايت.</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t('يمكنك تغييرها في أي وقت — بحد أقصى 3 ميجابايت.')}</p>
             </div>
           </div>
 
@@ -368,7 +370,7 @@ export function AccountView() {
           <div className="space-y-1.5">
             <Label htmlFor="p-display" className="flex items-center gap-1.5">
               <BadgeCheck className="h-4 w-4 text-primary" />
-              الاسم المستعار
+              {t('الاسم المستعار')}
             </Label>
             <div className="flex gap-2">
               <Input
@@ -376,7 +378,7 @@ export function AccountView() {
                 value={displayName}
                 maxLength={24}
                 onChange={(e) => setDisplayName(e.target.value)}
-                placeholder="الاسم الظاهر للآخرين"
+                placeholder={t('الاسم الظاهر للآخرين')}
               />
               <Button
                 onClick={() => saveProfileField('displayName', displayName.trim())}
@@ -384,17 +386,17 @@ export function AccountView() {
                 className="gap-2"
               >
                 {profileBusy === 'display' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                حفظ
+                {t('حفظ')}
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground">يمكن تغييره مرة واحدة كل 3 أيام كحد أقصى.</p>
+            <p className="text-xs text-muted-foreground">{t('يمكن تغييره مرة واحدة كل 3 أيام كحد أقصى.')}</p>
           </div>
 
           {/* اسم المستخدم — مرة واحدة شهرياً */}
           <div className="space-y-1.5">
             <Label htmlFor="p-username" className="flex items-center gap-1.5">
               <AtSign className="h-4 w-4 text-primary" />
-              اسم المستخدم
+              {t('اسم المستخدم')}
             </Label>
             <div className="flex gap-2">
               <Input
@@ -410,28 +412,28 @@ export function AccountView() {
                 className="gap-2"
               >
                 {profileBusy === 'username' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                حفظ
+                {t('حفظ')}
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              بالإنجليزية فقط (أحرف وأرقام و _)، من 2 إلى 16 خانة. يمكن تغييره مرة واحدة شهرياً كحد أقصى.
+              {t('بالإنجليزية فقط (أحرف وأرقام و _)، من 2 إلى 16 خانة. يمكن تغييره مرة واحدة شهرياً كحد أقصى.')}
             </p>
           </div>
 
           <div className="space-y-1.5">
-            <Label>البريد الإلكتروني الحالي</Label>
+            <Label>{t('البريد الإلكتروني الحالي')}</Label>
             <Input value={user.email ?? ''} disabled />
           </div>
 
           <div className="space-y-3 rounded-xl border border-border/60 bg-background/40 p-4">
             <h3 className="flex items-center gap-2 text-sm font-bold">
               <Mail className="h-4 w-4 text-primary" />
-              تغيير البريد الإلكتروني
+              {t('تغيير البريد الإلكتروني')}
             </h3>
             {emailStage === 'idle' ? (
               <>
                 <div className="space-y-1.5">
-                  <Label htmlFor="new-email">البريد الجديد</Label>
+                  <Label htmlFor="new-email">{t('البريد الجديد')}</Label>
                   <Input
                     id="new-email"
                     type="email"
@@ -442,13 +444,13 @@ export function AccountView() {
                 </div>
                 <Button onClick={requestEmailChange} disabled={emailBusy || !newEmail} className="gap-2">
                   {emailBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                  إرسال رمز التحقق
+                  {t('إرسال رمز التحقق')}
                 </Button>
               </>
             ) : (
               <>
                 <div className="space-y-1.5">
-                  <Label htmlFor="email-code">رمز التحقق المرسل إلى البريد الجديد</Label>
+                  <Label htmlFor="email-code">{t('رمز التحقق المرسل إلى البريد الجديد')}</Label>
                   <Input
                     id="email-code"
                     inputMode="numeric"
@@ -460,10 +462,10 @@ export function AccountView() {
                 <div className="flex gap-2">
                   <Button onClick={confirmEmailChange} disabled={emailBusy || !emailCode} className="gap-2">
                     {emailBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    تأكيد
+                    {t('تأكيد')}
                   </Button>
                   <Button variant="ghost" onClick={() => setEmailStage('idle')}>
-                    إلغاء
+                    {t('إلغاء')}
                   </Button>
                 </div>
               </>
@@ -480,22 +482,22 @@ export function AccountView() {
           <div className="space-y-4 rounded-2xl border border-border/60 bg-card/40 p-6">
             <h2 className="flex items-center gap-2 text-sm font-bold">
               <KeyRound className="h-4 w-4 text-primary" />
-              تغيير كلمة المرور
+              {t('تغيير كلمة المرور')}
             </h2>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="new">كلمة المرور الجديدة</Label>
+                <Label htmlFor="new">{t('كلمة المرور الجديدة')}</Label>
                 <Input id="new" type="password" value={pw.next} onChange={(e) => setPw((s) => ({ ...s, next: e.target.value }))} placeholder="••••••••" />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="conf">تأكيد كلمة المرور</Label>
+                <Label htmlFor="conf">{t('تأكيد كلمة المرور')}</Label>
                 <Input id="conf" type="password" value={pw.confirm} onChange={(e) => setPw((s) => ({ ...s, confirm: e.target.value }))} placeholder="••••••••" />
               </div>
             </div>
             {pwMsg && <p className={`text-xs ${pwMsg.type === 'ok' ? 'text-primary' : 'text-destructive'}`}>{pwMsg.text}</p>}
             <Button onClick={updatePassword} disabled={pwBusy} className="gap-2">
               {pwBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              تحديث كلمة المرور
+                {t('تحديث كلمة المرور')}
             </Button>
           </div>
 
@@ -504,12 +506,13 @@ export function AccountView() {
               <div className="flex items-center gap-3">
                 <Smartphone className="h-5 w-5 text-primary" />
                 <div>
-                  <div className="text-sm font-medium">التحقق بخطوتين (2FA)</div>
-                  <div className="text-xs text-muted-foreground">حماية إضافية عبر رمز يُرسل إلى بريدك</div>
+                  <div className="text-sm font-medium">{t('التحقق بخطوتين (2FA)')}</div>
+                  <div className="text-xs text-muted-foreground">{t('حماية إضافية عبر رمز يُرسل إلى بريدك')}</div>
                 </div>
               </div>
               <button
                 onClick={() => (faStage === 'idle' ? requestTwoFA(!twoFA) : setFaStage('idle'))}
+                aria-label={t(twoFA ? 'تعطيل التحقق بخطوتين' : 'تفعيل التحقق بخطوتين')}
                 aria-pressed={twoFA}
                 disabled={faBusy}
                 className={`relative h-6 w-11 rounded-full transition-colors ${twoFA ? 'bg-primary' : 'bg-muted'}`}
@@ -524,7 +527,7 @@ export function AccountView() {
               <div className="space-y-3 rounded-xl border border-border/60 bg-background/40 p-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="fa-code">
-                    رمز {faTarget ? 'تفعيل' : 'تعطيل'} التحقق بخطوتين
+                    {t(faTarget ? 'تفعيل التحقق بخطوتين' : 'تعطيل التحقق بخطوتين')}
                   </Label>
                   <Input
                     id="fa-code"
@@ -537,10 +540,10 @@ export function AccountView() {
                 <div className="flex gap-2">
                   <Button onClick={confirmTwoFA} disabled={faBusy || !faCode} className="gap-2">
                     {faBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                    تأكيد
+                    {t('تأكيد')}
                   </Button>
                   <Button variant="ghost" onClick={() => setFaStage('idle')}>
-                    إلغاء
+                    {t('إلغاء')}
                   </Button>
                 </div>
               </div>
@@ -552,9 +555,9 @@ export function AccountView() {
 
       {tab === 'affiliate' && (
         <div className="space-y-4 rounded-2xl border border-border/60 bg-card/40 p-6">
-          <h2 className="text-sm font-bold">برنامج الإحالة</h2>
+          <h2 className="text-sm font-bold">{t('برنامج الإحالة')}</h2>
           <p className="text-sm text-muted-foreground">
-            شارك كود الإحالة واحصل على عمولة من كل عملية شراء يقوم بها من تدعوهم.
+            {t('شارك كود الإحالة واحصل على عمولة من كل عملية شراء يقوم بها من تدعوهم.')}
           </p>
           <div className="flex items-center gap-2">
             <div className="flex-1 rounded-lg border border-border/60 bg-background px-4 py-2.5 font-mono text-sm tracking-wider">
@@ -562,20 +565,20 @@ export function AccountView() {
             </div>
             <Button variant="secondary" onClick={copyRef} className="gap-2">
               {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              {copied ? 'تم' : 'نسخ'}
+              {copied ? t('تم') : t('نسخ')}
             </Button>
           </div>
           <div className="grid gap-4 pt-2 sm:grid-cols-3">
             <div className="rounded-xl border border-border/60 p-4">
-              <div className="text-xs text-muted-foreground">دعوات ناجحة</div>
+              <div className="text-xs text-muted-foreground">{t('دعوات ناجحة')}</div>
               <div className="text-xl font-bold">0</div>
             </div>
             <div className="rounded-xl border border-border/60 p-4">
-              <div className="text-xs text-muted-foreground">عمولة محصلة</div>
+              <div className="text-xs text-muted-foreground">{t('عمولة محصلة')}</div>
               <div className="text-sm font-bold text-primary">{formatMoney(user.commission ?? 0)}</div>
             </div>
             <div className="rounded-xl border border-border/60 p-4">
-              <div className="text-xs text-muted-foreground">نسبة العمولة</div>
+              <div className="text-xs text-muted-foreground">{t('نسبة العمولة')}</div>
               <div className="text-xl font-bold">5%</div>
             </div>
           </div>

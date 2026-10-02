@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import { useLocale } from '@/components/i18n/locale-provider'
 import { useAuth, ROLE_LABELS, type Role, type ManagedUser } from '@/components/auth/mock-auth'
 import { DashboardShell, StatCard } from './dashboard-shell'
 import { ProfileAvatar } from '@/components/profile-avatar'
@@ -15,7 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatMoney } from '@/lib/currency'
-import { CATALOG_CATEGORIES, CATALOG_CATEGORY_INFO, type CatalogCategory } from '@/lib/catalog'
+import { CATALOG_CATEGORIES, type CatalogCategory } from '@/lib/catalog'
 import {
   LayoutDashboard,
   Store,
@@ -52,17 +53,19 @@ const ROLE_STYLES: Record<Role, string> = {
 }
 
 function RoleBadge({ role }: { role: Role }) {
+  const { t } = useLocale()
   return (
     <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${ROLE_STYLES[role]}`}>
-      {ROLE_LABELS[role]}
+      {t(ROLE_LABELS[role])}
     </span>
   )
 }
 
 function SellerPermissionEditor({ user, onChange }: { user: ManagedUser; onChange: (user: ManagedUser, permissions: CatalogCategory[]) => void }) {
+  const { t } = useLocale()
   return (
     <fieldset className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5">
-      <legend className="sr-only">صلاحيات متجر {user.username}</legend>
+      <legend className="sr-only">{t('صلاحيات متجر')} {user.username}</legend>
       {CATALOG_CATEGORIES.map((category) => (
         <label key={category} className="inline-flex min-h-7 items-center gap-1.5 text-[11px] text-muted-foreground">
           <input
@@ -76,7 +79,7 @@ function SellerPermissionEditor({ user, onChange }: { user: ManagedUser; onChang
             }}
             className="size-3.5 accent-primary"
           />
-          {CATALOG_CATEGORY_INFO[category].label}
+          {t(`nav.category.${category}`)}
         </label>
       ))}
     </fieldset>
@@ -84,10 +87,11 @@ function SellerPermissionEditor({ user, onChange }: { user: ManagedUser; onChang
 }
 
 function StatusDot({ active }: { active: boolean }) {
+  const { t } = useLocale()
   return (
     <span className="inline-flex items-center gap-1.5 text-xs">
       <CircleDot className={`h-3.5 w-3.5 ${active ? 'text-primary' : 'text-muted-foreground/50'}`} />
-      {active ? 'نشط' : 'غير نشط'}
+      {active ? t('نشط') : t('غير نشط')}
     </span>
   )
 }
@@ -107,8 +111,9 @@ function UserTable({
   onRemove: (u: ManagedUser) => void
   onBalanceUpdated: () => Promise<void>
 }) {
+  const { t } = useLocale()
   if (rows.length === 0) {
-    return <p className="rounded-xl border border-border/60 bg-card/40 p-8 text-center text-sm text-muted-foreground">لا يوجد سجلات</p>
+    return <p className="rounded-xl border border-border/60 bg-card/40 p-8 text-center text-sm text-muted-foreground">{t('لا يوجد سجلات')}</p>
   }
   return (
     <>
@@ -125,7 +130,7 @@ function UserTable({
                 type="button"
                 onClick={() => onToggleActive(u)}
                 disabled={u.role === 'owner'}
-                aria-label={`${u.active ? 'إيقاف' : 'تفعيل'} ${u.username}`}
+                aria-label={`${t(u.active ? 'إيقاف' : 'تفعيل')} ${u.username}`}
                 className="flex min-h-10 shrink-0 items-center rounded-lg px-2 disabled:opacity-40"
               >
                 <StatusDot active={u.active} />
@@ -133,21 +138,21 @@ function UserTable({
             </div>
             <div className="mt-4 grid grid-cols-2 gap-3">
               <div>
-                <div className="mb-1 text-xs text-muted-foreground">الدور</div>
+                <div className="mb-1 text-xs text-muted-foreground">{t('الدور')}</div>
                 <select
                   value={u.role}
                   onChange={(e) => onChangeRole(u, e.target.value as Role)}
                   disabled={u.role === 'owner'}
-                  aria-label={`تغيير دور ${u.username}`}
+                  aria-label={`${t('تغيير دور')} ${u.username}`}
                   className="min-h-10 w-full min-w-0 rounded-md border border-border/60 bg-background px-2 text-xs outline-none focus:border-primary disabled:opacity-60"
                 >
                   {(['owner', 'seller', 'support', 'user'] as Role[]).map((r) => (
-                    <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                    <option key={r} value={r}>{t(ROLE_LABELS[r])}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <div className="mb-1 text-xs text-muted-foreground">الرصيد</div>
+                <div className="mb-1 text-xs text-muted-foreground">{t('الرصيد')}</div>
                 <div className="flex min-h-10 items-center font-medium">{formatMoney(u.balance)}</div>
               </div>
             </div>
@@ -161,21 +166,21 @@ function UserTable({
                 className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-xs text-destructive/90 transition-colors hover:bg-destructive/10 disabled:opacity-40"
               >
                 <Trash2 className="size-4" />
-                حذف المستخدم
+                {t('حذف المستخدم')}
               </button>
             </div>
           </article>
         ))}
       </div>
       <div className="hidden overflow-x-auto rounded-xl border border-border/60 bg-card/40 md:block">
-      <table className="w-full min-w-[640px] text-right text-sm">
+      <table className="w-full min-w-[640px] text-start text-sm">
         <thead>
           <tr className="border-b border-border/60 text-xs text-muted-foreground">
-            <th className="p-3 font-medium">المستخدم</th>
-            <th className="p-3 font-medium">الدور</th>
-            <th className="p-3 font-medium">الرصيد</th>
-            <th className="p-3 font-medium">الحالة</th>
-            <th className="p-3 font-medium">إجراءات</th>
+            <th className="p-3 font-medium">{t('المستخدم')}</th>
+            <th className="p-3 font-medium">{t('الدور')}</th>
+            <th className="p-3 font-medium">{t('الرصيد')}</th>
+            <th className="p-3 font-medium">{t('الحالة')}</th>
+            <th className="p-3 font-medium">{t('إجراءات')}</th>
           </tr>
         </thead>
         <tbody>
@@ -199,7 +204,7 @@ function UserTable({
                 >
                   {(['owner', 'seller', 'support', 'user'] as Role[]).map((r) => (
                     <option key={r} value={r}>
-                      {ROLE_LABELS[r]}
+                      {t(ROLE_LABELS[r])}
                     </option>
                   ))}
                 </select>
@@ -220,7 +225,7 @@ function UserTable({
                   className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-destructive/90 transition-colors hover:bg-destructive/10 disabled:opacity-40"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                  حذف
+                  {t('حذف')}
                   </button>
                 </div>
               </td>
@@ -234,6 +239,7 @@ function UserTable({
 }
 
 export function OwnerPanel() {
+  const { t } = useLocale()
   const { users, addStaff, updateUser, removeUser, refreshUsers } = useAuth()
   const [active, setActive] = useState('overview')
 
@@ -260,7 +266,7 @@ export function OwnerPanel() {
     try {
       await updateUser(u.id, { sellerPermissions: permissions })
     } catch {
-      setPermissionError('تعذّر حفظ صلاحيات المتجر، تحقق من الاتصال ثم حاول مجدداً')
+      setPermissionError(t('تعذّر حفظ صلاحيات المتجر، تحقق من الاتصال ثم حاول مجدداً'))
     }
   }
   const remove = (u: ManagedUser) => removeUser(u.id)
@@ -285,16 +291,16 @@ export function OwnerPanel() {
   }
 
   return (
-    <DashboardShell title="لوحة الإدارة العليا" nav={NAV} active={active} onNavigate={setActive}>
+    <DashboardShell title={t('لوحة الإدارة العليا')} nav={NAV.map((item) => ({ ...item, label: t(item.label) }))} active={active} onNavigate={setActive}>
       {permissionError && <p role="alert" className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{permissionError}</p>}
       {active === 'overview' && (
         <div className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="الموردون النشطون" value={activeSellers} accent icon={<Store className="h-5 w-5" />} />
-            <StatCard label="الدعم النشط" value={activeSupport} icon={<Headphones className="h-5 w-5" />} />
-            <StatCard label="إجمالي الموظفين" value={sellers.length + support.length} icon={<Users className="h-5 w-5" />} />
+            <StatCard label={t('الموردون النشطون')} value={activeSellers} accent icon={<Store className="h-5 w-5" />} />
+            <StatCard label={t('الدعم النشط')} value={activeSupport} icon={<Headphones className="h-5 w-5" />} />
+            <StatCard label={t('إجمالي الموظفين')} value={sellers.length + support.length} icon={<Users className="h-5 w-5" />} />
             <StatCard
-              label="أرصدة الموردين"
+              label={t('أرصدة الموردين')}
               value={formatMoney(sellers.reduce((s, u) => s + u.balance, 0))}
               icon={<Wallet className="h-5 w-5" />}
             />
@@ -303,7 +309,7 @@ export function OwnerPanel() {
           <div className="rounded-xl border border-border/60 bg-card/40 p-5">
             <h2 className="mb-4 flex items-center gap-2 text-sm font-bold">
               <ShieldCheck className="h-4 w-4 text-primary" />
-              الموظفون النشطون حالياً
+              {t('الموظفون النشطون حالياً')}
             </h2>
             <UserTable
               rows={[...sellers, ...support].filter((u) => u.active)}
@@ -325,14 +331,14 @@ export function OwnerPanel() {
 
       {active === 'sellers' && (
         <div className="space-y-4">
-          <h2 className="text-sm font-bold text-muted-foreground">كل الموردين ({sellers.length})</h2>
+          <h2 className="text-sm font-bold text-muted-foreground">{t('كل الموردين')} ({sellers.length})</h2>
           <UserTable rows={sellers} onToggleActive={toggleActive} onChangeRole={changeRole} onChangePermissions={changePermissions} onRemove={remove} onBalanceUpdated={refreshUsers} />
         </div>
       )}
 
       {active === 'support' && (
         <div className="space-y-4">
-          <h2 className="text-sm font-bold text-muted-foreground">فريق الدعم الفني ({support.length})</h2>
+          <h2 className="text-sm font-bold text-muted-foreground">{t('فريق الدعم الفني')} ({support.length})</h2>
           <UserTable rows={support} onToggleActive={toggleActive} onChangeRole={changeRole} onChangePermissions={changePermissions} onRemove={remove} onBalanceUpdated={refreshUsers} />
         </div>
       )}
@@ -349,10 +355,10 @@ export function OwnerPanel() {
           >
             <h2 className="flex items-center gap-2 text-sm font-bold">
               <UserPlus className="h-4 w-4 text-primary" />
-              إضافة موظف جديد
+              {t('إضافة موظف جديد')}
             </h2>
             <div className="space-y-1.5">
-              <Label htmlFor="s-username">اسم المستخدم</Label>
+              <Label htmlFor="s-username">{t('اسم المستخدم')}</Label>
               <Input
                 id="s-username"
                 value={form.username}
@@ -361,7 +367,7 @@ export function OwnerPanel() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="s-email">البريد (اختياري)</Label>
+              <Label htmlFor="s-email">{t('البريد (اختياري)')}</Label>
               <Input
                 id="s-email"
                 type="email"
@@ -371,20 +377,20 @@ export function OwnerPanel() {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="s-role">الصلاحية / الدور</Label>
+              <Label htmlFor="s-role">{t('الصلاحية / الدور')}</Label>
               <select
                 id="s-role"
                 value={form.role}
                 onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as Role }))}
                 className="h-10 w-full rounded-md border border-border/60 bg-background px-3 text-sm outline-none focus:border-primary"
               >
-                <option value="seller">بائع / مورد</option>
-                <option value="support">دعم فني</option>
-                <option value="user">مستخدم</option>
+                <option value="seller">{t('بائع / مورد')}</option>
+                <option value="support">{t('دعم فني')}</option>
+                <option value="user">{t('مستخدم')}</option>
               </select>
             </div>
             <Button type="submit" className="w-full" disabled={submitting}>
-              {submitting ? 'جارٍ الإضافة…' : 'إضافة الموظف'}
+              {submitting ? t('جارٍ الإضافة…') : t('إضافة الموظف')}
             </Button>
 
             {staffMsg?.type === 'error' && (
@@ -397,25 +403,25 @@ export function OwnerPanel() {
             )}
             {staffMsg?.type === 'success' && (
               <div className="space-y-1.5 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2.5 text-xs">
-                <p className="font-semibold text-primary">تم إنشاء الحساب بنجاح</p>
+                <p className="font-semibold text-primary">{t('تم إنشاء الحساب بنجاح')}</p>
                 <p className="text-muted-foreground">
-                  البريد للدخول: <span className="font-mono text-foreground">{staffMsg.email}</span>
+                  {t('البريد للدخول:')} <span className="font-mono text-foreground">{staffMsg.email}</span>
                 </p>
                 {staffMsg.tempPassword && (
                   <p className="text-muted-foreground">
-                    كلمة المرور المؤقتة:{' '}
+                    {t('كلمة المرور المؤقتة:')}{' '}
                     <span className="font-mono text-foreground">{staffMsg.tempPassword}</span>
                   </p>
                 )}
                 <p className="text-[11px] text-muted-foreground">
-                  شارك هذه البيانات مع الموظف — لن تظهر كلمة المرور مرة أخرى.
+                  {t('شارك هذه البيانات مع الموظف — لن تظهر كلمة المرور مرة أخرى.')}
                 </p>
               </div>
             )}
           </form>
 
           <div className="space-y-4">
-            <h2 className="text-sm font-bold text-muted-foreground">كل الحسابات ({users.length})</h2>
+            <h2 className="text-sm font-bold text-muted-foreground">{t('كل الحسابات')} ({users.length})</h2>
             <UserTable rows={users} onToggleActive={toggleActive} onChangeRole={changeRole} onChangePermissions={changePermissions} onRemove={remove} onBalanceUpdated={refreshUsers} />
           </div>
         </div>

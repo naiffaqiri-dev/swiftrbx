@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useLocale } from '@/components/i18n/locale-provider'
 import { useAuth, ratingOf } from '@/components/auth/mock-auth'
 import { createClient } from '@/lib/supabase/client'
 import { DashboardShell, StatCard } from './dashboard-shell'
@@ -15,7 +16,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { LayoutDashboard, Package, Wallet, CheckCircle2, Star, Percent, Loader2, CheckCircle, Ticket, ExternalLink } from 'lucide-react'
 import { formatMoney } from '@/lib/currency'
-import { CATALOG_CATEGORIES, CATALOG_CATEGORY_INFO, canSellCategory } from '@/lib/catalog'
+import { CATALOG_CATEGORIES, canSellCategory } from '@/lib/catalog'
 import { SellerCatalogManager } from './seller-catalog-manager'
 
 const NAV = [
@@ -49,6 +50,7 @@ function emptyOffers(): OffersState {
 }
 
 export function SellerPanel() {
+  const { t } = useLocale()
   const { user } = useAuth()
   const [active, setActive] = useState('overview')
   const [offers, setOffers] = useState<OffersState>(emptyOffers)
@@ -69,7 +71,7 @@ export function SellerPanel() {
     .filter((category) => canSellCategory(user?.role, user?.sellerPermissions, category))
     .map((category) => ({
       key: `catalog-${category}`,
-      label: `متجر ${CATALOG_CATEGORY_INFO[category].label}`,
+      label: `${t('متجر')} ${t(`nav.category.${category}`)}`,
       icon: <Package className="h-4 w-4" />,
     }))
 
@@ -122,14 +124,14 @@ export function SellerPanel() {
     setError('')
     // تحقق من الأنواع المفعّلة فقط
     for (const d of DELIVERY_TYPES) {
-      const t = offers[d]
-      if (!t.active) continue
-      if (t.rate <= 0) {
-        setError(`حدّد سعراً صحيحاً لـ «${DELIVERY_LABELS[d]}»`)
+      const offer = offers[d]
+      if (!offer.active) continue
+      if (offer.rate <= 0) {
+        setError(`${t('حدّد سعراً صحيحاً لـ')} «${t(DELIVERY_LABELS[d])}»`)
         return
       }
-      if (t.min <= 0 || t.max < t.min) {
-        setError(`تحقق من الحد الأدنى والأقصى لـ «${DELIVERY_LABELS[d]}»`)
+      if (offer.min <= 0 || offer.max < offer.min) {
+        setError(`${t('تحقق من الحد الأدنى والأقصى لـ')} «${t(DELIVERY_LABELS[d])}»`)
         return
       }
     }
@@ -151,7 +153,7 @@ export function SellerPanel() {
     const { error: err } = await supabase.from('offers').upsert(rows, { onConflict: 'seller_id,delivery_type' })
     setSaving(false)
     if (err) {
-      setError('تعذّر حفظ العرض، حاول مرة أخرى')
+      setError(t('تعذّر حفظ العرض، حاول مرة أخرى'))
       return
     }
     setSaved(true)
@@ -163,12 +165,12 @@ export function SellerPanel() {
     setGroupLinksError('')
     const links = [...new Set(groupLinks.split(/\r?\n/).map((link) => link.trim()).filter(Boolean))]
     if (links.length > 10) {
-      setGroupLinksError('يمكنك إضافة 10 روابط كحد أقصى')
+      setGroupLinksError(t('يمكنك إضافة 10 روابط كحد أقصى'))
       return
     }
     const validLinks = links.every(isRobloxGroupLink)
     if (!validLinks) {
-      setGroupLinksError('أدخل روابط Roblox صحيحة تبدأ بـ https://، رابطاً واحداً في كل سطر')
+      setGroupLinksError(t('أدخل روابط Roblox صحيحة تبدأ بـ https://، رابطاً واحداً في كل سطر'))
       return
     }
 
@@ -179,7 +181,7 @@ export function SellerPanel() {
       .eq('id', user.id)
     setSavingGroupLinks(false)
     if (updateError) {
-      setGroupLinksError('تعذّر حفظ روابط المجموعات، حاول مرة أخرى')
+      setGroupLinksError(t('تعذّر حفظ روابط المجموعات، حاول مرة أخرى'))
       return
     }
     setGroupLinks(links.join('\n'))
@@ -192,12 +194,12 @@ export function SellerPanel() {
     setGamepassLinksError('')
     const links = [...new Set(gamepassLinks.split(/\r?\n/).map((link) => link.trim()).filter(Boolean))]
     if (links.length > 10) {
-      setGamepassLinksError('يمكنك إضافة 10 روابط كحد أقصى')
+      setGamepassLinksError(t('يمكنك إضافة 10 روابط كحد أقصى'))
       return
     }
     const validLinks = links.every(isHttpsLink)
     if (!validLinks) {
-      setGamepassLinksError('أدخل روابط شرح صحيحة تبدأ بـ https://، رابطاً واحداً في كل سطر')
+      setGamepassLinksError(t('أدخل روابط شرح صحيحة تبدأ بـ https://، رابطاً واحداً في كل سطر'))
       return
     }
 
@@ -208,7 +210,7 @@ export function SellerPanel() {
       .eq('id', user.id)
     setSavingGamepassLinks(false)
     if (updateError) {
-      setGamepassLinksError('تعذّر حفظ روابط شرح Gamepass، حاول مرة أخرى')
+      setGamepassLinksError(t('تعذّر حفظ روابط شرح Gamepass، حاول مرة أخرى'))
       return
     }
     setGamepassLinks(links.join('\n'))
@@ -220,33 +222,33 @@ export function SellerPanel() {
   const anyVisible = DELIVERY_TYPES.some((d) => offers[d].active && offers[d].rate > 0 && offers[d].available > 0)
 
   return (
-    <DashboardShell title="لوحة المورد" nav={[...NAV, ...catalogNav]} active={active} onNavigate={setActive}>
+    <DashboardShell title={t('لوحة المورد')} nav={[...NAV.map((item) => ({ ...item, label: t(item.label) })), ...catalogNav]} active={active} onNavigate={setActive}>
       {active === 'overview' && (
         <div className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="الرصيد الحالي" value={formatMoney(user?.balance ?? 0)} accent icon={<Wallet className="h-5 w-5" />} />
-            <StatCard label="عمليات ناجحة" value={user?.totalSales ?? 0} icon={<CheckCircle2 className="h-5 w-5" />} />
-            <StatCard label="العمولة المستحقة" value={formatMoney(user?.commission ?? 0)} icon={<Percent className="h-5 w-5" />} />
-            <StatCard label="إجمالي روبوكس متاح" value={totalAvailable.toLocaleString('en-US')} icon={<Package className="h-5 w-5" />} />
+            <StatCard label={t('الرصيد الحالي')} value={formatMoney(user?.balance ?? 0)} accent icon={<Wallet className="h-5 w-5" />} />
+            <StatCard label={t('عمليات ناجحة')} value={user?.totalSales ?? 0} icon={<CheckCircle2 className="h-5 w-5" />} />
+            <StatCard label={t('العمولة المستحقة')} value={formatMoney(user?.commission ?? 0)} icon={<Percent className="h-5 w-5" />} />
+            <StatCard label={t('إجمالي روبوكس متاح')} value={totalAvailable.toLocaleString('en-US')} icon={<Package className="h-5 w-5" />} />
           </div>
           <MarketplaceAvailabilitySummary />
           <div className="rounded-xl border border-border/60 bg-card/40 p-5">
             <h2 className="mb-3 flex items-center gap-2 text-sm font-bold">
               <Star className="h-4 w-4 text-primary" />
-              تقييمك كمورد
+              {t('تقييمك كمورد')}
             </h2>
             <div className="flex items-center gap-3">
               <StarDisplay value={rating.avg} size={22} />
               <span className="text-lg font-bold">{rating.avg || '—'}</span>
-              <span className="text-sm text-muted-foreground">({rating.count} تقييم)</span>
+              <span className="text-sm text-muted-foreground">({rating.count} {t('تقييم')})</span>
             </div>
           </div>
           <div className="rounded-xl border border-border/60 bg-card/40 p-5 text-sm text-muted-foreground">
-            حالة عرضك:{' '}
+            {t('حالة عرضك:')}{' '}
             {anyVisible ? (
-              <span className="font-medium text-primary">ظاهر للمشترين في السوق</span>
+              <span className="font-medium text-primary">{t('ظاهر للمشترين في السوق')}</span>
             ) : (
-              <span className="font-medium text-destructive">غير ظاهر — فعّل نوع تسليم واحداً على الأقل بسعر وكمية</span>
+              <span className="font-medium text-destructive">{t('غير ظاهر — فعّل نوع تسليم واحداً على الأقل بسعر وكمية')}</span>
             )}
           </div>
         </div>
@@ -255,7 +257,7 @@ export function SellerPanel() {
       {active === 'orders' && (
         <div className="space-y-4">
           <div className="rounded-xl border border-border/60 bg-card/40 p-4 text-sm text-muted-foreground">
-            تظهر هنا تذاكر الطلبات بعد أن يختارك المشتري ويؤكد الإدارة تحويله. تواصل مع المشتري ثم اضغط «تأكيد التسليم».
+            {t('تظهر هنا تذاكر الطلبات بعد أن يختارك المشتري ويؤكد الإدارة تحويله. تواصل مع المشتري ثم اضغط «تأكيد التسليم».')}
           </div>
           <TicketsList role="seller" />
         </div>
@@ -266,21 +268,20 @@ export function SellerPanel() {
       {active === 'stock' && (
         <div className="space-y-4">
           <div className="rounded-xl border border-border/60 bg-card/40 p-5">
-            <h2 className="text-sm font-bold">عروض البيع حسب نوع التسليم</h2>
+            <h2 className="text-sm font-bold">{t('عروض البيع حسب نوع التسليم')}</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              لكل نوع تسليم كمية وسعر وحدود مستقلة. مثال: فعّل «تحويل بلس» بكمية 7000 و«المجموعة» بكمية 7000 بسعرين مختلفين.
-              لا يظهر النوع في السوق إلا عند تفعيله وتحديد سعر وكمية.
+              {t('لكل نوع تسليم كمية وسعر وحدود مستقلة. مثال: فعّل «تحويل بلس» بكمية 7000 و«المجموعة» بكمية 7000 بسعرين مختلفين. لا يظهر النوع في السوق إلا عند تفعيله وتحديد سعر وكمية.')}
             </p>
           </div>
 
           <div className="space-y-3 rounded-xl border border-border/60 bg-card/40 p-5">
             <div>
-              <h3 className="text-sm font-bold">روابط قروباتك</h3>
+              <h3 className="text-sm font-bold">{t('روابط قروباتك')}</h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                أضف روابط دعوة مجموعات Roblox الخاصة بك، رابطاً واحداً في كل سطر. ستظهر للمشتري بجانب اسمك عند اختيار تسليم المجموعة.
+                {t('أضف روابط دعوة مجموعات Roblox الخاصة بك، رابطاً واحداً في كل سطر. ستظهر للمشتري بجانب اسمك عند اختيار تسليم المجموعة.')}
               </p>
             </div>
-            <Label htmlFor="seller-group-links">روابط المجموعات</Label>
+            <Label htmlFor="seller-group-links">{t('روابط المجموعات')}</Label>
             <Textarea
               id="seller-group-links"
               value={groupLinks}
@@ -291,23 +292,23 @@ export function SellerPanel() {
               aria-describedby="seller-group-links-help"
             />
             <p id="seller-group-links-help" className="text-xs text-muted-foreground">
-              الروابط المقبولة آمنة وتابعة لنطاق Roblox.
+              {t('الروابط المقبولة آمنة وتابعة لنطاق Roblox.')}
             </p>
             {groupLinksError && <p className="text-xs text-destructive" role="alert">{groupLinksError}</p>}
             <Button variant="secondary" onClick={saveGroupLinks} disabled={savingGroupLinks}>
               {savingGroupLinks ? <Loader2 className="h-4 w-4 animate-spin" /> : groupLinksSaved ? <CheckCircle className="h-4 w-4" /> : null}
-              {groupLinksSaved ? 'تم حفظ الروابط' : 'حفظ روابط القروبات'}
+              {groupLinksSaved ? t('تم حفظ الروابط') : t('حفظ روابط القروبات')}
             </Button>
           </div>
 
           <div className="space-y-3 rounded-xl border border-border/60 bg-card/40 p-5">
             <div>
-              <h3 className="text-sm font-bold">روابط شرح Gamepass</h3>
+              <h3 className="text-sm font-bold">{t('روابط شرح Gamepass')}</h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                أضف رابط مقطع الشرح الخاص بك، رابطاً واحداً في كل سطر. سيظهر للمشتري بجانب اسمك عند اختيار تسليم Gamepass.
+                {t('أضف رابط مقطع الشرح الخاص بك، رابطاً واحداً في كل سطر. سيظهر للمشتري بجانب اسمك عند اختيار تسليم Gamepass.')}
               </p>
             </div>
-            <Label htmlFor="seller-gamepass-links">روابط الشرح</Label>
+            <Label htmlFor="seller-gamepass-links">{t('روابط الشرح')}</Label>
             <Textarea
               id="seller-gamepass-links"
               value={gamepassLinks}
@@ -318,40 +319,40 @@ export function SellerPanel() {
               aria-describedby="seller-gamepass-links-help"
             />
             <p id="seller-gamepass-links-help" className="text-xs text-muted-foreground">
-              أضف رابطاً آمناً يبدأ بـ https://، وبحد أقصى 10 روابط.
+              {t('أضف رابطاً آمناً يبدأ بـ https://، وبحد أقصى 10 روابط.')}
             </p>
             {gamepassLinksError && <p className="text-xs text-destructive" role="alert">{gamepassLinksError}</p>}
             <Button variant="secondary" onClick={saveGamepassLinks} disabled={savingGamepassLinks}>
               {savingGamepassLinks ? <Loader2 className="h-4 w-4 animate-spin" /> : gamepassLinksSaved ? <CheckCircle className="h-4 w-4" /> : null}
-              {gamepassLinksSaved ? 'تم حفظ الروابط' : 'حفظ روابط الشرح'}
+              {gamepassLinksSaved ? t('تم حفظ روابط الشرح') : t('حفظ روابط الشرح')}
             </Button>
           </div>
 
           {loading ? (
             <div className="flex items-center gap-2 py-6 text-sm text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              جارٍ تحميل عروضك…
+              {t('جارٍ تحميل عروضك…')}
             </div>
           ) : (
             <>
               <div className="grid gap-4 lg:grid-cols-2">
                 {DELIVERY_TYPES.map((d) => {
-                  const t = offers[d]
+                  const offer = offers[d]
                   return (
                     <div
                       key={d}
                       className={`space-y-3 rounded-xl border p-4 transition-colors ${
-                        t.active ? 'border-primary/40 bg-primary/5' : 'border-border/60 bg-card/40'
+                        offer.active ? 'border-primary/40 bg-primary/5' : 'border-border/60 bg-card/40'
                       }`}
                     >
                       <label className="flex cursor-pointer items-start justify-between gap-3">
                         <span>
-                          <span className="block text-sm font-bold">{DELIVERY_LABELS[d]}</span>
-                          <span className="mt-0.5 block text-xs text-muted-foreground">{DELIVERY_NOTES[d]}</span>
+                          <span className="block text-sm font-bold">{t(DELIVERY_LABELS[d])}</span>
+                          <span className="mt-0.5 block text-xs text-muted-foreground">{t(DELIVERY_NOTES[d])}</span>
                         </span>
                         <input
                           type="checkbox"
-                          checked={t.active}
+                          checked={offer.active}
                           onChange={(e) => patchType(d, { active: e.target.checked })}
                           className="mt-1 h-4 w-4 shrink-0 accent-primary"
                         />
@@ -363,51 +364,51 @@ export function SellerPanel() {
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-xs text-primary underline-offset-4 hover:underline"
                         >
-                          شرح إنشاء وتسليم Gamepass للبائع
+                          {t('شرح إنشاء وتسليم Gamepass للبائع')}
                           <ExternalLink className="size-3" aria-hidden="true" />
                         </a>
                       )}
 
-                      <div className={t.active ? 'space-y-3' : 'space-y-3 opacity-50'}>
+                      <div className={offer.active ? 'space-y-3' : 'space-y-3 opacity-50'}>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1.5">
-                            <Label htmlFor={`av-${d}`}>الكمية المتاحة (R$)</Label>
+                            <Label htmlFor={`av-${d}`}>{t('الكمية المتاحة (R$)')}</Label>
                             <Input
                               id={`av-${d}`}
                               type="number"
-                              disabled={!t.active}
-                              value={t.available}
+                              disabled={!offer.active}
+                              value={offer.available}
                               onChange={(e) => patchType(d, { available: +e.target.value })}
                             />
                           </div>
                           <div className="space-y-1.5">
-                            <Label htmlFor={`rate-${d}`}>السعر / 1000 (SAR)</Label>
+                            <Label htmlFor={`rate-${d}`}>{t('السعر / 1000 (SAR)')}</Label>
                             <Input
                               id={`rate-${d}`}
                               type="number"
                               step="0.1"
-                              disabled={!t.active}
-                              value={t.rate}
+                              disabled={!offer.active}
+                              value={offer.rate}
                               onChange={(e) => patchType(d, { rate: +e.target.value })}
                             />
                           </div>
                           <div className="space-y-1.5">
-                            <Label htmlFor={`mn-${d}`}>الحد الأدنى</Label>
+                            <Label htmlFor={`mn-${d}`}>{t('الحد الأدنى')}</Label>
                             <Input
                               id={`mn-${d}`}
                               type="number"
-                              disabled={!t.active}
-                              value={t.min}
+                              disabled={!offer.active}
+                              value={offer.min}
                               onChange={(e) => patchType(d, { min: +e.target.value })}
                             />
                           </div>
                           <div className="space-y-1.5">
-                            <Label htmlFor={`mx-${d}`}>الحد الأقصى</Label>
+                            <Label htmlFor={`mx-${d}`}>{t('الحد الأقصى')}</Label>
                             <Input
                               id={`mx-${d}`}
                               type="number"
-                              disabled={!t.active}
-                              value={t.max}
+                              disabled={!offer.active}
+                              value={offer.max}
                               onChange={(e) => patchType(d, { max: +e.target.value })}
                             />
                           </div>
@@ -421,7 +422,7 @@ export function SellerPanel() {
               {error && <p className="text-xs text-destructive">{error}</p>}
               <Button className="w-full gap-2 sm:w-auto" onClick={saveOffers} disabled={saving}>
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : saved ? <CheckCircle className="h-4 w-4" /> : null}
-                {saved ? 'تم الحفظ' : 'حفظ كل العروض'}
+                {saved ? t('تم الحفظ') : t('حفظ كل العروض')}
               </Button>
             </>
           )}
@@ -434,11 +435,11 @@ export function SellerPanel() {
 
       {active === 'wallet' && (
         <div className="max-w-md space-y-4 rounded-xl border border-border/60 bg-card/40 p-5">
-          <div className="text-sm text-muted-foreground">الرصيد المتاح للسحب</div>
+          <div className="text-sm text-muted-foreground">{t('الرصيد المتاح للسحب')}</div>
           <div className="text-3xl font-bold text-primary">{formatMoney(user?.balance ?? 0)}</div>
-          <Button className="w-full">طلب سحب الأموال</Button>
+          <Button className="w-full">{t('طلب سحب الأموال')}</Button>
           <p className="text-xs text-muted-foreground">
-            يفتح زر السحب تذكرة خاصة بينك وبين الإدارة العليا لتأكيد الإرسال.
+            {t('يفتح زر السحب تذكرة خاصة بينك وبين الإدارة العليا لتأكيد الإرسال.')}
           </p>
         </div>
       )}

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/components/auth/mock-auth'
+import { useLocale } from '@/components/i18n/locale-provider'
 import { createClient } from '@/lib/supabase/client'
 import { DashboardShell, StatCard } from './dashboard-shell'
 import { MarketplaceAvailabilitySummary } from '@/components/market/marketplace-availability'
@@ -17,11 +18,12 @@ const NAV = [
 
 export function SupportPanel() {
   const { user } = useAuth()
+  const { t } = useLocale()
   const [active, setActive] = useState('overview')
   const [counts, setCounts] = useState({ open: 0, disputes: 0, total: 0 })
   const catalogNav = CATALOG_CATEGORIES
     .filter((category) => canSellCategory(user?.role, user?.sellerPermissions, category))
-    .map((category) => ({ key: `catalog-${category}`, label: `متجر ${CATALOG_CATEGORY_INFO[category].label}`, icon: <Package className="h-4 w-4" /> }))
+    .map((category) => ({ key: `catalog-${category}`, label: `${t('متجر')} ${t(CATALOG_CATEGORY_INFO[category].label)}`, icon: <Package className="h-4 w-4" /> }))
 
   const load = useCallback(async () => {
     if (!user) return
@@ -43,12 +45,12 @@ export function SupportPanel() {
   }, [load])
 
   return (
-    <DashboardShell title="لوحة الدعم الفني" nav={[...NAV, ...catalogNav]} active={active} onNavigate={setActive}>
+    <DashboardShell title={t('لوحة الدعم الفني')} nav={[...NAV.map((item) => ({ ...item, label: t(item.label) })), ...catalogNav]} active={active} onNavigate={setActive}>
       {active === 'overview' && (
         <div className="grid gap-4 sm:grid-cols-3">
-          <StatCard label="تذاكر نشطة" value={counts.open} accent icon={<Clock className="h-5 w-5" />} />
-          <StatCard label="نزاعات" value={counts.disputes} icon={<AlertTriangle className="h-5 w-5" />} />
-          <StatCard label="إجمالي التذاكر" value={counts.total} icon={<CheckCircle2 className="h-5 w-5" />} />
+          <StatCard label={t('تذاكر نشطة')} value={counts.open} accent icon={<Clock className="h-5 w-5" />} />
+          <StatCard label={t('نزاعات')} value={counts.disputes} icon={<AlertTriangle className="h-5 w-5" />} />
+          <StatCard label={t('إجمالي التذاكر')} value={counts.total} icon={<CheckCircle2 className="h-5 w-5" />} />
           <div className="col-span-full">
             <MarketplaceAvailabilitySummary />
           </div>

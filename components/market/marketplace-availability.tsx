@@ -4,6 +4,7 @@ import { useMemo } from 'react'
 import useSWR from 'swr'
 import { Coins as CoinsIcon, Store as StoreIcon, type LucideIcon } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useLocale } from '@/components/i18n/locale-provider'
 import { DELIVERY_TYPES, type ActiveOffer, type DeliveryType } from '@/lib/mock-data'
 
 function useMarketplaceAvailability() {
@@ -65,20 +66,21 @@ function AvailabilityCard({
 }
 
 export function MarketplaceAvailabilitySummary() {
+  const { t } = useLocale()
   const availability = useMarketplaceAvailability()
   const format = (value: number) => value.toLocaleString('en-US')
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:gap-4" aria-label="إحصائيات المتجر">
+    <div className="grid grid-cols-2 gap-3 sm:gap-4" aria-label={t('إحصائيات المتجر')}>
       <AvailabilityCard
-        label="إجمالي الروبوكس المتاح"
+        label={t('إجمالي الروبوكس المتاح')}
         value={`${format(availability.robux)} R$`}
         icon={CoinsIcon}
         loading={availability.isLoading}
         failed={Boolean(availability.error)}
       />
       <AvailabilityCard
-        label="البائعون المتاحون"
+        label={t('البائعون المتاحون')}
         value={format(availability.sellers)}
         icon={StoreIcon}
         loading={availability.isLoading}
@@ -89,12 +91,13 @@ export function MarketplaceAvailabilitySummary() {
 }
 
 export function DeliveryAvailability({ delivery }: { delivery: DeliveryType }) {
+  const { t } = useLocale()
   const availability = useMarketplaceAvailability()
   const value = availability.byDelivery[delivery].toLocaleString('en-US')
 
   return (
     <p className="mt-2 text-xs leading-relaxed text-muted-foreground" aria-live="polite">
-      المتاح لهذا النوع في المتجر:{' '}
+      {t('المتاح لهذا النوع في المتجر:')}{' '}
       <bdi className="font-semibold text-primary" dir="ltr">
         {availability.isLoading ? '…' : availability.error ? '—' : `${value} R$`}
       </bdi>

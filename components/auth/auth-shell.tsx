@@ -2,6 +2,7 @@ import Image from 'next/image'
 import Link from 'next/link'
 import type { ReactNode } from 'react'
 import { BrandLogo } from '@/components/brand-logo'
+import { useLocale } from '@/components/i18n/locale-provider'
 import { buttonVariants } from '@/components/ui/button'
 
 export function AuthShell({
@@ -15,6 +16,8 @@ export function AuthShell({
   children: ReactNode
   footer: ReactNode
 }) {
+  const { t } = useLocale()
+
   return (
     <div className="grid min-h-[calc(100svh-3.5rem)] lg:grid-cols-2">
       {/* Visual side */}
@@ -30,8 +33,7 @@ export function AuthShell({
         <div className="absolute inset-0 bg-gradient-to-l from-background via-background/50 to-transparent" />
         <div className="absolute inset-x-0 bottom-0 p-10">
           <p className="max-w-md text-balance text-lg font-medium text-foreground/90">
-            متجرك الأمثل لشراء الروبوكس — تسليم فوري، أسعار منافسة، ودعم مباشر على
-            مدار الساعة.
+            {t('متجرك الأمثل لشراء الروبوكس — تسليم فوري، أسعار منافسة، ودعم مباشر على مدار الساعة.')}
           </p>
         </div>
       </div>
@@ -42,7 +44,7 @@ export function AuthShell({
           <div className="flex items-center justify-between">
             <BrandLogo />
             <Link href="/" className={buttonVariants({ variant: 'ghost', size: 'sm' })}>
-              الرئيسية
+              {t('الرئيسية')}
             </Link>
           </div>
 

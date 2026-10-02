@@ -1,18 +1,21 @@
 import Link from 'next/link'
 import { AlertTriangle } from 'lucide-react'
 import { AuthShell } from '@/components/auth/auth-shell'
+import { useLocale } from '@/components/i18n/locale-provider'
 import { buttonVariants } from '@/components/ui/button'
 
 export default function AuthErrorPage() {
+  const { t } = useLocale()
+
   return (
     <AuthShell
-      title="تعذّر إكمال العملية"
-      subtitle="حدثت مشكلة أثناء المصادقة."
+      title={t('تعذّر إكمال العملية')}
+      subtitle={t('حدثت مشكلة أثناء المصادقة.')}
       footer={
         <>
-          هل تحتاج مساعدة؟{' '}
+          {t('هل تحتاج مساعدة؟')}{' '}
           <Link href="/login" className="font-semibold text-primary hover:underline">
-            العودة لتسجيل الدخول
+            {t('العودة لتسجيل الدخول')}
           </Link>
         </>
       }
@@ -22,15 +25,14 @@ export default function AuthErrorPage() {
           <AlertTriangle className="size-7" />
         </div>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          انتهت صلاحية الرابط أو أنه غير صالح. يمكنك المحاولة من جديد أو طلب رابط
-          جديد لإعادة تعيين كلمة المرور.
+          {t('انتهت صلاحية الرابط أو أنه غير صالح. يمكنك المحاولة من جديد أو طلب رابط جديد لإعادة تعيين كلمة المرور.')}
         </p>
         <div className="flex w-full flex-col gap-2">
           <Link href="/login" className={buttonVariants({ className: 'w-full' })}>
-            تسجيل الدخول
+            {t('تسجيل الدخول')}
           </Link>
           <Link href="/forgot-password" className={buttonVariants({ variant: 'secondary', className: 'w-full' })}>
-            طلب رابط استعادة جديد
+            {t('طلب رابط استعادة جديد')}
           </Link>
         </div>
       </div>

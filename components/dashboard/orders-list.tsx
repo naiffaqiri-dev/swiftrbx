@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useLocale } from '@/components/i18n/locale-provider'
 import { DELIVERY_LABELS, type DeliveryType } from '@/lib/mock-data'
 import { formatSar } from '@/lib/currency'
 import { Package } from 'lucide-react'
@@ -37,13 +38,14 @@ export function OrdersList({
   ticketIdByOrder?: Record<string, string>
   onChanged?: () => void
 }) {
+  const { t } = useLocale()
   const [openTicketId, setOpenTicketId] = useState<string | null>(null)
   const [confirmOrderId, setConfirmOrderId] = useState<string | null>(null)
 
   if (orders.length === 0) {
     return (
       <p className="rounded-xl border border-border/60 bg-card/40 p-8 text-center text-sm text-muted-foreground">
-        لا توجد طلبات بعد.
+        {t('لا توجد طلبات بعد.')}
       </p>
     )
   }
@@ -54,7 +56,7 @@ export function OrdersList({
         const st = ORDER_STATUS[o.status] ?? { label: o.status, cls: 'bg-muted text-muted-foreground' }
         const ticketId = ticketIdByOrder[o.id]
         const isCompletedAndOpenable = o.status === 'completed' && Boolean(ticketId)
-        const cardClass = 'flex w-full flex-col gap-3 rounded-xl border border-border/60 bg-card/40 p-4 text-right sm:flex-row sm:items-center sm:justify-between'
+        const cardClass = 'flex w-full flex-col gap-3 rounded-xl border border-border/60 bg-card/40 p-4 text-start sm:flex-row sm:items-center sm:justify-between'
         const cardContent = (
           <>
             <div className="flex min-w-0 items-center gap-3">
@@ -64,19 +66,19 @@ export function OrdersList({
               <div className="min-w-0">
                 <div className="font-medium">{o.robux_amount.toLocaleString('en-US')} R$</div>
                 <div className="text-pretty text-xs text-muted-foreground">
-                  {DELIVERY_LABELS[o.delivery_method as DeliveryType] ?? o.delivery_method} · {o.roblox_username}
+                  {t(DELIVERY_LABELS[o.delivery_method as DeliveryType] ?? o.delivery_method)} · {o.roblox_username}
                 </div>
               </div>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
               <span className="font-semibold">{formatSar(Number(o.price_sar))}</span>
-              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${st.cls}`}>{st.label}</span>
+              <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${st.cls}`}>{t(st.label)}</span>
               {o.status === 'delivered' && (
                 <Button type="button" size="sm" onClick={() => setConfirmOrderId(o.id)} className="shrink-0">
-                  تأكيد الاستلام
+                  {t('تأكيد الاستلام')}
                 </Button>
               )}
-              {isCompletedAndOpenable && <span className="text-xs font-medium text-primary">عرض التفاصيل</span>}
+              {isCompletedAndOpenable && <span className="text-xs font-medium text-primary">{t('عرض التفاصيل')}</span>}
             </div>
           </>
         )
@@ -86,7 +88,7 @@ export function OrdersList({
             key={o.id}
             type="button"
             onClick={() => setOpenTicketId(ticketId)}
-            aria-label={`تفاصيل الطلب المكتمل ${o.robux_amount.toLocaleString('en-US')} روبوكس`}
+            aria-label={`${t('تفاصيل الطلب المكتمل')} ${o.robux_amount.toLocaleString('en-US')} Robux`}
             className={`${cardClass} cursor-pointer transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary`}
           >
             {cardContent}
