@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { AuthShell } from '@/components/auth/auth-shell'
 import { createClient } from '@/lib/supabase/client'
+import { useLocale } from '@/components/i18n/locale-provider'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -17,6 +18,7 @@ export default function ResetPasswordPage() {
   const [ready, setReady] = useState(false)
   const [hasSession, setHasSession] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { t } = useLocale()
 
   useEffect(() => {
     const supabase = createClient()
@@ -116,11 +118,11 @@ export default function ResetPasswordPage() {
       (form.elements.namedItem('confirm') as HTMLInputElement)?.value ?? ''
 
     if (password.length < 6) {
-      setError('كلمة المرور يجب ألا تقل عن 6 أحرف')
+      setError(t('كلمة المرور يجب ألا تقل عن 6 أحرف'))
       return
     }
     if (password !== confirm) {
-      setError('كلمتا المرور غير متطابقتين')
+      setError(t('كلمتا المرور غير متطابقتين'))
       return
     }
 
@@ -130,7 +132,7 @@ export default function ResetPasswordPage() {
     setLoading(false)
 
     if (error) {
-      setError('تعذّر تحديث كلمة المرور، قد يكون الرابط منتهي الصلاحية')
+      setError(t('تعذّر تحديث كلمة المرور، قد يكون الرابط منتهي الصلاحية'))
       return
     }
     router.push('/dashboard')
@@ -138,13 +140,13 @@ export default function ResetPasswordPage() {
 
   return (
     <AuthShell
-      title="تعيين كلمة مرور جديدة"
-      subtitle="اختر كلمة مرور قوية جديدة لحسابك."
+      title={t('تعيين كلمة مرور جديدة')}
+      subtitle={t('اختر كلمة مرور قوية جديدة لحسابك.')}
       footer={
         <>
-          عدت للعمل؟{' '}
+          {t('عدت للعمل؟')}{' '}
           <Link href="/login" className="font-semibold text-primary hover:underline">
-            تسجيل الدخول
+            {t('تسجيل الدخول')}
           </Link>
         </>
       }
@@ -152,10 +154,10 @@ export default function ResetPasswordPage() {
       {ready && !hasSession ? (
         <div className="flex flex-col gap-4 text-center">
           <p className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-3 text-sm text-destructive">
-            انتهت صلاحية رابط الاستعادة أو أنه غير صالح. يرجى طلب رابط جديد.
+            {t('انتهت صلاحية رابط الاستعادة أو أنه غير صالح. يرجى طلب رابط جديد.')}
           </p>
           <Link href="/forgot-password" className={buttonVariants({ variant: 'secondary', className: 'w-full' })}>
-            طلب رابط جديد
+            {t('طلب رابط جديد')}
           </Link>
         </div>
       ) : (
@@ -169,7 +171,7 @@ export default function ResetPasswordPage() {
             </p>
           )}
           <div className="flex flex-col gap-2">
-            <Label htmlFor="password">كلمة المرور الجديدة</Label>
+            <Label htmlFor="password">{t('كلمة المرور الجديدة')}</Label>
             <div className="relative">
               <Input
                 id="password"
@@ -184,7 +186,7 @@ export default function ResetPasswordPage() {
                 type="button"
                 onClick={() => setShowPassword((v) => !v)}
                 className="absolute inset-y-0 left-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
-                aria-label={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                aria-label={showPassword ? t('إخفاء كلمة المرور') : t('إظهار كلمة المرور')}
               >
                 {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
               </button>
@@ -192,7 +194,7 @@ export default function ResetPasswordPage() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="confirm">تأكيد كلمة المرور</Label>
+            <Label htmlFor="confirm">{t('تأكيد كلمة المرور')}</Label>
             <Input
               id="confirm"
               name="confirm"
@@ -209,7 +211,7 @@ export default function ResetPasswordPage() {
             className="w-full gap-2 shadow-[0_0_24px_-6px_var(--primary)]"
           >
             {loading && <Loader2 className="size-4 animate-spin" />}
-            {loading ? 'جارٍ الحفظ…' : 'حفظ كلمة المرور'}
+            {loading ? t('جارٍ الحفظ…') : t('حفظ كلمة المرور')}
           </Button>
         </form>
       )}

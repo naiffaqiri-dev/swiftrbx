@@ -58,7 +58,7 @@ export function SiteHeader() {
                 <span className="hidden flex-col leading-tight sm:flex">
                   <span className="text-sm font-semibold">{user.username}</span>
                   <span className="text-xs text-muted-foreground">
-                    {ROLE_LABELS[user.role]}
+                    {t(ROLE_LABELS[user.role])}
                   </span>
                 </span>
               </Link>

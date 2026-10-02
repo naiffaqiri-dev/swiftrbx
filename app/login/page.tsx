@@ -7,6 +7,7 @@ import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { AuthShell } from '@/components/auth/auth-shell'
 import { SocialButtons } from '@/components/auth/social-buttons'
 import { useAuth } from '@/components/auth/mock-auth'
+import { useLocale } from '@/components/i18n/locale-provider'
 import { authRouteHref, getAuthReturnPath } from '@/lib/auth-redirect'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,6 +15,7 @@ import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 
 export default function LoginPage() {
+  const { t } = useLocale()
   const router = useRouter()
   const { login } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
@@ -39,18 +41,18 @@ export default function LoginPage() {
       }
       router.replace(getAuthReturnPath())
     } catch {
-      setError('حدث خطأ غير متوقع، يرجى المحاولة مرة أخرى بعد قليل.')
+      setError(t('حدث خطأ غير متوقع، يرجى المحاولة مرة أخرى بعد قليل.'))
       setLoading(false)
     }
   }
 
   return (
     <AuthShell
-      title="تسجيل الدخول"
-      subtitle="أهلاً بعودتك! سجّل دخولك لمتابعة طلباتك ورصيدك."
+      title={t('auth.login')}
+      subtitle={t('أهلاً بعودتك! سجّل دخولك لمتابعة طلباتك ورصيدك.')}
       footer={
         <>
-          ليس لديك حساب؟{' '}
+          {t('ليس لديك حساب؟')}{' '}
           <Link
             href="/register"
             onClick={(event) => {
@@ -59,7 +61,7 @@ export default function LoginPage() {
             }}
             className="font-semibold text-primary hover:underline"
           >
-            أنشئ حساباً الآن
+            {t('أنشئ حساباً الآن')}
           </Link>
         </>
       }
@@ -74,7 +76,7 @@ export default function LoginPage() {
           </p>
         )}
         <div className="flex flex-col gap-2">
-          <Label htmlFor="identifier">اسم المستخدم أو البريد الإلكتروني</Label>
+          <Label htmlFor="identifier">{t('اسم المستخدم أو البريد الإلكتروني')}</Label>
           <Input
             id="identifier"
             name="identifier"
@@ -86,12 +88,12 @@ export default function LoginPage() {
 
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <Label htmlFor="password">كلمة المرور</Label>
+            <Label htmlFor="password">{t('كلمة المرور')}</Label>
             <Link
               href="/forgot-password"
               className="text-xs text-muted-foreground hover:text-primary"
             >
-              نسيت كلمة المرور؟
+              {t('نسيت كلمة المرور؟')}
             </Link>
           </div>
           <div className="relative">
@@ -108,7 +110,7 @@ export default function LoginPage() {
               type="button"
               onClick={() => setShowPassword((v) => !v)}
               className="absolute inset-y-0 left-0 flex items-center px-3 text-muted-foreground hover:text-foreground"
-              aria-label={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+              aria-label={showPassword ? t('إخفاء كلمة المرور') : t('إظهار كلمة المرور')}
             >
               {showPassword ? (
                 <EyeOff className="size-4" />
@@ -125,13 +127,13 @@ export default function LoginPage() {
           className="w-full gap-2 shadow-[0_0_24px_-6px_var(--primary)]"
         >
           {loading && <Loader2 className="size-4 animate-spin" />}
-          {loading ? 'جارٍ الدخول…' : 'تسجيل الدخول'}
+          {loading ? t('جارٍ الدخول…') : t('auth.login')}
         </Button>
       </form>
 
       <div className="flex items-center gap-4">
         <Separator className="flex-1" />
-        <span className="text-xs text-muted-foreground">أو تابع عبر</span>
+        <span className="text-xs text-muted-foreground">{t('أو تابع عبر')}</span>
         <Separator className="flex-1" />
       </div>
 

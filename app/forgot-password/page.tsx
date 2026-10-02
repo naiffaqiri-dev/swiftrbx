@@ -5,6 +5,7 @@ import { useState } from 'react'
 import { Loader2, MailCheck } from 'lucide-react'
 import { AuthShell } from '@/components/auth/auth-shell'
 import { createClient } from '@/lib/supabase/client'
+import { useLocale } from '@/components/i18n/locale-provider'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -13,6 +14,7 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false)
   const [sent, setSent] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { t } = useLocale()
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -21,7 +23,7 @@ export default function ForgotPasswordPage() {
     const email =
       (form.elements.namedItem('email') as HTMLInputElement)?.value.trim() ?? ''
     if (!email) {
-      setError('يرجى إدخال البريد الإلكتروني')
+      setError(t('يرجى إدخال البريد الإلكتروني'))
       return
     }
 
@@ -34,7 +36,7 @@ export default function ForgotPasswordPage() {
     setLoading(false)
 
     if (error) {
-      setError('تعذّر إرسال رابط الاستعادة، حاول مرة أخرى لاحقاً')
+      setError(t('تعذّر إرسال رابط الاستعادة، حاول مرة أخرى لاحقاً'))
       return
     }
     // نعرض رسالة نجاح موحّدة دائماً لمنع كشف الحسابات المسجّلة
@@ -43,13 +45,13 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthShell
-      title="استعادة كلمة المرور"
-      subtitle="أدخل بريدك الإلكتروني وسنرسل لك رابطاً لإعادة تعيين كلمة المرور."
+      title={t('استعادة كلمة المرور')}
+      subtitle={t('أدخل بريدك الإلكتروني وسنرسل لك رابطاً لإعادة تعيين كلمة المرور.')}
       footer={
         <>
-          تذكّرت كلمة المرور؟{' '}
+          {t('تذكّرت كلمة المرور؟')}{' '}
           <Link href="/login" className="font-semibold text-primary hover:underline">
-            العودة لتسجيل الدخول
+            {t('العودة لتسجيل الدخول')}
           </Link>
         </>
       }
@@ -60,11 +62,10 @@ export default function ForgotPasswordPage() {
             <MailCheck className="size-7" />
           </div>
           <p className="text-sm leading-relaxed text-muted-foreground">
-            إن كان هناك حساب مرتبط بهذا البريد، فقد أرسلنا إليه رابطاً لإعادة تعيين
-            كلمة المرور. تحقق من صندوق الوارد ومجلد الرسائل غير المرغوبة.
+            {t('إن كان هناك حساب مرتبط بهذا البريد، فقد أرسلنا إليه رابطاً لإعادة تعيين كلمة المرور. تحقق من صندوق الوارد ومجلد الرسائل غير المرغوبة.')}
           </p>
           <Link href="/login" className={buttonVariants({ variant: 'secondary', className: 'w-full' })}>
-            العودة لتسجيل الدخول
+            {t('العودة لتسجيل الدخول')}
           </Link>
         </div>
       ) : (
@@ -78,7 +79,7 @@ export default function ForgotPasswordPage() {
             </p>
           )}
           <div className="flex flex-col gap-2">
-            <Label htmlFor="email">البريد الإلكتروني</Label>
+            <Label htmlFor="email">{t('البريد الإلكتروني')}</Label>
             <Input
               id="email"
               name="email"
@@ -95,7 +96,7 @@ export default function ForgotPasswordPage() {
             className="w-full gap-2 shadow-[0_0_24px_-6px_var(--primary)]"
           >
             {loading && <Loader2 className="size-4 animate-spin" />}
-            {loading ? 'جارٍ الإرسال…' : 'إرسال رابط الاستعادة'}
+            {loading ? t('جارٍ الإرسال…') : t('إرسال رابط الاستعادة')}
           </Button>
         </form>
       )}
