@@ -953,10 +953,6 @@ export function securelyEncryptDiscordRefreshToken(value: string) {
   return encryptDiscordRefreshToken(value)
 }
 
-export function makeDiscordProfileUrl(user: { id: string }) {
-  return `https://discord.com/users/${encodeURIComponent(user.id)}`
-}
-
 export function getDiscordDisplayName(user: { username: string; global_name?: string | null }) {
   return normalizeDiscordName(user.global_name || user.username)
 }
@@ -989,10 +985,6 @@ export function getDiscordIdentityAvatarUrl(identityData: Record<string, unknown
 export function getDiscordIdentityName(identityData: Record<string, unknown>) {
   const value = identityData.global_name ?? identityData.full_name ?? identityData.name ?? identityData.username
   return typeof value === 'string' ? normalizeDiscordName(value) : ''
-}
-
-export function safeDiscordProfilePatch(user: { id: string; username: string; global_name?: string | null; avatar?: string | null }) {
-  return profilePatchForDiscordUser(user)
 }
 
 export function getDiscordIdentityUserId(identityData: Record<string, unknown>) {
