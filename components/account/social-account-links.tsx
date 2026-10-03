@@ -1,18 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import useSWR from 'swr'
-import { Check, Loader2, Link2 } from 'lucide-react'
+import { Check, Loader2, Link2, RefreshCw, Unlink } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useLocale } from '@/components/i18n/locale-provider'
 import { createClient } from '@/lib/supabase/client'
 
 type Provider = 'discord' | 'google'
 type LinkedIdentities = { providers: string[] }
+type DiscordSyncStatus = { enabled: boolean }
 
 const fetcher = async (url: string): Promise<LinkedIdentities> => {
   const response = await fetch(url, { cache: 'no-store' })
   if (!response.ok) throw new Error('Could not load linked accounts')
+  return response.json()
+}
+
+const syncStatusFetcher = async (url: string): Promise<DiscordSyncStatus> => {
+  const response = await fetch(url, { cache: 'no-store' })
+  if (!response.ok) throw new Error('Could not load Discord sync status')
   return response.json()
 }
 
@@ -38,8 +45,23 @@ function DiscordIcon() {
 export function SocialAccountLinks() {
   const { t } = useLocale()
   const { data, error, isLoading } = useSWR<LinkedIdentities>('/api/account/identities', fetcher)
+  const providers = data?.providers ?? []
+  const {
+    data: syncStatus,
+    error: syncStatusError,
+    isLoading: isSyncStatusLoading,
+    mutate: refreshSyncStatus,
+  } = useSWR<DiscordSyncStatus>(providers.includes('discord') ? '/api/account/discord-sync' : null, syncStatusFetcher)
   const [pending, setPending] = useState<Provider | null>(null)
   const [linkError, setLinkError] = useState(false)
+  const [syncPending, setSyncPending] = useState(false)
+  const [syncError, setSyncError] = useState(false)
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('discord_sync') === 'error') {
+      setSyncError(true)
+    }
+  }, [])
 
   async function linkAccount(provider: Provider) {
     setLinkError(false)
@@ -68,7 +90,50 @@ export function SocialAccountLinks() {
     }
   }
 
-  const providers = data?.providers ?? []
+  async function enableDiscordSync() {
+    setSyncError(false)
+    setSyncPending(true)
+
+    try {
+      const redirectTo = new URL(
+        process.env.NEXT_PUBLIC_DEV_SUPABASE_REDIRECT_URL ?? `${window.location.origin}/auth/callback`,
+      )
+      redirectTo.searchParams.set('next', '/account')
+      redirectTo.searchParams.set('enable_discord_sync', '1')
+
+      const { error: authError } = await createClient().auth.signInWithOAuth({
+        provider: 'discord',
+        options: { redirectTo: redirectTo.toString(), queryParams: { prompt: 'consent' } },
+      })
+
+      if (authError) {
+        setSyncError(true)
+        setSyncPending(false)
+      }
+    } catch {
+      setSyncError(true)
+      setSyncPending(false)
+    }
+  }
+
+  async function disableDiscordSync() {
+    setSyncError(false)
+    setSyncPending(true)
+
+    try {
+      const response = await fetch('/api/account/discord-sync', { method: 'DELETE' })
+      if (!response.ok) {
+        setSyncError(true)
+        return
+      }
+      await refreshSyncStatus()
+    } catch {
+      setSyncError(true)
+    } finally {
+      setSyncPending(false)
+    }
+  }
+
   const providerRows: { id: Provider; label: string }[] = [
     { id: 'discord', label: 'Discord' },
     { id: 'google', label: 'Google' },
@@ -81,7 +146,7 @@ export function SocialAccountLinks() {
         <h3 id="social-accounts-title" className="text-sm font-bold">{t('ربط الحسابات')}</h3>
       </div>
       <p className="text-sm leading-relaxed text-muted-foreground">
-        {t('اربط Discord أو Google بحسابك. سيُستخدم اسم وصورة Discord لملفك الشخصي مرة واحدة فقط.')}
+        {t('اربط Discord أو Google بحسابك، ثم فعّل المزامنة لتحديث الاسم والصورة عند التفعيل ومرة يومياً.')}
       </p>
 
       <div className="flex flex-col gap-2 sm:flex-row">
@@ -114,6 +179,45 @@ export function SocialAccountLinks() {
           )
         })}
       </div>
+
+      {providers.includes('discord') && (
+        <div className="flex flex-col gap-2 rounded-lg border border-border/60 bg-background/40 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm font-medium" role="status" aria-live="polite">
+              {syncStatus?.enabled ? (
+                <Check className="size-4 text-primary" aria-hidden="true" />
+              ) : (
+                <RefreshCw className="size-4 text-muted-foreground" aria-hidden="true" />
+              )}
+              {t('مزامنة ملف Discord')} — {t(syncStatus?.enabled ? 'المزامنة مفعّلة' : 'المزامنة متوقفة')}
+            </div>
+            <Button
+              type="button"
+              variant={syncStatus?.enabled ? 'outline' : 'default'}
+              className="shrink-0 gap-2"
+              disabled={syncPending || isSyncStatusLoading || Boolean(syncStatusError)}
+              onClick={syncStatus?.enabled ? disableDiscordSync : enableDiscordSync}
+            >
+              {syncPending ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : syncStatus?.enabled ? (
+                <Unlink className="size-4" aria-hidden="true" />
+              ) : (
+                <RefreshCw className="size-4" aria-hidden="true" />
+              )}
+              {t(syncPending ? 'جارٍ تحديث Discord…' : syncStatus?.enabled ? 'إيقاف المزامنة' : 'تفعيل المزامنة')}
+            </Button>
+          </div>
+          <p className="text-sm leading-relaxed text-muted-foreground">
+            {t('تُحدَّث الصورة والاسم فور التفعيل، ثم مرة يومياً ما دامت المزامنة مفعّلة.')}
+          </p>
+          {(syncError || syncStatusError) && (
+            <p role="alert" className="text-sm text-destructive">
+              {t('تعذّر تحديث ملف Discord أو حفظ حالة المزامنة. حاول مرة أخرى.')}
+            </p>
+          )}
+        </div>
+      )}
 
       {(linkError || error) && (
         <p role="alert" className="text-sm text-destructive">

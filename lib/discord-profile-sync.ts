@@ -57,7 +57,13 @@ export async function refreshDiscordAccessToken(refreshToken: string) {
     }),
     cache: 'no-store',
   })
-  if (!response.ok) throw new Error(`Discord token refresh failed (${response.status})`)
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    const errorCode = payload && typeof payload === 'object' && 'error' in payload
+      ? String(payload.error)
+      : ''
+    throw new Error(`Discord token refresh failed (${response.status})${errorCode ? `: ${errorCode}` : ''}`)
+  }
   return response.json() as Promise<{ access_token: string; refresh_token?: string }>
 }
 
