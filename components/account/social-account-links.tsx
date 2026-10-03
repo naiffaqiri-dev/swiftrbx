@@ -55,12 +55,12 @@ export function SocialAccountLinks() {
   const [pending, setPending] = useState<Provider | null>(null)
   const [linkError, setLinkError] = useState(false)
   const [syncPending, setSyncPending] = useState(false)
-  const [syncError, setSyncError] = useState(false)
+  const [syncError, setSyncError] = useState<'general' | 'identity_mismatch' | null>(null)
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('discord_sync') === 'error') {
-      setSyncError(true)
-    }
+    const syncResult = new URLSearchParams(window.location.search).get('discord_sync')
+    if (syncResult === 'identity_mismatch') setSyncError('identity_mismatch')
+    else if (syncResult === 'error') setSyncError('general')
   }, [])
 
   async function linkAccount(provider: Provider) {
@@ -91,7 +91,7 @@ export function SocialAccountLinks() {
   }
 
   async function enableDiscordSync() {
-    setSyncError(false)
+    setSyncError(null)
     setSyncPending(true)
 
     try {
@@ -107,28 +107,28 @@ export function SocialAccountLinks() {
       })
 
       if (authError) {
-        setSyncError(true)
+        setSyncError('general')
         setSyncPending(false)
       }
     } catch {
-      setSyncError(true)
+      setSyncError('general')
       setSyncPending(false)
     }
   }
 
   async function disableDiscordSync() {
-    setSyncError(false)
+    setSyncError(null)
     setSyncPending(true)
 
     try {
       const response = await fetch('/api/account/discord-sync', { method: 'DELETE' })
       if (!response.ok) {
-        setSyncError(true)
+        setSyncError('general')
         return
       }
       await refreshSyncStatus()
     } catch {
-      setSyncError(true)
+      setSyncError('general')
     } finally {
       setSyncPending(false)
     }
@@ -213,7 +213,11 @@ export function SocialAccountLinks() {
           </p>
           {(syncError || syncStatusError) && (
             <p role="alert" className="text-sm text-destructive">
-              {t('تعذّر تحديث ملف Discord أو حفظ حالة المزامنة. حاول مرة أخرى.')}
+              {t(
+                syncError === 'identity_mismatch'
+                  ? 'حساب Discord الذي وافقت عليه ليس الحساب المرتبط بملفك. بدّل إلى حساب Discord المرتبط ثم أعد تفعيل المزامنة. لم يتم حفظ أي تغييرات.'
+                  : 'تعذّر تحديث ملف Discord أو حفظ حالة المزامنة. حاول مرة أخرى.',
+              )}
             </p>
           )}
         </div>

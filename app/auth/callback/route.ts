@@ -19,9 +19,9 @@ export async function GET(request: NextRequest) {
       const linkProvider = searchParams.get('link_provider')
 
       if (user && searchParams.get('enable_discord_sync') === '1') {
-        const failDiscordSync = (stage: string, detail?: string) => {
+        const failDiscordSync = (stage: string, detail?: string, reason = 'error') => {
           console.error('[v0] Discord profile sync activation failed', { stage, detail })
-          return NextResponse.redirect(`${origin}/account?discord_sync=error`)
+          return NextResponse.redirect(`${origin}/account?discord_sync=${reason}`)
         }
         const identity = user.identities?.find((item) => item.provider === 'discord')
         const accessToken = exchangeData.session?.provider_token
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
           const discordUser = await getDiscordUser(accessToken)
           const linkedDiscordId = identity.identity_id
           if (linkedDiscordId !== discordUser.id) {
-            return failDiscordSync('discord_identity_mismatch')
+            return failDiscordSync('discord_identity_mismatch', undefined, 'identity_mismatch')
           }
 
           const admin = createAdminClient()
