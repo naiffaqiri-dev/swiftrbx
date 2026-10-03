@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useLocale } from '@/components/i18n/locale-provider'
 import { StarDisplay } from '@/components/reviews/star-rating'
 import { ProfileAvatar } from '@/components/profile-avatar'
+import { SocialAccountLinks } from '@/components/account/social-account-links'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -424,6 +425,8 @@ export function AccountView() {
             <Label>{t('البريد الإلكتروني الحالي')}</Label>
             <Input value={user.email ?? ''} disabled />
           </div>
+
+          <SocialAccountLinks />
 
           <div className="space-y-3 rounded-xl border border-border/60 bg-background/40 p-4">
             <h3 className="flex items-center gap-2 text-sm font-bold">
