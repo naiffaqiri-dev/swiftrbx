@@ -58,7 +58,7 @@ export function SocialAccountLinks() {
   } = useSWR<DiscordSyncStatus>(providers.includes('discord') ? '/api/account/discord-sync' : null, syncStatusFetcher)
   const [pending, setPending] = useState<Provider | null>(null)
   const [linkError, setLinkError] = useState(false)
-  const [unlinkError, setUnlinkError] = useState(false)
+  const [unlinkError, setUnlinkError] = useState<'general' | 'manual_linking_disabled' | null>(null)
   const [unlinkSuccess, setUnlinkSuccess] = useState<Provider | null>(null)
   const [syncPending, setSyncPending] = useState(false)
   const [syncError, setSyncError] = useState<'general' | 'identity_mismatch' | null>(null)
@@ -105,7 +105,7 @@ export function SocialAccountLinks() {
         : 'هل تريد فك ربط حساب Google من حسابك؟'
     if (!window.confirm(t(confirmationKey))) return
 
-    setUnlinkError(false)
+    setUnlinkError(null)
     setUnlinkSuccess(null)
     setPending(provider)
 
@@ -129,8 +129,10 @@ export function SocialAccountLinks() {
 
       setUnlinkSuccess(provider)
       await refreshLinkedAccounts().catch(() => undefined)
-    } catch {
-      setUnlinkError(true)
+    } catch (error) {
+      const manualLinkingDisabled =
+        typeof error === 'object' && error !== null && 'code' in error && error.code === 'manual_linking_disabled'
+      setUnlinkError(manualLinkingDisabled ? 'manual_linking_disabled' : 'general')
       if (provider === 'discord') await refreshSyncStatus().catch(() => undefined)
     } finally {
       setPending(null)
@@ -292,7 +294,11 @@ export function SocialAccountLinks() {
 
       {unlinkError && (
         <p role="alert" className="text-sm text-destructive">
-          {t('تعذّر فك ربط الحساب. حاول مرة أخرى.')}
+          {t(
+            unlinkError === 'manual_linking_disabled'
+              ? 'تعذّر فك الربط لأن خيار الربط اليدوي للهويات معطّل في إعدادات Supabase. فعّله ثم أعد المحاولة.'
+              : 'تعذّر فك ربط الحساب. حاول مرة أخرى.',
+          )}
         </p>
       )}
       {unlinkSuccess && (
