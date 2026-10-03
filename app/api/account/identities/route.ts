@@ -14,6 +14,10 @@ export async function GET() {
     return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 })
   }
 
-  const providers = [...new Set((user.identities ?? []).map((identity) => identity.provider))]
-  return NextResponse.json({ providers }, { headers: { 'Cache-Control': 'private, no-store' } })
+  const identities = user.identities ?? []
+  const providers = [...new Set(identities.map((identity) => identity.provider))]
+  return NextResponse.json(
+    { providers, identityCount: identities.length },
+    { headers: { 'Cache-Control': 'private, no-store' } },
+  )
 }
