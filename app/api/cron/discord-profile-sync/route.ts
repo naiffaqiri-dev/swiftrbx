@@ -47,9 +47,9 @@ export async function GET(request: Request) {
         if (authError) throw authError
 
         const identity = authResult.user?.identities?.find((item) => item.provider === 'discord')
-        const linkedDiscordId = identity?.identity_data?.id
+        const linkedDiscordId = identity?.identity_id
 
-        if (typeof linkedDiscordId !== 'string' || linkedDiscordId !== discordUser.id) {
+        if (linkedDiscordId !== discordUser.id) {
           const { error } = await admin
             .from('discord_profile_sync_tokens')
             .delete()
