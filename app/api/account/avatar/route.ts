@@ -74,3 +74,73 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ avatarUrl: data.publicUrl })
 }
+
+export async function DELETE(request: Request) {
+  const origin = request.headers.get('origin')
+  const requestHost = request.headers.get('x-forwarded-host') ?? request.headers.get('host')
+  if (origin && requestHost && new URL(origin).host !== requestHost) {
+    return NextResponse.json({ error: 'طلب غير صالح' }, { status: 403 })
+  }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return NextResponse.json({ error: 'يجب تسجيل الدخول أولاً' }, { status: 401 })
+  }
+
+  const admin = createAdminClient()
+  const { data: profile, error: profileError } = await admin
+    .from('profiles')
+    .select('avatar_url')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  if (profileError) {
+    return NextResponse.json({ error: 'تعذّر حفظ التغييرات' }, { status: 500 })
+  }
+  if (!profile) {
+    return NextResponse.json({ error: 'تعذّر العثور على الملف الشخصي' }, { status: 404 })
+  }
+
+  const { error: updateError } = await admin
+    .from('profiles')
+    .update({ avatar_url: null })
+    .eq('id', user.id)
+
+  if (updateError) {
+    return NextResponse.json({ error: 'تعذّر حفظ التغييرات' }, { status: 500 })
+  }
+
+  if (profile.avatar_url) {
+    try {
+      const bucket = admin.storage.from('avatars')
+      const publicBase = new URL(bucket.getPublicUrl('').data.publicUrl)
+      const avatarUrl = new URL(profile.avatar_url)
+      const pathPrefix = publicBase.pathname.endsWith('/')
+        ? publicBase.pathname
+        : `${publicBase.pathname}/`
+
+      if (avatarUrl.origin === publicBase.origin && avatarUrl.pathname.startsWith(pathPrefix)) {
+        const objectPath = decodeURIComponent(avatarUrl.pathname.slice(pathPrefix.length))
+        const pathParts = objectPath.split('/')
+        const isOwnedAvatar = objectPath.startsWith(`${user.id}/`) &&
+          pathParts.every((part) => part.length > 0 && part !== '.' && part !== '..')
+
+        if (isOwnedAvatar) {
+          const { error: removeError } = await bucket.remove([objectPath])
+          if (removeError) console.error('[v0] Could not remove profile avatar object', removeError.name)
+        }
+      }
+    } catch (removeError) {
+      console.error(
+        '[v0] Could not parse or remove profile avatar object',
+        removeError instanceof Error ? removeError.name : 'unknown_error',
+      )
+    }
+  }
+
+  return NextResponse.json({ avatarUrl: null })
+}

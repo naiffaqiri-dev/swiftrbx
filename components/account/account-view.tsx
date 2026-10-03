@@ -12,7 +12,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatMoney } from '@/lib/currency'
-import { User as UserIcon, Shield, Wallet, Copy, Check, KeyRound, Smartphone, Loader2, Mail, Camera, AtSign, BadgeCheck } from 'lucide-react'
+import { User as UserIcon, Shield, Wallet, Copy, Check, KeyRound, Smartphone, Loader2, Mail, Camera, AtSign, BadgeCheck, Trash2 } from 'lucide-react'
 
 function fallbackRef(seed: string) {
   let out = ''
@@ -137,6 +137,27 @@ export function AccountView() {
       }
       updateUser(user!.id, { avatarUrl: data.avatarUrl })
       setProfileMsg({ type: 'ok', text: t('تم تحديث الصورة الشخصية بنجاح.') })
+    } catch {
+      setProfileMsg({ type: 'err', text: t('تعذّر الاتصال، حاول لاحقاً') })
+    } finally {
+      setProfileBusy(null)
+    }
+  }
+
+  async function removeAvatar() {
+    if (!user?.avatarUrl || !window.confirm(t('هل تريد إزالة الصورة الشخصية؟'))) return
+
+    setProfileMsg(null)
+    setProfileBusy('avatar')
+    try {
+      const res = await fetch('/api/account/avatar', { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) {
+        setProfileMsg({ type: 'err', text: t(data.error ?? 'تعذّر إزالة الصورة') })
+        return
+      }
+      await updateUser(user.id, { avatarUrl: undefined })
+      setProfileMsg({ type: 'ok', text: t('تمت إزالة الصورة الشخصية.') })
     } catch {
       setProfileMsg({ type: 'err', text: t('تعذّر الاتصال، حاول لاحقاً') })
     } finally {
@@ -344,13 +365,32 @@ export function AccountView() {
             </div>
             <div>
               <Label htmlFor="avatar-input" className="mb-1.5 block">{t('الصورة الشخصية')}</Label>
-              <label
-                htmlFor="avatar-input"
-                className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border/60 bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
-              >
-                <Camera className="h-4 w-4 text-primary" />
-                {t('تغيير الصورة')}
-              </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <label
+                  htmlFor="avatar-input"
+                  className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border/60 bg-background px-3 py-2 text-sm font-medium transition-colors hover:bg-muted"
+                >
+                  <Camera className="h-4 w-4 text-primary" />
+                  {t('تغيير الصورة')}
+                </label>
+                {user.avatarUrl && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={profileBusy === 'avatar'}
+                    onClick={removeAvatar}
+                    className="gap-2"
+                  >
+                    {profileBusy === 'avatar' ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                    {t('إزالة الصورة')}
+                  </Button>
+                )}
+              </div>
               <input
                 id="avatar-input"
                 type="file"
