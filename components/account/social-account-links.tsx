@@ -8,7 +8,7 @@ import { useLocale } from '@/components/i18n/locale-provider'
 import { createClient } from '@/lib/supabase/client'
 
 type Provider = 'discord' | 'google'
-type LinkedIdentities = { providers: string[] }
+type LinkedIdentities = { providers: string[]; identityCount: number }
 type DiscordSyncStatus = { enabled: boolean }
 
 const fetcher = async (url: string): Promise<LinkedIdentities> => {
@@ -44,8 +44,12 @@ function DiscordIcon() {
 
 export function SocialAccountLinks() {
   const { t } = useLocale()
-  const { data, error, isLoading } = useSWR<LinkedIdentities>('/api/account/identities', fetcher)
+  const { data, error, isLoading, mutate: refreshLinkedAccounts } = useSWR<LinkedIdentities>(
+    '/api/account/identities',
+    fetcher,
+  )
   const providers = data?.providers ?? []
+  const canUnlink = (data?.identityCount ?? 0) > 1
   const {
     data: syncStatus,
     error: syncStatusError,
@@ -54,6 +58,8 @@ export function SocialAccountLinks() {
   } = useSWR<DiscordSyncStatus>(providers.includes('discord') ? '/api/account/discord-sync' : null, syncStatusFetcher)
   const [pending, setPending] = useState<Provider | null>(null)
   const [linkError, setLinkError] = useState(false)
+  const [unlinkError, setUnlinkError] = useState(false)
+  const [unlinkSuccess, setUnlinkSuccess] = useState<Provider | null>(null)
   const [syncPending, setSyncPending] = useState(false)
   const [syncError, setSyncError] = useState<'general' | 'identity_mismatch' | null>(null)
 
@@ -86,6 +92,47 @@ export function SocialAccountLinks() {
       }
     } catch {
       setLinkError(true)
+      setPending(null)
+    }
+  }
+
+  async function unlinkAccount(provider: Provider) {
+    if (!canUnlink) return
+
+    const confirmationKey =
+      provider === 'discord'
+        ? 'هل تريد فك ربط حساب Discord من حسابك؟'
+        : 'هل تريد فك ربط حساب Google من حسابك؟'
+    if (!window.confirm(t(confirmationKey))) return
+
+    setUnlinkError(false)
+    setUnlinkSuccess(null)
+    setPending(provider)
+
+    try {
+      const supabase = createClient()
+      const { data: identityData, error: identitiesError } = await supabase.auth.getUserIdentities()
+      if (identitiesError || identityData.identities.length < 2) {
+        throw new Error('Another sign-in identity is required')
+      }
+
+      const identity = identityData.identities.find((item) => item.provider === provider)
+      if (!identity) throw new Error('Linked identity was not found')
+
+      if (provider === 'discord') {
+        const response = await fetch('/api/account/discord-sync', { method: 'DELETE' })
+        if (!response.ok) throw new Error('Could not disable Discord sync')
+      }
+
+      const { error: authError } = await supabase.auth.unlinkIdentity(identity)
+      if (authError) throw authError
+
+      setUnlinkSuccess(provider)
+      await refreshLinkedAccounts().catch(() => undefined)
+    } catch {
+      setUnlinkError(true)
+      if (provider === 'discord') await refreshSyncStatus().catch(() => undefined)
+    } finally {
       setPending(null)
     }
   }
@@ -156,13 +203,27 @@ export function SocialAccountLinks() {
           const Icon = id === 'discord' ? DiscordIcon : GoogleIcon
 
           return linked ? (
-            <div
-              key={id}
-              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary"
-              role="status"
-            >
-              <Check className="size-4" aria-hidden="true" />
-              {t('تم الربط بـ')} {label}
+            <div key={id} className="flex flex-wrap items-center gap-2">
+              <div
+                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-md border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary"
+                role="status"
+              >
+                <Check className="size-4" aria-hidden="true" />
+                {t('تم الربط بـ')} {label}
+              </div>
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={pending !== null || !canUnlink}
+                onClick={() => unlinkAccount(id)}
+              >
+                {pending === id ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Unlink className="size-4" aria-hidden="true" />
+                )}
+                {t(pending === id ? 'جارٍ فك الربط…' : 'فك الربط')} {label}
+              </Button>
             </div>
           ) : (
             <Button
@@ -223,6 +284,22 @@ export function SocialAccountLinks() {
         </div>
       )}
 
+      {data && data.identityCount === 1 && providers.some((provider) => provider === 'discord' || provider === 'google') && (
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {t('أضف وسيلة تسجيل دخول أخرى قبل فك ربط هذا الحساب.')}
+        </p>
+      )}
+
+      {unlinkError && (
+        <p role="alert" className="text-sm text-destructive">
+          {t('تعذّر فك ربط الحساب. حاول مرة أخرى.')}
+        </p>
+      )}
+      {unlinkSuccess && (
+        <p role="status" className="text-sm text-primary">
+          {t(unlinkSuccess === 'discord' ? 'تم فك ربط Discord بنجاح.' : 'تم فك ربط Google بنجاح.')}
+        </p>
+      )}
       {(linkError || error) && (
         <p role="alert" className="text-sm text-destructive">
           {t('تعذّر ربط الحساب. تأكد من تفعيل المزوّد وإعداد الربط اليدوي ثم حاول مجدداً.')}
