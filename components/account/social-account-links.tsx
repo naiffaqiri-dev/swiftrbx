@@ -146,7 +146,7 @@ export function SocialAccountLinks() {
         <h3 id="social-accounts-title" className="text-sm font-bold">{t('ربط الحسابات')}</h3>
       </div>
       <p className="text-sm leading-relaxed text-muted-foreground">
-        {t('اربط Discord أو Google بحسابك. سيُستخدم اسم وصورة Discord لملفك الشخصي مرة واحدة فقط.')}
+        {t('اربط Discord أو Google بحسابك، ثم فعّل المزامنة لتحديث الاسم والصورة عند التفعيل ومرة يومياً.')}
       </p>
 
       <div className="flex flex-col gap-2 sm:flex-row">

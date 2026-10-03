@@ -37,17 +37,6 @@ export async function GET(request: NextRequest) {
           const admin = createAdminClient()
           const discordProfile = discordProfileFromUser(discordUser)
           const displayName = normalizeDiscordName(discordProfile.displayName)
-          const { error: tokenDeleteError } = await admin
-            .from('discord_profile_sync_tokens')
-            .delete()
-            .eq('user_id', user.id)
-          if (tokenDeleteError) return NextResponse.redirect(`${origin}/account?discord_sync=error`)
-
-          const { error: tokenInsertError } = await admin
-            .from('discord_profile_sync_tokens')
-            .insert(discordTokenRecord(user.id, refreshToken))
-          if (tokenInsertError) return NextResponse.redirect(`${origin}/account?discord_sync=error`)
-
           const { error: profileError } = await admin
             .from('profiles')
             .update({
@@ -56,6 +45,11 @@ export async function GET(request: NextRequest) {
             })
             .eq('id', user.id)
           if (profileError) return NextResponse.redirect(`${origin}/account?discord_sync=error`)
+
+          const { error: tokenUpsertError } = await admin
+            .from('discord_profile_sync_tokens')
+            .upsert(discordTokenRecord(user.id, refreshToken), { onConflict: 'user_id' })
+          if (tokenUpsertError) return NextResponse.redirect(`${origin}/account?discord_sync=error`)
 
           return NextResponse.redirect(`${origin}/account?discord_sync=enabled`)
         } catch {
