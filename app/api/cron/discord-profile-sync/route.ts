@@ -44,10 +44,12 @@ export async function GET(request: Request) {
         const tokens = await refreshDiscordAccessToken(refreshToken)
         const discordUser = await getDiscordUser(tokens.access_token)
         const { data: authResult, error: authError } = await admin.auth.admin.getUserById(record.user_id)
+        if (authError) throw authError
+
         const identity = authResult.user?.identities?.find((item) => item.provider === 'discord')
         const linkedDiscordId = identity?.identity_data?.id
 
-        if (authError || typeof linkedDiscordId !== 'string' || linkedDiscordId !== discordUser.id) {
+        if (typeof linkedDiscordId !== 'string' || linkedDiscordId !== discordUser.id) {
           const { error } = await admin
             .from('discord_profile_sync_tokens')
             .delete()
