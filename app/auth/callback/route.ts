@@ -19,19 +19,24 @@ export async function GET(request: NextRequest) {
       const linkProvider = searchParams.get('link_provider')
 
       if (user && searchParams.get('enable_discord_sync') === '1') {
+        const failDiscordSync = (stage: string, detail?: string) => {
+          console.error('[v0] Discord profile sync activation failed', { stage, detail })
+          return NextResponse.redirect(`${origin}/account?discord_sync=error`)
+        }
         const identity = user.identities?.find((item) => item.provider === 'discord')
         const accessToken = exchangeData.session?.provider_token
         const refreshToken = exchangeData.session?.provider_refresh_token
 
-        if (!identity || !accessToken || !refreshToken) {
-          return NextResponse.redirect(`${origin}/account?discord_sync=error`)
+        if (!identity) return failDiscordSync('discord_identity_missing')
+        if (!accessToken || !refreshToken) {
+          return failDiscordSync('provider_tokens_missing', `access=${Boolean(accessToken)} refresh=${Boolean(refreshToken)}`)
         }
 
         try {
           const discordUser = await getDiscordUser(accessToken)
           const linkedDiscordId = identity.identity_data?.id
           if (typeof linkedDiscordId !== 'string' || linkedDiscordId !== discordUser.id) {
-            return NextResponse.redirect(`${origin}/account?discord_sync=error`)
+            return failDiscordSync('discord_identity_mismatch')
           }
 
           const admin = createAdminClient()
@@ -44,16 +49,19 @@ export async function GET(request: NextRequest) {
               avatar_url: discordProfile.avatarUrl,
             })
             .eq('id', user.id)
-          if (profileError) return NextResponse.redirect(`${origin}/account?discord_sync=error`)
+          if (profileError) return failDiscordSync('profile_update_failed', profileError.code)
 
           const { error: tokenUpsertError } = await admin
             .from('discord_profile_sync_tokens')
             .upsert(discordTokenRecord(user.id, refreshToken), { onConflict: 'user_id' })
-          if (tokenUpsertError) return NextResponse.redirect(`${origin}/account?discord_sync=error`)
+          if (tokenUpsertError) return failDiscordSync('token_upsert_failed', tokenUpsertError.code)
 
           return NextResponse.redirect(`${origin}/account?discord_sync=enabled`)
-        } catch {
-          return NextResponse.redirect(`${origin}/account?discord_sync=error`)
+        } catch (syncError) {
+          return failDiscordSync(
+            'profile_fetch_or_token_encryption_failed',
+            syncError instanceof Error ? syncError.message : 'unknown_error',
+          )
         }
       }
 
