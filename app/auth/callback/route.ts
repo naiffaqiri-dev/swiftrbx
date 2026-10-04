@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
 
         try {
           const discordUser = await getDiscordUser(accessToken)
-          const linkedDiscordId = identity.identity_id
+          const linkedDiscordId = identity.id
           if (linkedDiscordId !== discordUser.id) {
             return failDiscordSync('discord_identity_mismatch', undefined, 'identity_mismatch')
           }
