@@ -16,7 +16,8 @@ import { MarketplaceCategoryLinks } from '@/components/market/marketplace-catego
 import { createClient } from '@/lib/supabase/client'
 import { formatSar, formatUsd, sarToUsd } from '@/lib/currency'
 import { Button, buttonVariants } from '@/components/ui/button'
-import { LayoutDashboard, ShoppingBag, Ticket, Wallet, Plus, Headphones, MessageSquareQuote } from 'lucide-react'
+import { LayoutDashboard, ShoppingBag, Ticket, Wallet, Plus, Headphones, MessageSquareQuote, Trophy } from 'lucide-react'
+import { BuyersPanel } from './buyers-panel'
 
 const NAV = [
   { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard className="h-4 w-4" /> },
@@ -24,6 +25,7 @@ const NAV = [
   { key: 'tickets', label: 'تذاكري', icon: <Ticket className="h-4 w-4" /> },
   { key: 'support', label: 'الدعم الفني', icon: <Headphones className="h-4 w-4" /> },
   { key: 'reviews', label: 'تقييم الموقع', icon: <MessageSquareQuote className="h-4 w-4" /> },
+  { key: 'buyers', label: 'nav.buyers', icon: <Trophy className="h-4 w-4" /> },
 ]
 
 export function UserPanel() {
@@ -128,6 +130,7 @@ export function UserPanel() {
       )}
 
       {active === 'reviews' && <SiteReviews />}
+      {active === 'buyers' && <BuyersPanel />}
       {CATALOG_CATEGORIES.map((category) => active === `catalog-${category}` && canSellCategory(user?.role, user?.sellerPermissions, category) ? <SellerCatalogManager key={category} category={category} /> : null)}
 
       {topUpOpen && <TopUpDialog onClose={() => setTopUpOpen(false)} />}
