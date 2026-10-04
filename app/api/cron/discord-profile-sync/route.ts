@@ -47,7 +47,7 @@ export async function GET(request: Request) {
         if (authError) throw authError
 
         const identity = authResult.user?.identities?.find((item) => item.provider === 'discord')
-        const linkedDiscordId = identity?.identity_id
+        const linkedDiscordId = identity?.id
 
         if (linkedDiscordId !== discordUser.id) {
           const { error } = await admin
