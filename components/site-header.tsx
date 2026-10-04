@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { LayoutDashboard, LogOut, Wallet, Ticket } from 'lucide-react'
+import { LayoutDashboard, LogOut, Trophy, Wallet, Ticket } from 'lucide-react'
 import { BrandLogo } from '@/components/brand-logo'
 import { ProfileAvatar } from '@/components/profile-avatar'
 import { LogoutConfirmation } from '@/components/auth/logout-confirmation'
@@ -26,6 +26,10 @@ export function SiteHeader() {
       <div className="mx-auto flex w-full max-w-6xl flex-col items-center gap-3 px-4 py-3 sm:flex-row sm:justify-between sm:px-6 sm:py-4">
         <BrandLogo />
         <nav className="flex w-full flex-wrap items-center justify-center gap-1.5 sm:w-auto sm:justify-end sm:gap-2">
+          <Link href="/buyers" className={buttonVariants({ variant: 'ghost', size: 'sm', className: 'gap-1.5 px-2' })}>
+            <Trophy className="size-4" />
+            <span>{t('nav.buyers')}</span>
+          </Link>
           {ready && user ? (
             <div className="flex w-full flex-wrap items-center justify-center gap-1 sm:w-auto sm:justify-end sm:gap-3">
               <LanguageToggle />
