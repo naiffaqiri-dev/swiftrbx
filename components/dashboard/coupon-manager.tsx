@@ -34,8 +34,7 @@ type CouponForm = {
   discountType: 'percent' | 'fixed'
   value: number
   minOrder: number
-  minRobux: string
-  maxRobux: string
+  targetRobux: string
   maxDiscount: string
   startsAt: string
   expiresAt: string
@@ -51,8 +50,7 @@ const initialForm: CouponForm = {
   discountType: 'percent',
   value: 10,
   minOrder: 0,
-  minRobux: '',
-  maxRobux: '',
+  targetRobux: '',
   maxDiscount: '',
   startsAt: '',
   expiresAt: '',
@@ -103,6 +101,10 @@ export function CouponManager() {
       setError('أدخل مبلغ خصم أكبر من صفر.')
       return
     }
+    if (form.targetRobux && (!Number.isSafeInteger(Number(form.targetRobux)) || Number(form.targetRobux) <= 0)) {
+      setError('أدخل كمية روبكس صحيحة أكبر من صفر.')
+      return
+    }
 
     setSaving(true)
     try {
@@ -115,8 +117,8 @@ export function CouponManager() {
           discount_type: form.discountType,
           value: form.value,
           min_order_amount: form.minOrder,
-          min_robux: form.minRobux || null,
-          max_robux: form.maxRobux || null,
+          min_robux: form.targetRobux || null,
+          max_robux: form.targetRobux || null,
           max_discount: form.maxDiscount || null,
           starts_at: form.startsAt ? new Date(form.startsAt).toISOString() : null,
           expires_at: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
@@ -236,13 +238,9 @@ export function CouponManager() {
             </div>
           )}
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="min-robux">الحد الأدنى لكمية الروبكس (اختياري، R$)</Label>
-            <Input id="min-robux" type="number" min="1" step="1" value={form.minRobux} onChange={(event) => update('minRobux', event.target.value)} placeholder="بلا حد" />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="max-robux">الحد الأعلى لكمية الروبكس (اختياري، R$)</Label>
-            <Input id="max-robux" type="number" min="1" step="1" value={form.maxRobux} onChange={(event) => update('maxRobux', event.target.value)} placeholder="بلا حد" />
+          <div className="flex flex-col gap-1.5 sm:col-span-2">
+            <Label htmlFor="target-robux">كمية الروبكس المطلوبة للخصم (اختياري، R$)</Label>
+            <Input id="target-robux" type="number" min="1" step="1" value={form.targetRobux} onChange={(event) => update('targetRobux', event.target.value)} placeholder="مثال: 31000 — يطبق الخصم على هذه الكمية فقط" />
           </div>
 
           <div className="flex flex-col gap-1.5">
@@ -299,7 +297,9 @@ export function CouponManager() {
                   الحد الأدنى {coupon.min_order_amount} ر.س · {coupon.max_discount ? `السقف ${coupon.max_discount} ر.س · ` : ''}{dateLabel(coupon.starts_at)} — {dateLabel(coupon.expires_at)}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  كمية الروبكس: {coupon.min_robux ? `من ${coupon.min_robux.toLocaleString('en-US')} R$` : 'بلا حد أدنى'} · {coupon.max_robux ? `إلى ${coupon.max_robux.toLocaleString('en-US')} R$` : 'بلا حد أعلى'}
+                  {coupon.min_robux && coupon.max_robux && coupon.min_robux === coupon.max_robux
+                    ? `كمية الروبكس المطلوبة: ${coupon.min_robux.toLocaleString('en-US')} R$`
+                    : `كمية الروبكس: ${coupon.min_robux ? `من ${coupon.min_robux.toLocaleString('en-US')} R$` : 'بلا حد أدنى'} · ${coupon.max_robux ? `إلى ${coupon.max_robux.toLocaleString('en-US')} R$` : 'بلا حد أعلى'}`}
                 </p>
               </div>
               <div className="flex shrink-0 gap-2">
