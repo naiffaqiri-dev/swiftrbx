@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/discord-profile-sync",
-      "schedule": "0 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
