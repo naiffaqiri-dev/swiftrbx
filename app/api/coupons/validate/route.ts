@@ -10,11 +10,23 @@ export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
   const code = typeof body?.code === 'string' ? body.code.trim().toUpperCase() : ''
   const subtotal = Number(body?.subtotal)
-  if (!/^[A-Z0-9_-]{3,32}$/.test(code) || !Number.isFinite(subtotal) || subtotal <= 0 || subtotal > 1_000_000_000) {
-    return NextResponse.json({ error: 'أدخل رمزاً صالحاً وقيمة طلب صحيحة' }, { status: 400 })
+  const amount = Number(body?.amount)
+  if (!/^[A-Z0-9_-]{3,32}$/.test(code) || !Number.isFinite(subtotal) || subtotal <= 0 || subtotal > 1_000_000_000 ||
+      !Number.isInteger(amount) || amount <= 0 || amount > 1_000_000_000) {
+    return NextResponse.json({ error: 'أدخل رمزاً صالحاً وقيمة طلب وكمية صحيحتين' }, { status: 400 })
   }
 
   const admin = createAdminClient()
+  const { data: coupon } = await admin.from('coupons')
+    .select('min_robux, max_robux')
+    .eq('code', code)
+    .eq('active', true)
+    .maybeSingle()
+  if (coupon && ((coupon.min_robux !== null && amount < coupon.min_robux) ||
+      (coupon.max_robux !== null && amount > coupon.max_robux))) {
+    return NextResponse.json({ error: 'كمية الروبكس خارج النطاق المسموح لهذا الكوبون' }, { status: 400 })
+  }
+
   const { data, error } = await admin.rpc('redeem_coupon', {
     p_code: code,
     p_user_id: user.id,
