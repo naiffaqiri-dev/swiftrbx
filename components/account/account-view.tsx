@@ -8,6 +8,7 @@ import { useLocale } from '@/components/i18n/locale-provider'
 import { StarDisplay } from '@/components/reviews/star-rating'
 import { ProfileAvatar } from '@/components/profile-avatar'
 import { SocialAccountLinks } from '@/components/account/social-account-links'
+import { PushNotificationSettings } from '@/components/push-notification-controls'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -347,6 +348,8 @@ export function AccountView() {
               {profileMsg.text}
             </p>
           )}
+
+          <PushNotificationSettings />
 
           {/* الصورة الشخصية */}
           <div className="flex items-center gap-4">

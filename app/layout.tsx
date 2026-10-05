@@ -6,6 +6,7 @@ import { AuthProvider } from '@/components/auth/mock-auth'
 import { TicketsProvider } from '@/components/tickets/tickets-provider'
 import { LocaleProvider } from '@/components/i18n/locale-provider'
 import { SiteFooter } from '@/components/site-footer'
+import { PushNotificationPrompt } from '@/components/push-notification-controls'
 import './globals.css'
 
 const cairo = Cairo({
@@ -46,6 +47,7 @@ export default async function RootLayout({
         <LocaleProvider initialLang={initialLang}>
           <div className="min-w-0 w-full flex-1">
             <AuthProvider>
+              <PushNotificationPrompt />
               <TicketsProvider>{children}</TicketsProvider>
             </AuthProvider>
           </div>
