@@ -662,7 +662,7 @@ export function TicketThread({
     }
   }
 
-  // المشتري: تأكيد الاستلام + التقي��م المتبادل
+  // المشتري: تأكيد الاستلام والتقييم المتبادل
   async function confirmReceipt() {
     if ((!order && !ticket?.catalog_item_id) || acting) return
     if (stars < 1 || siteStars < 1 || siteReviewComment.trim().length < 3) {

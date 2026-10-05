@@ -257,7 +257,7 @@ export function SellerPanel() {
       {active === 'orders' && (
         <div className="space-y-4">
           <div className="rounded-xl border border-border/60 bg-card/40 p-4 text-sm text-muted-foreground">
-            {t('تظهر هنا تذاكر الطلبات بعد أن يختارك المشتري ويؤكد الإدارة تحويله. تواصل مع المشتري ثم اضغط «تأكيد التسليم».')}
+            {t('تظهر هنا تذاكر الطلبات بعد أن يختارك المشتري وتؤكد الإدارة تحويل الطلب. تواصل مع المشتري ثم اضغط «تأكيد التسليم».')}
           </div>
           <TicketsList role="seller" />
         </div>
