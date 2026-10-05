@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 
-const COUPON_COLUMNS = 'id, code, kind, percent, active, discount_type, fixed_amount, min_order_amount, max_discount, starts_at, expires_at, usage_limit, per_user_limit, audience, new_account_days, created_at'
+const COUPON_COLUMNS = 'id, code, kind, percent, active, discount_type, fixed_amount, min_order_amount, max_discount, min_robux, max_robux, starts_at, expires_at, usage_limit, per_user_limit, audience, new_account_days, created_at'
 
 async function requireAdmin() {
   const auth = await createClient()
@@ -67,6 +67,8 @@ export async function POST(request: Request) {
   const audience = ['all', 'new_accounts', 'first_order', 'returning'].includes(body.audience) ? body.audience : null
   const value = nonNegativeMoney(body.value)
   const minOrder = nonNegativeMoney(body.min_order_amount)
+  const minRobux = positiveNullableInt(body.min_robux)
+  const maxRobux = positiveNullableInt(body.max_robux)
   const maxDiscount = body.max_discount === null || body.max_discount === '' ? null : nonNegativeMoney(body.max_discount)
   const usageLimit = positiveNullableInt(body.usage_limit)
   const perUserLimit = positiveNullableInt(body.per_user_limit)
@@ -77,6 +79,8 @@ export async function POST(request: Request) {
   if (!/^[A-Z0-9_-]{3,32}$/.test(code)) return NextResponse.json({ error: 'استخدم 3 إلى 32 حرفاً أو رقماً أو - أو _' }, { status: 400 })
   if (!kind || !discountType || !audience || value === undefined || minOrder === undefined ||
       (body.max_discount !== null && body.max_discount !== '' && body.max_discount !== undefined && maxDiscount === undefined) ||
+      minRobux === undefined || maxRobux === undefined ||
+      (minRobux !== null && maxRobux !== null && minRobux > maxRobux) ||
       usageLimit === undefined || perUserLimit === undefined || newAccountDays === undefined ||
       startsAt === undefined || expiresAt === undefined || (discountType === 'percent' && (value <= 0 || value > 100)) ||
       (discountType === 'fixed' && value <= 0) || (audience === 'new_accounts' && !newAccountDays) ||
@@ -91,6 +95,8 @@ export async function POST(request: Request) {
     discount_type: discountType,
     fixed_amount: discountType === 'fixed' ? value : 0,
     min_order_amount: minOrder,
+    min_robux: minRobux,
+    max_robux: maxRobux,
     max_discount: maxDiscount,
     starts_at: startsAt,
     expires_at: expiresAt,

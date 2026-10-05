@@ -61,6 +61,16 @@ export async function POST(req: Request) {
 
   let discount = 0
   if (normalizedCouponCode) {
+    const { data: couponLimits } = await admin.from("coupons")
+      .select("min_robux, max_robux")
+      .eq("code", normalizedCouponCode)
+      .eq("active", true)
+      .maybeSingle()
+    if (couponLimits && ((couponLimits.min_robux !== null && requested < couponLimits.min_robux) ||
+        (couponLimits.max_robux !== null && requested > couponLimits.max_robux))) {
+      return NextResponse.json({ error: "كمية الروبكس خارج النطاق المسموح لهذا الكوبون" }, { status: 409 })
+    }
+
     const { data, error: couponError } = await admin.rpc("redeem_coupon", {
       p_code: normalizedCouponCode,
       p_user_id: user.id,

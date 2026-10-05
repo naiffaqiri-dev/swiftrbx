@@ -17,6 +17,8 @@ type Coupon = {
   fixed_amount: number
   min_order_amount: number
   max_discount: number | null
+  min_robux: number | null
+  max_robux: number | null
   starts_at: string | null
   expires_at: string | null
   usage_limit: number | null
@@ -32,6 +34,8 @@ type CouponForm = {
   discountType: 'percent' | 'fixed'
   value: number
   minOrder: number
+  minRobux: string
+  maxRobux: string
   maxDiscount: string
   startsAt: string
   expiresAt: string
@@ -47,6 +51,8 @@ const initialForm: CouponForm = {
   discountType: 'percent',
   value: 10,
   minOrder: 0,
+  minRobux: '',
+  maxRobux: '',
   maxDiscount: '',
   startsAt: '',
   expiresAt: '',
@@ -109,6 +115,8 @@ export function CouponManager() {
           discount_type: form.discountType,
           value: form.value,
           min_order_amount: form.minOrder,
+          min_robux: form.minRobux || null,
+          max_robux: form.maxRobux || null,
           max_discount: form.maxDiscount || null,
           starts_at: form.startsAt ? new Date(form.startsAt).toISOString() : null,
           expires_at: form.expiresAt ? new Date(form.expiresAt).toISOString() : null,
@@ -229,6 +237,15 @@ export function CouponManager() {
           )}
 
           <div className="flex flex-col gap-1.5">
+            <Label htmlFor="min-robux">الحد الأدنى لكمية الروبكس (اختياري، R$)</Label>
+            <Input id="min-robux" type="number" min="1" step="1" value={form.minRobux} onChange={(event) => update('minRobux', event.target.value)} placeholder="بلا حد" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="max-robux">الحد الأعلى لكمية الروبكس (اختياري، R$)</Label>
+            <Input id="max-robux" type="number" min="1" step="1" value={form.maxRobux} onChange={(event) => update('maxRobux', event.target.value)} placeholder="بلا حد" />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
             <Label htmlFor="coupon-start">يبدأ في (اختياري)</Label>
             <Input id="coupon-start" type="datetime-local" value={form.startsAt} onChange={(event) => update('startsAt', event.target.value)} />
           </div>
@@ -280,6 +297,9 @@ export function CouponManager() {
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   الحد الأدنى {coupon.min_order_amount} ر.س · {coupon.max_discount ? `السقف ${coupon.max_discount} ر.س · ` : ''}{dateLabel(coupon.starts_at)} — {dateLabel(coupon.expires_at)}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  كمية الروبكس: {coupon.min_robux ? `من ${coupon.min_robux.toLocaleString('en-US')} R$` : 'بلا حد أدنى'} · {coupon.max_robux ? `إلى ${coupon.max_robux.toLocaleString('en-US')} R$` : 'بلا حد أعلى'}
                 </p>
               </div>
               <div className="flex shrink-0 gap-2">
