@@ -17,7 +17,7 @@ export function getGamepassNetAmount(amount: number): number {
 
 export const DELIVERY_NOTES: Record<DeliveryType, string> = {
   group: 'يشترط إكمال 14 يوماً بعد دخول المجموعة، وبعدها يكون التسليم فورياً. نتحمل الضرائب.',
-  gamepass: 'قيمة Gamepass المعروضة قبل ضريبة Roblox (30%)؛ يصلك 70% من الكمية المحددة. مثال: 5,000 R$ يصلك منها 3,500 R$. يستغرق التسليم 5–7 أيام: يومان من طرفنا و5 أيام وفق سياسة Roblox.',
+  gamepass: 'القيمة المسجّلة هي قيمة Gamepass قبل خصم ضريبة Roblox (30%)، ويصلك 70% منها. مثال: إذا كانت قيمتها 1,000 R$، فسيصلك 700 R$. يستغرق التسليم من 5 إلى 7 أيام: يومان من طرفنا، وحتى 5 أيام وفق سياسة Roblox.',
   gift: 'إهداء العنصر مباشرة لحسابك داخل اللعبة، يتطلب توفر خاصية الإهداء.',
   plus: 'تحويل عبر خدمة بلس، سريع ويتطلب تأكيد اسم المستخدم.',
 }
@@ -59,24 +59,42 @@ export type ActiveOffer = {
 
 export type MatchedOffer = ActiveOffer & { price: number }
 
+export type DisplayOffer = MatchedOffer & { minimumNotMet: boolean }
+
+export function getDisplayOffers(
+  offers: ActiveOffer[],
+  amount: number,
+  delivery: DeliveryType,
+): DisplayOffer[] {
+  if (!amount || amount <= 0) return []
+  return offers
+    .filter((offer) => {
+      const minimum = Number(offer.min_amount)
+      return (
+        Number.isFinite(minimum) &&
+        Array.isArray(offer.delivery) &&
+        offer.delivery.includes(delivery) &&
+        amount <= Number(offer.max_amount) &&
+        Number(offer.available) >= amount &&
+        Number(offer.rate) > 0
+      )
+    })
+    .map((offer) => ({
+      ...offer,
+      price: +((amount / 1000) * Number(offer.rate)).toFixed(2),
+      minimumNotMet: amount < Number(offer.min_amount),
+    }))
+    .sort((a, b) => a.price - b.price || b.rating - a.rating)
+}
+
 export function matchOffers(
   offers: ActiveOffer[],
   amount: number,
   delivery: DeliveryType,
 ): MatchedOffer[] {
-  if (!amount || amount <= 0) return []
-  return offers
-    .filter(
-      (o) =>
-        Array.isArray(o.delivery) &&
-        o.delivery.includes(delivery) &&
-        amount >= Number(o.min_amount) &&
-        amount <= Number(o.max_amount) &&
-        Number(o.available) >= amount &&
-        Number(o.rate) > 0,
-    )
-    .map((o) => ({ ...o, price: +((amount / 1000) * Number(o.rate)).toFixed(2) }))
-    .sort((a, b) => a.price - b.price || b.rating - a.rating)
+  return getDisplayOffers(offers, amount, delivery)
+    .filter((offer) => !offer.minimumNotMet)
+    .map(({ minimumNotMet: _minimumNotMet, ...offer }) => offer)
 }
 
 export type Coupon = { code: string; type: 'percent' | 'flat'; value: number }

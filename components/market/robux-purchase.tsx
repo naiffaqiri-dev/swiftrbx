@@ -8,9 +8,9 @@ import {
   DELIVERY_NOTES,
   GAMEPASS_GUIDE_URL,
   getGamepassNetAmount,
+  getDisplayOffers,
   isHttpsLink,
   isRobloxGroupLink,
-  matchOffers,
   type ActiveOffer,
   type DeliveryType,
 } from '@/lib/mock-data'
@@ -99,7 +99,8 @@ export function RobuxPurchase() {
   const sellerProfiles = marketplaceData?.sellerProfiles ?? {}
   const groupLinks = marketplaceData?.groupLinks ?? {}
   const gamepassLinks = marketplaceData?.gamepassLinks ?? {}
-  const matched = useMemo(() => matchOffers(offers, amount, delivery), [offers, amount, delivery])
+  const displayOffers = useMemo(() => getDisplayOffers(offers, amount, delivery), [offers, amount, delivery])
+  const matched = displayOffers.filter((offer) => !offer.minimumNotMet)
   const chosen = matched.find((s) => s.id === selected) ?? matched[0] ?? null
 
   function proceed() {
@@ -206,7 +207,7 @@ export function RobuxPurchase() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold">البائعون المتاحون</h2>
-            <span className="text-sm text-muted-foreground">{matched.length} بائع مطابق</span>
+            <span className="text-sm text-muted-foreground">{displayOffers.length} {t('بائع ظاهر')}</span>
           </div>
 
           {loading ? (
@@ -221,26 +222,29 @@ export function RobuxPurchase() {
                 إعادة المحاولة
               </Button>
             </div>
-          ) : matched.length === 0 ? (
+          ) : displayOffers.length === 0 ? (
             <p className="rounded-xl border border-border/60 bg-card/40 p-8 text-center text-sm text-muted-foreground">
               لا يوجد بائع يطابق هذه الكمية ونوع التسليم حالياً. جرّب كمية مختلفة.
             </p>
           ) : (
-            matched.map((s) => {
-              const isSel = chosen?.id === s.id
+            displayOffers.map((s) => {
+              const belowMinimum = s.minimumNotMet
+              const isSel = !belowMinimum && chosen?.id === s.id
               const sellerProfile = sellerProfiles[s.seller_id]
               const sellerName = sellerProfile?.display_name?.trim() || s.username
               const sellerGroupLinks = (groupLinks[s.seller_id] ?? []).filter(isRobloxGroupLink)
               const sellerGamepassLinks = (gamepassLinks[s.seller_id] ?? []).filter(isHttpsLink)
               return (
-                <div key={s.id} className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
-                  <button
-                    type="button"
-                    onClick={() => setSelected(s.id)}
-                    aria-pressed={isSel}
-                    className={`flex w-full flex-1 items-center justify-between rounded-xl border p-4 text-right transition-colors ${
-                      isSel ? 'border-primary bg-primary/10' : 'border-border/60 bg-card/40 hover:border-primary/40'
-                    }`}
+                <div key={s.id} className="flex flex-col gap-2">
+                  <div className={`flex flex-col gap-2 sm:flex-row sm:items-stretch ${belowMinimum ? 'opacity-50' : ''}`}>
+                    <button
+                      type="button"
+                      onClick={() => setSelected(s.id)}
+                      disabled={belowMinimum}
+                      aria-pressed={isSel}
+                      className={`flex w-full flex-1 items-center justify-between rounded-xl border p-4 text-right transition-colors disabled:cursor-not-allowed ${
+                        isSel ? 'border-primary bg-primary/10' : 'border-border/60 bg-card/40 hover:border-primary/40'
+                      }`}
                   >
                     <div className="flex items-center gap-3">
                       <ProfileAvatar
@@ -290,7 +294,9 @@ export function RobuxPurchase() {
                           href={url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2 text-sm font-medium text-primary transition-colors hover:border-primary/50"
+                          aria-disabled={belowMinimum}
+                          tabIndex={belowMinimum ? -1 : undefined}
+                          className={`inline-flex items-center justify-center gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2 text-sm font-medium text-primary transition-colors hover:border-primary/50 ${belowMinimum ? 'pointer-events-none' : ''}`}
                         >
                           {sellerGroupLinks.length === 1 ? 'دخول قروب البائع' : `دخول المجموعة ${index + 1}`}
                           <ExternalLink className="size-4" aria-hidden="true" />
@@ -298,21 +304,29 @@ export function RobuxPurchase() {
                       ))}
                     </div>
                   )}
-                  {delivery === 'gamepass' && sellerGamepassLinks.length > 0 && (
-                    <div className="flex flex-wrap gap-2 sm:max-w-56 sm:content-center">
-                      {sellerGamepassLinks.map((url, index) => (
-                        <a
-                          key={`${s.seller_id}-${url}`}
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2 text-sm font-medium text-primary transition-colors hover:border-primary/50"
-                        >
-                          {sellerGamepassLinks.length === 1 ? 'شاهد شرح البائع' : `شرح البائع ${index + 1}`}
-                          <ExternalLink className="size-4" aria-hidden="true" />
-                        </a>
-                      ))}
-                    </div>
+                    {delivery === 'gamepass' && sellerGamepassLinks.length > 0 && (
+                      <div className="flex flex-wrap gap-2 sm:max-w-56 sm:content-center">
+                        {sellerGamepassLinks.map((url, index) => (
+                          <a
+                            key={`${s.seller_id}-${url}`}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-disabled={belowMinimum}
+                            tabIndex={belowMinimum ? -1 : undefined}
+                            className={`inline-flex items-center justify-center gap-2 rounded-xl border border-border/60 bg-card/40 px-3 py-2 text-sm font-medium text-primary transition-colors hover:border-primary/50 ${belowMinimum ? 'pointer-events-none' : ''}`}
+                          >
+                            {sellerGamepassLinks.length === 1 ? 'شاهد شرح البائع' : `شرح البائع ${index + 1}`}
+                            <ExternalLink className="size-4" aria-hidden="true" />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {belowMinimum && (
+                    <p className="text-sm font-semibold text-destructive" role="status">
+                      {t('الحد الأدنى لهذا البائع هو')} {Number(s.min_amount).toLocaleString('en-US')} R$
+                    </p>
                   )}
                 </div>
               )
