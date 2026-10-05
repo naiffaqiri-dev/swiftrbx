@@ -4,7 +4,8 @@ import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/components/auth/mock-auth'
 import { AuthRequiredDialog } from '@/components/auth/auth-required-dialog'
-import { DELIVERY_LABELS, type DeliveryType } from '@/lib/mock-data'
+import { DELIVERY_LABELS, DELIVERY_NOTES, getGamepassNetAmount, type DeliveryType } from '@/lib/mock-data'
+import { useLocale } from '@/components/i18n/locale-provider'
 import { randomBank, type Bank } from '@/lib/banks'
 import { formatSar, formatUsd, sarToUsd } from '@/lib/currency'
 import { createClient } from '@/lib/supabase/client'
@@ -31,6 +32,7 @@ type AppliedCoupon = { code: string; discount: number; subtotal: number }
 export function Checkout() {
   const router = useRouter()
   const params = useSearchParams()
+  const { t } = useLocale()
   const { user, ready, refresh } = useAuth()
 
   const amount = Number(params.get('amount') ?? 0)
@@ -360,9 +362,20 @@ export function Checkout() {
         <h2 className="text-lg font-bold">ملخص الطلب</h2>
         <dl className="space-y-2.5 text-sm">
           <div className="flex justify-between">
-            <dt className="text-muted-foreground">الكمية</dt>
+            <dt className="text-muted-foreground">
+              {delivery === 'gamepass' ? t('كمية Gamepass قبل الضريبة') : 'الكمية'}
+            </dt>
             <dd className="font-medium">{amount.toLocaleString('en-US')} R$</dd>
           </div>
+          {delivery === 'gamepass' && (
+            <>
+              <div className="flex justify-between font-semibold text-primary" aria-live="polite">
+                <dt>{t('سيصل لحسابك')}</dt>
+                <dd>{getGamepassNetAmount(amount).toLocaleString('en-US')} R$</dd>
+              </div>
+              <p className="text-xs leading-relaxed text-muted-foreground">{t(DELIVERY_NOTES.gamepass)}</p>
+            </>
+          )}
           <div className="flex justify-between">
             <dt className="text-muted-foreground">التسليم</dt>
             <dd className="font-medium">{DELIVERY_LABELS[delivery]}</dd>
