@@ -2,7 +2,7 @@
 
 import { Trophy } from 'lucide-react'
 import { ProfileAvatar } from '@/components/profile-avatar'
-import { Button } from '@/components/ui/button'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { useLocale } from '@/components/i18n/locale-provider'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -25,6 +25,9 @@ export function BuyersLeaderboard({ allTime, monthly, monthLabel }: BuyersLeader
   const { lang, t } = useLocale()
   const [period, setPeriod] = useState<'allTime' | 'monthly'>('allTime')
   const entries = period === 'allTime' ? allTime : monthly
+  const displayMonthLabel = lang === 'ar'
+    ? monthLabel
+    : new Intl.DateTimeFormat('en-US', { month: 'long', year: 'numeric', timeZone: 'Asia/Riyadh' }).format(new Date())
   const formattedTotal = (amount: number) => new Intl.NumberFormat(lang === 'ar' ? 'ar-SA' : 'en-US').format(amount)
 
   return (
@@ -44,30 +47,25 @@ export function BuyersLeaderboard({ allTime, monthly, monthLabel }: BuyersLeader
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-col gap-1">
             <h2 className="text-lg font-bold">{period === 'monthly' ? t('buyers.monthLabel') : t('buyers.allTime')}</h2>
-            {period === 'monthly' && <p className="text-sm text-muted-foreground">{monthLabel}</p>}
+            {period === 'monthly' && <p className="text-sm text-muted-foreground">{displayMonthLabel}</p>}
           </div>
-          <div role="group" aria-label={t('buyers.category')} className="flex w-full rounded-xl border border-border bg-card p-1 sm:w-auto">
-            <Button
-              type="button"
-              size="sm"
-              variant={period === 'allTime' ? 'default' : 'ghost'}
-              aria-pressed={period === 'allTime'}
-              onClick={() => setPeriod('allTime')}
-              className="flex-1 sm:flex-none"
-            >
+          <ToggleGroup
+            value={[period]}
+            onValueChange={(value) => {
+              if (value[0]) setPeriod(value[0] as 'allTime' | 'monthly')
+            }}
+            variant="outline"
+            size="sm"
+            aria-label={t('buyers.category')}
+            className="w-full sm:w-auto"
+          >
+            <ToggleGroupItem value="allTime" className="flex-1 sm:flex-none">
               {t('buyers.allTime')}
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              variant={period === 'monthly' ? 'default' : 'ghost'}
-              aria-pressed={period === 'monthly'}
-              onClick={() => setPeriod('monthly')}
-              className="flex-1 sm:flex-none"
-            >
+            </ToggleGroupItem>
+            <ToggleGroupItem value="monthly" className="flex-1 sm:flex-none">
               {t('buyers.monthly')}
-            </Button>
-          </div>
+            </ToggleGroupItem>
+          </ToggleGroup>
         </div>
 
         {entries.length > 0 ? (

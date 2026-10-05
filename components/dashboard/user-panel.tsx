@@ -21,11 +21,11 @@ import { BuyersPanel } from './buyers-panel'
 
 const NAV = [
   { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard className="h-4 w-4" /> },
+  { key: 'buyers', label: 'nav.buyers', icon: <Trophy className="h-4 w-4" /> },
   { key: 'orders', label: 'طلباتي', icon: <ShoppingBag className="h-4 w-4" /> },
   { key: 'tickets', label: 'تذاكري', icon: <Ticket className="h-4 w-4" /> },
   { key: 'support', label: 'الدعم الفني', icon: <Headphones className="h-4 w-4" /> },
   { key: 'reviews', label: 'تقييم الموقع', icon: <MessageSquareQuote className="h-4 w-4" /> },
-  { key: 'buyers', label: 'nav.buyers', icon: <Trophy className="h-4 w-4" /> },
 ]
 
 export function UserPanel() {
