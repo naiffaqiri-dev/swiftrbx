@@ -9,9 +9,15 @@ export const DELIVERY_LABELS: Record<DeliveryType, string> = {
   plus: 'تحويل بلس (Plus Transfer)',
 }
 
+export const GAMEPASS_ROBLOX_TAX_RATE = 0.3
+
+export function getGamepassNetAmount(amount: number): number {
+  return Math.floor(Math.max(0, amount) * (1 - GAMEPASS_ROBLOX_TAX_RATE))
+}
+
 export const DELIVERY_NOTES: Record<DeliveryType, string> = {
   group: 'يشترط إكمال 14 يوماً بعد دخول المجموعة، وبعدها يكون التسليم فورياً. نتحمل الضرائب.',
-  gamepass: 'لا توجد شروط. أنشئ Gamepass بقيمة التكلفة المطلوبة مع الضريبة؛ نتحمل الضرائب. يستغرق التسليم 5–7 أيام: يومان من طرفنا و5 أيام وفق سياسة Roblox.',
+  gamepass: 'قيمة Gamepass المعروضة قبل ضريبة Roblox (30%)؛ يصلك 70% من الكمية المحددة. مثال: 5,000 R$ يصلك منها 3,500 R$. يستغرق التسليم 5–7 أيام: يومان من طرفنا و5 أيام وفق سياسة Roblox.',
   gift: 'إهداء العنصر مباشرة لحسابك داخل اللعبة، يتطلب توفر خاصية الإهداء.',
   plus: 'تحويل عبر خدمة بلس، سريع ويتطلب تأكيد اسم المستخدم.',
 }

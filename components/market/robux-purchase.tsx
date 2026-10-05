@@ -7,6 +7,7 @@ import {
   DELIVERY_LABELS,
   DELIVERY_NOTES,
   GAMEPASS_GUIDE_URL,
+  getGamepassNetAmount,
   isHttpsLink,
   isRobloxGroupLink,
   matchOffers,
@@ -18,6 +19,7 @@ import { useAuth } from '@/components/auth/mock-auth'
 import { AuthRequiredDialog } from '@/components/auth/auth-required-dialog'
 import { ProfileAvatar } from '@/components/profile-avatar'
 import { formatMoney } from '@/lib/currency'
+import { useLocale } from '@/components/i18n/locale-provider'
 import { DeliveryAvailability, MarketplaceAvailabilitySummary } from '@/components/market/marketplace-availability'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -41,6 +43,7 @@ type MarketplaceData = {
 
 export function RobuxPurchase() {
   const router = useRouter()
+  const { t } = useLocale()
   const { user, ready } = useAuth()
   const [authDialogOpen, setAuthDialogOpen] = useState(false)
   const [authReturnTo, setAuthReturnTo] = useState('/market')
@@ -126,7 +129,9 @@ export function RobuxPurchase() {
           <h2 className="mb-4 text-lg font-bold">حدّد طلبك</h2>
 
           <div className="space-y-2">
-            <Label htmlFor="amount">كمية الروبوكس (R$)</Label>
+            <Label htmlFor="amount">
+              {delivery === 'gamepass' ? t('كمية Gamepass قبل الضريبة') : 'كمية الروبوكس (R$)'}
+            </Label>
             <Input
               id="amount"
               type="number"
@@ -178,7 +183,7 @@ export function RobuxPurchase() {
                       {d === 'group' ? <Truck className="h-4 w-4 text-primary" /> : <Zap className="h-4 w-4 text-primary" />}
                       {DELIVERY_LABELS[d]}
                     </div>
-                    <p className="mt-1 text-xs text-muted-foreground">{DELIVERY_NOTES[d]}</p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{t(DELIVERY_NOTES[d])}</p>
                   </button>
                   <DeliveryAvailability delivery={d} />
                   {d === 'gamepass' && (
@@ -268,7 +273,13 @@ export function RobuxPurchase() {
                     </div>
                     <div className="shrink-0 text-left">
                       <div className="text-lg font-bold text-primary">{formatMoney(s.price)}</div>
-                      <div className="text-xs text-muted-foreground">لـ {amount.toLocaleString('en-US')} R$</div>
+                          <div className="text-xs text-muted-foreground">لـ {amount.toLocaleString('en-US')} R$</div>
+                          {delivery === 'gamepass' && (
+                            <div className="text-xs font-medium text-primary">
+                              {t('سيصل لحسابك')}: {getGamepassNetAmount(amount).toLocaleString('en-US')} R$
+                            </div>
+                          )}
+
                     </div>
                   </button>
                   {delivery === 'group' && sellerGroupLinks.length > 0 && (
@@ -315,9 +326,17 @@ export function RobuxPurchase() {
         <h2 className="text-lg font-bold">ملخص الطلب</h2>
         <dl className="space-y-2.5 text-sm">
           <div className="flex justify-between">
-            <dt className="text-muted-foreground">الكمية</dt>
+            <dt className="text-muted-foreground">
+              {delivery === 'gamepass' ? t('كمية Gamepass قبل الضريبة') : 'الكمية'}
+            </dt>
             <dd className="font-medium">{amount.toLocaleString('en-US')} R$</dd>
           </div>
+          {delivery === 'gamepass' && (
+            <div className="flex justify-between font-semibold text-primary" aria-live="polite">
+              <dt>{t('سيصل لحسابك')}</dt>
+              <dd>{getGamepassNetAmount(amount).toLocaleString('en-US')} R$</dd>
+            </div>
+          )}
           <div className="flex justify-between">
             <dt className="text-muted-foreground">التسليم</dt>
             <dd className="font-medium">{DELIVERY_LABELS[delivery]}</dd>
