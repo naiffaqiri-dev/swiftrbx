@@ -1,3 +1,4 @@
+import 'server-only'
 import webpush from 'web-push'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -89,6 +90,10 @@ export function isValidPushSubscription(value: unknown): value is {
     && candidate.keys.p256dh.length <= 256
     && typeof candidate.keys?.auth === 'string'
     && candidate.keys.auth.length <= 256
+}
+
+export function getPushKeys(value: { keys: { p256dh: string; auth: string } }) {
+  return { p256dh: value.keys.p256dh, auth: value.keys.auth }
 }
 
 export function configureWebPush(keys: StoredVapidKeys) {

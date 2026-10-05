@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient as createSessionClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { getVapidKeys } from '@/lib/push/server'
-import { getPushKeys, isValidPushSubscription } from '@/lib/push-notifications'
+import { getPushKeys, getVapidKeys, isValidPushSubscription } from '@/lib/push/server'
 
 export const dynamic = 'force-dynamic'
 

@@ -561,14 +561,21 @@ export function TicketThread({
       }
 
       const supabase = createClient()
-      const { error } = await supabase
+      const { data: message, error } = await supabase
         .from('ticket_messages')
         .insert({ ticket_id: ticketId, sender_id: user.id, body })
-      if (error) {
+        .select('id')
+        .single()
+      if (error || !message) {
         setActionError(t('تعذّر إرسال الرسالة، حاول مرة أخرى'))
         return
       }
       await supabase.from('tickets').update({ updated_at: new Date().toISOString() }).eq('id', ticketId)
+      void fetch(`/api/tickets/${encodeURIComponent(ticketId)}/notify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messageId: message.id }),
+      }).catch(() => undefined)
       setText('')
       setAttachment(null)
     } catch {
