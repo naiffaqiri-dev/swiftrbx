@@ -62,6 +62,22 @@ const initialForm: CouponForm = {
   newAccountDays: 30,
 }
 
+function getCouponStatus(coupon: Coupon) {
+  const now = Date.now()
+  if (coupon.expires_at && Date.parse(coupon.expires_at) <= now) return 'expired'
+  if (coupon.starts_at && Date.parse(coupon.starts_at) > now) return 'scheduled'
+  if (coupon.usage_limit !== null && coupon.redeemed_count >= coupon.usage_limit) return 'exhausted'
+  return coupon.active ? 'active' : 'disabled'
+}
+
+const COUPON_STATUS_LABELS: Record<ReturnType<typeof getCouponStatus>, string> = {
+  active: 'مفعّل',
+  disabled: 'معطّل',
+  scheduled: 'لم يبدأ بعد',
+  expired: 'منتهي',
+  exhausted: 'اكتمل الاستخدام',
+}
+
 async function fetchCoupons(url: string) {
   const response = await fetch(url)
   const body = await response.json()
@@ -82,7 +98,10 @@ function audienceLabel(audience: Coupon['audience'], days: number) {
 }
 
 export function CouponManager() {
-  const { data, error: loadError, isLoading, mutate } = useSWR('/api/admin/coupons', fetchCoupons)
+  const { data, error: loadError, isLoading, mutate } = useSWR('/api/admin/coupons', fetchCoupons, {
+    refreshInterval: 30_000,
+    revalidateOnFocus: true,
+  })
   const [form, setForm] = useState<CouponForm>(initialForm)
   const [saving, setSaving] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
@@ -294,36 +313,46 @@ export function CouponManager() {
         ) : coupons.length === 0 ? (
           <p className="rounded-xl border border-border/60 bg-card/40 p-6 text-center text-sm text-muted-foreground">لا توجد كوبونات بعد.</p>
         ) : (
-          coupons.map((coupon) => (
-            <article key={coupon.id} className="flex flex-col gap-4 rounded-xl border border-border/60 bg-card/40 p-4 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-bold">{coupon.code}</h3>
-                  <span className="rounded-full bg-secondary px-2 py-0.5 text-xs">{coupon.discount_type === 'percent' ? `${coupon.percent}%` : `${coupon.fixed_amount} ر.س`}</span>
-                  <span className={`rounded-full px-2 py-0.5 text-xs ${coupon.active ? 'bg-primary/10 text-primary' : 'bg-destructive/10 text-destructive'}`}>
-                    {coupon.active ? 'مفعّل' : 'معطّل'}
-                  </span>
+          coupons.map((coupon) => {
+            const status = getCouponStatus(coupon)
+            const unavailable = status === 'expired' || status === 'exhausted'
+            const statusClass = status === 'active'
+              ? 'bg-primary/10 text-primary'
+              : status === 'disabled' || status === 'scheduled'
+                ? 'bg-secondary text-muted-foreground'
+                : 'bg-destructive/10 text-destructive'
+
+            return (
+              <article key={coupon.id} className="flex flex-col gap-4 rounded-xl border border-border/60 bg-card/40 p-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="font-bold">{coupon.code}</h3>
+                    <span className="rounded-full bg-secondary px-2 py-0.5 text-xs">{coupon.discount_type === 'percent' ? `${coupon.percent}%` : `${coupon.fixed_amount} ر.س`}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs ${statusClass}`}>
+                      {COUPON_STATUS_LABELS[status]}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {coupon.kind === 'referral' ? 'إحالة' : 'خصم'} · {audienceLabel(coupon.audience, coupon.new_account_days)} · استُخدم {coupon.redeemed_count}{coupon.usage_limit ? ` من ${coupon.usage_limit}` : ''} مرة
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {coupon.min_order_amount > 0 ? `الحد الأدنى ${coupon.min_order_amount} ر.س` : 'بلا حد أدنى بالريال'} · {coupon.max_discount ? `السقف ${coupon.max_discount} ر.س · ` : ''}{dateLabel(coupon.starts_at)} — {dateLabel(coupon.expires_at)}
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    كمية الروبكس: {coupon.min_robux ? `من ${coupon.min_robux.toLocaleString('en-US')} R$` : 'بلا حد أدنى'} · {coupon.max_robux ? `إلى ${coupon.max_robux.toLocaleString('en-US')} R$` : 'بلا حد أعلى'}
+                  </p>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {coupon.kind === 'referral' ? 'إحالة' : 'خصم'} · {audienceLabel(coupon.audience, coupon.new_account_days)} · استُخدم {coupon.redeemed_count}{coupon.usage_limit ? ` من ${coupon.usage_limit}` : ''} مرة
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {coupon.min_order_amount > 0 ? `الحد الأدنى ${coupon.min_order_amount} ر.س` : 'بلا حد أدنى بالريال'} · {coupon.max_discount ? `السقف ${coupon.max_discount} ر.س · ` : ''}{dateLabel(coupon.starts_at)} — {dateLabel(coupon.expires_at)}
-                </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  كمية الروبكس: {coupon.min_robux ? `من ${coupon.min_robux.toLocaleString('en-US')} R$` : 'بلا حد أدنى'} · {coupon.max_robux ? `إلى ${coupon.max_robux.toLocaleString('en-US')} R$` : 'بلا حد أعلى'}
-                </p>
-              </div>
-              <div className="flex shrink-0 gap-2">
-                <Button size="sm" variant="secondary" onClick={() => void toggle(coupon)} disabled={busyId === coupon.id} className="gap-1">
-                  {busyId === coupon.id ? <Loader2 className="size-3.5 animate-spin" /> : <Power className="size-3.5" />}{coupon.active ? 'تعطيل' : 'تفعيل'}
-                </Button>
-                <Button size="icon-sm" variant="ghost" onClick={() => void remove(coupon)} disabled={busyId === coupon.id} aria-label={`حذف الكوبون ${coupon.code}`} className="text-destructive">
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-            </article>
-          ))
+                <div className="flex shrink-0 gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => void toggle(coupon)} disabled={busyId === coupon.id || (!coupon.active && unavailable)} className="gap-1">
+                    {busyId === coupon.id ? <Loader2 className="size-3.5 animate-spin" /> : <Power className="size-3.5" />}{coupon.active ? 'تعطيل' : 'تفعيل'}
+                  </Button>
+                  <Button size="icon-sm" variant="ghost" onClick={() => void remove(coupon)} disabled={busyId === coupon.id} aria-label={`حذف الكوبون ${coupon.code}`} className="text-destructive">
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              </article>
+            )
+          })
         )}
       </section>
     </div>
