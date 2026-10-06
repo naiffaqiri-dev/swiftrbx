@@ -11,6 +11,8 @@ type Dict = Record<string, { ar: string; en: string }>
 
 // Shared navigation and interface strings used across pages.
 const DICT: Dict = {
+  'التأكيد التلقائي خلال': { ar: 'التأكيد التلقائي خلال', en: 'Auto-confirms in' },
+  'انتهت مهلة التأكيد': { ar: 'انتهت المهلة، جارٍ التأكيد تلقائيًا', en: 'Time is up; confirming automatically' },
   'nav.market': { ar: 'السوق', en: 'Market' },
   'nav.buyers': { ar: 'ترتيب المشترين', en: 'Leaderboard' },
   'buyers.eyebrow': { ar: 'مجتمع SwiftRBX', en: 'SwiftRBX community' },
@@ -314,7 +316,7 @@ const DICT: Dict = {
   'تحقق من الحد الأدنى والأقصى لـ': { ar: 'تحقق من الحد الأدنى والأقصى لـ', en: 'Check the minimum and maximum for' },
   'تعذّر حفظ العرض، حاول مرة أخرى': { ar: 'تعذّر حفظ العرض، حاول مرة أخرى', en: 'Could not save the offer. Please try again.' },
   'أضف روابط دعوة مجموعات Roblox الخاصة بك، رابطاً واحداً في كل سطر. ستظهر للمشتري بجانب اسمك عند اختيار تسليم المجموعة.': { ar: 'أضف روابط دعوة مجموعات Roblox الخاصة بك، رابطاً واحداً في كل سطر. ستظهر للمشتري بجانب اسمك عند اختيار تسليم المجموعة.', en: 'Add your Roblox group invite links, one per line. Buyers will see them next to your name when choosing group delivery.' },
-  'الروابط المقبولة آمنة وتابعة لنطاق Roblox.': { ar: 'الروابط المقبولة آمنة وتابعة لنطاق Roblox.', en: 'Accepted links must be secure and belong to the Roblox domain.' },
+  'الروابط المقبولة آمنة و��ابعة لنطاق Roblox.': { ar: 'الروابط المقبولة آمنة وتابعة لنطاق Roblox.', en: 'Accepted links must be secure and belong to the Roblox domain.' },
   'أضف رابط مقطع الشرح الخاص بك، رابطاً واحداً في كل سطر. سيظهر للمشتري بجانب اسمك عند اختيار تسليم Gamepass.': { ar: 'أضف رابط مقطع الشرح الخاص بك، رابطاً واحداً في كل سطر. سيظهر للمشتري بجانب اسمك عند اختيار تسليم Gamepass.', en: 'Add your tutorial video links, one per line. Buyers will see them next to your name when choosing Gamepass delivery.' },
   'أضف رابطاً آمناً يبدأ بـ https://، وبحد أقصى 10 روابط.': { ar: 'أضف رابطاً آمناً يبدأ بـ https://، وبحد أقصى 10 روابط.', en: 'Add a secure link starting with https://. Up to 10 links.' },
   'شرح إنشاء وتسليم Gamepass للبائع': { ar: 'شرح إنشاء وتسليم Gamepass للبائع', en: 'Seller Gamepass setup and delivery guide' },

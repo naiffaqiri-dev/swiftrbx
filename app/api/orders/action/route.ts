@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "لا يمكن تسليم هذا الطلب في حالته الحالية" }, { status: 409 })
 
     await admin.from("orders").update({ status: "delivered", delivered_at: now, updated_at: now }).eq("id", orderId)
-    await admin.from("tickets").update({ status: "delivered", updated_at: now }).eq("order_id", orderId)
+    await admin.from("tickets").update({ status: "delivered", delivered_at: now, updated_at: now }).eq("order_id", orderId)
 
     if (!order.seller_credited && order.seller_id) {
       const { data: sp } = await admin.from("profiles").select("balance").eq("id", order.seller_id).single()

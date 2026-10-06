@@ -136,7 +136,7 @@ export async function POST(request: Request) {
     if (!isSeller && !isAdmin) return errorResponse('غير مصرّح', 403)
     if (ticket.status !== 'open') return errorResponse('لا يمكن تأكيد التسليم في الحالة الحالية', 409)
     const { data: updated, error } = await admin.from('tickets')
-      .update({ status: 'delivered', updated_at: now })
+      .update({ status: 'delivered', delivered_at: now, updated_at: now })
       .eq('id', ticket.id)
       .eq('status', 'open')
       .select('id')
