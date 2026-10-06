@@ -8,6 +8,7 @@ import { ProfileAvatar } from '@/components/profile-avatar'
 import { MarketplaceAvailabilitySummary } from '@/components/market/marketplace-availability'
 import { AdminVerifyPanel } from './admin-verify-panel'
 import { TicketsList } from './tickets-list'
+import { TicketLogs } from './ticket-logs'
 import { CouponManager } from './coupon-manager'
 import { ReviewsAdmin } from './reviews-admin'
 import { MapCategoryManager } from './map-category-manager'
@@ -37,6 +38,7 @@ const NAV = [
   { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard className="h-4 w-4" /> },
   { key: 'verify', label: 'مراجعة التحويلات', icon: <Receipt className="h-4 w-4" /> },
   { key: 'tickets', label: 'التذاكر والنزاعات', icon: <Ticket className="h-4 w-4" /> },
+  { key: 'ticket-logs', label: 'سجلات التذاكر', icon: <Receipt className="h-4 w-4" /> },
   { key: 'sellers', label: 'الموردون', icon: <Store className="h-4 w-4" /> },
   { key: 'map-categories', label: 'فئات المابات', icon: <Gamepad2 className="h-4 w-4" /> },
   { key: 'support', label: 'الدعم الفني', icon: <Headphones className="h-4 w-4" /> },
@@ -326,6 +328,8 @@ export function OwnerPanel() {
       {active === 'verify' && <AdminVerifyPanel />}
 
       {active === 'tickets' && <TicketsList role="admin" />}
+
+      {active === 'ticket-logs' && <TicketLogs />}
 
       {active === 'map-categories' && <MapCategoryManager />}
 

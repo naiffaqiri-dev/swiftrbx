@@ -77,6 +77,47 @@ export async function sendTicketPush(userId: string, ticketId: string) {
   }
 }
 
+export async function sendReviewReminderPush(
+  userId: string,
+  orderId: string,
+  ticketId: string | null,
+  remainingMinutes: 20 | 10,
+) {
+  try {
+    const admin = createAdminClient()
+    const [{ data: preference }, { data: subscriptions }] = await Promise.all([
+      admin.from('push_notification_preferences').select('enabled').eq('user_id', userId).maybeSingle(),
+      admin.from('push_subscriptions').select('id, endpoint, p256dh, auth').eq('user_id', userId),
+    ])
+    if (!preference?.enabled || !subscriptions?.length) return
+
+    const keys = await getVapidKeys()
+    configureWebPush(keys)
+    const payload: PushPayload = {
+      title: 'يرجى تقييم البائع',
+      body: `يرجى التقييم؛ العدّ التنازلي عند الدقيقة ${remainingMinutes} من 30 للطلب #${orderId.slice(0, 8)}.`,
+      url: ticketId ? `/tickets/${encodeURIComponent(ticketId)}` : '/dashboard',
+    }
+    await Promise.all(subscriptions.map(async (subscription) => {
+      try {
+        await sendPushNotification(
+          { endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } },
+          payload,
+        )
+      } catch (error) {
+        const statusCode = typeof error === 'object' && error && 'statusCode' in error
+          ? Number(error.statusCode)
+          : 0
+        if (statusCode === 404 || statusCode === 410) {
+          await admin.from('push_subscriptions').delete().eq('id', subscription.id)
+        }
+      }
+    }))
+  } catch {
+    // Push delivery is best-effort and must not block the scheduled order completion.
+  }
+}
+
 export function isValidPushSubscription(value: unknown): value is {
   endpoint: string
   keys: { p256dh: string; auth: string }

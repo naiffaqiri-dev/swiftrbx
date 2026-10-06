@@ -64,7 +64,7 @@ export async function POST(req: Request) {
 
   // المشتري: تأكيد الاستلام + التقييم — أو الإكمال التلقائي بعد 30 دقيقة
   if (action === "confirm" || action === "auto_complete") {
-    if (action === "confirm" && !isBuyer && !isAdmin)
+    if ((action === "confirm" || action === "auto_complete") && !isBuyer && !isAdmin)
       return NextResponse.json({ error: "forbidden" }, { status: 403 })
     if (action === "confirm") {
       if (!Number.isInteger(rating) || Number(rating) < 1 || Number(rating) > 5)
@@ -80,18 +80,25 @@ export async function POST(req: Request) {
       const delivered = order.delivered_at ? Date.parse(order.delivered_at) : 0
       if (!delivered || Date.now() - delivered < THIRTY_MIN)
         return NextResponse.json({ ok: false, skipped: true })
-    }
 
-    const { data: completedOrder, error: completionError } = await admin
-      .from("orders")
-      .update({ status: "completed", completed_at: now, updated_at: now })
-      .eq("id", orderId)
-      .eq("status", "delivered")
-      .select("id")
-      .maybeSingle()
-    if (completionError || !completedOrder)
-      return NextResponse.json({ error: "تم تحديث الطلب مسبقاً، حدّث الصفحة" }, { status: 409 })
-    await admin.from("tickets").update({ status: "completed", updated_at: now }).eq("order_id", orderId)
+      const { data: completedOrder, error: completionError } = await admin.rpc(
+        "auto_complete_delivered_order",
+        { p_order_id: orderId },
+      )
+      if (completionError) return NextResponse.json({ error: "تعذّر إغلاق التذكرة تلقائياً" }, { status: 500 })
+      if (!completedOrder?.length) return NextResponse.json({ ok: false, skipped: true })
+    } else {
+      const { data: completedOrder, error: completionError } = await admin
+        .from("orders")
+        .update({ status: "completed", completed_at: now, updated_at: now })
+        .eq("id", orderId)
+        .eq("status", "delivered")
+        .select("id")
+        .maybeSingle()
+      if (completionError || !completedOrder)
+        return NextResponse.json({ error: "تم تحديث الطلب مسبقاً، حدّث الصفحة" }, { status: 409 })
+      await admin.from("tickets").update({ status: "completed", closed_at: now, updated_at: now }).eq("order_id", orderId)
+    }
 
     if (action === "confirm" && order.seller_id) {
       const stars = Number(rating)
