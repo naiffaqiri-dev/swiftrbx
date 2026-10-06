@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ProfileAvatar } from '@/components/profile-avatar'
+import { DeliveryConfirmationCountdown } from '@/components/dashboard/delivery-confirmation-countdown'
 import {
   Loader2,
   MessageSquare,
@@ -35,6 +36,7 @@ type TicketRow = {
   seller_id: string | null
   order_id: string | null
   close_reason: string | null
+  delivered_at: string | null
   catalog_item_id: string | null
   catalog_quantity: number | null
   purchase_price_sar: number | null
@@ -139,8 +141,18 @@ export function TicketsList({
   }, [user, role, typeFilter, statusFilter, onlyRejectedTransfers])
 
   useEffect(() => {
-    load()
-  }, [load])
+    void load()
+    const supabase = createClient()
+    const channel = supabase
+      .channel(`tickets-list-${role}-${user?.id ?? 'guest'}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => void load())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => void load())
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [load, role, user?.id])
 
   return (
     <div className="space-y-3">
@@ -181,9 +193,12 @@ export function TicketsList({
                 </span>
                 <div>
                   <div className="font-medium">{ticketItem.subject || t('تذكرة دعم')}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {new Date(ticketItem.created_at).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US')}
-                    {role === 'buyer' && ticketItem.seller_id && sellerNames[ticketItem.seller_id] ? ` · ${t('البائع:')} ${sellerNames[ticketItem.seller_id]}` : ''}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                    <span>{new Date(ticketItem.created_at).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US')}</span>
+                    {role === 'buyer' && ticketItem.seller_id && sellerNames[ticketItem.seller_id] ? <span>{t('البائع:')} {sellerNames[ticketItem.seller_id]}</span> : null}
+                    {ticketItem.type === 'order' && ticketItem.status === 'delivered' && ticketItem.delivered_at && (
+                      <DeliveryConfirmationCountdown deliveredAt={ticketItem.delivered_at} />
+                    )}
                   </div>
                 </div>
               </div>
@@ -449,11 +464,16 @@ export function TicketThread({
         ord.delivered_at &&
         Date.now() - Date.parse(ord.delivered_at) >= 30 * 60 * 1000
       ) {
-        await fetch('/api/orders/action', {
+        const completion = await fetch('/api/orders/action', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ orderId: ord.id, action: 'auto_complete' }),
-        }).catch(() => {})
+        }).catch(() => null)
+        if (completion?.ok) {
+          setOrder({ ...ord, status: 'completed' })
+          setTicket((current) => current ? { ...current, status: 'completed' } : current)
+          onChanged()
+        }
       }
     }
     if (tk?.seller_id) {
@@ -462,10 +482,10 @@ export function TicketThread({
     }
     setLoading(false)
     setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
-  }, [ticketId])
+  }, [ticketId, onChanged])
 
   useEffect(() => {
-    load()
+    void load()
     const supabase = createClient()
     const channel = supabase
       .channel(`ticket-${ticketId}`)
@@ -487,6 +507,11 @@ export function TicketThread({
             })
           setTimeout(() => endRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
         },
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'tickets', filter: `id=eq.${ticketId}` },
+        () => void load(),
       )
       .subscribe()
     return () => {
@@ -736,6 +761,11 @@ export function TicketThread({
                 <span>{Number(ticket.purchase_price_sar).toFixed(2)} {lang === 'ar' ? 'ر.س' : 'SAR'}</span>
               )}
             </p>
+            {ticket?.type === 'order' && ticket.status === 'delivered' && (
+              <div className="mt-2">
+                <DeliveryConfirmationCountdown deliveredAt={ticket.delivered_at ?? order?.delivered_at ?? null} />
+              </div>
+            )}
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
             <X className="h-5 w-5" />

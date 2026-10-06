@@ -46,5 +46,37 @@ export async function GET(request: Request) {
     if (data?.length) completed += 1
   }
 
-  return NextResponse.json({ ok: true, remindersSent, completed })
+  const { data: dueCatalogTickets, error: catalogError } = await admin
+    .from('tickets')
+    .select('id')
+    .eq('status', 'delivered')
+    .not('catalog_item_id', 'is', null)
+    .is('order_id', null)
+    .not('delivered_at', 'is', null)
+    .lte('delivered_at', cutoff)
+    .order('delivered_at', { ascending: true })
+    .limit(100)
+  if (catalogError) {
+    return NextResponse.json({ error: 'Unable to load expired catalog tickets', remindersSent, completed }, { status: 500 })
+  }
+
+  let catalogCompleted = 0
+  for (const ticket of dueCatalogTickets ?? []) {
+    const now = new Date().toISOString()
+    const { data, error } = await admin
+      .from('tickets')
+      .update({
+        status: 'completed',
+        closed_at: now,
+        close_reason: 'auto_completed_after_30_minutes_without_buyer_confirmation',
+        updated_at: now,
+      })
+      .eq('id', ticket.id)
+      .eq('status', 'delivered')
+      .select('id')
+      .maybeSingle()
+    if (!error && data) catalogCompleted += 1
+  }
+
+  return NextResponse.json({ ok: true, remindersSent, completed, catalogCompleted })
 }
