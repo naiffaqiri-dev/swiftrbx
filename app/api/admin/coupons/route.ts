@@ -121,6 +121,26 @@ export async function PATCH(request: Request) {
   if (!body || typeof body.id !== 'string' || typeof body.active !== 'boolean') {
     return NextResponse.json({ error: 'بيانات التحديث غير صالحة' }, { status: 400 })
   }
+  const { data: coupon, error: couponError } = await context.admin.from('coupons')
+    .select('id, expires_at, usage_limit')
+    .eq('id', body.id)
+    .maybeSingle()
+  if (couponError) return NextResponse.json({ error: 'تعذّر تحديث حالة الكوبون' }, { status: 500 })
+  if (!coupon) return NextResponse.json({ error: 'الكوبون غير موجود' }, { status: 404 })
+
+  if (body.active && coupon.expires_at && Date.parse(coupon.expires_at) <= Date.now()) {
+    return NextResponse.json({ error: 'انتهت صلاحية هذا الكوبون ولا يمكن تفعيله مجدداً' }, { status: 409 })
+  }
+  if (body.active && coupon.usage_limit !== null) {
+    const { count, error: countError } = await context.admin.from('coupon_redemptions')
+      .select('id', { count: 'exact', head: true })
+      .eq('coupon_id', body.id)
+    if (countError) return NextResponse.json({ error: 'تعذّر التحقق من استخدامات الكوبون' }, { status: 500 })
+    if ((count ?? 0) >= coupon.usage_limit) {
+      return NextResponse.json({ error: 'اكتملت مرات استخدام هذا الكوبون ولا يمكن تفعيله مجدداً' }, { status: 409 })
+    }
+  }
+
   const { data, error } = await context.admin.from('coupons')
     .update({ active: body.active })
     .eq('id', body.id)

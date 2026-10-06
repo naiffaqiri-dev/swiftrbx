@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { useAuth } from '@/components/auth/mock-auth'
 import { useLocale } from '@/components/i18n/locale-provider'
+import { DELIVERY_LABELS, type DeliveryType } from '@/lib/mock-data'
 import { createClient } from '@/lib/supabase/client'
 import { StarInput } from '@/components/reviews/star-rating'
 import { Button } from '@/components/ui/button'
@@ -58,6 +59,7 @@ type OrderRow = {
   status: string
   robux_amount: number
   roblox_username: string
+  delivery_method: string
   seller_id: string | null
   delivered_at: string | null
   close_reason: string | null
@@ -436,7 +438,7 @@ export function TicketThread({
     if (tk?.order_id) {
       const { data: o } = await supabase
         .from('orders')
-        .select('id, status, robux_amount, roblox_username, seller_id, delivered_at, close_reason')
+        .select('id, status, robux_amount, roblox_username, delivery_method, seller_id, delivered_at, close_reason')
         .eq('id', tk.order_id)
         .single()
       const ord = (o as OrderRow) ?? null
@@ -720,11 +722,19 @@ export function TicketThread({
         <div className="flex items-center justify-between border-b border-border/60 p-4">
           <div>
             <h2 className="font-bold">{ticket?.subject || t('تذكرة')}</h2>
-            <p className="text-xs text-muted-foreground">
-              {t('رقم')} {ticketId.slice(0, 8)}
-              {sellerName && role !== 'seller' ? ` · ${t('البائع:')} ${sellerName}` : ''}
-              {ticket?.catalog_item_id ? ` · ${t('الكمية:')} ${Number(ticket.catalog_quantity ?? 1).toLocaleString(lang === 'ar' ? 'ar-SA' : 'en-US')}` : ''}
-              {ticket?.purchase_price_sar !== null && ticket?.purchase_price_sar !== undefined ? ` · ${Number(ticket.purchase_price_sar).toFixed(2)} ${lang === 'ar' ? 'ر.س' : 'SAR'}` : ''}
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+              <span>{t('رقم')} {ticketId.slice(0, 8)}</span>
+              {sellerName && role !== 'seller' && <span>{t('البائع:')} {sellerName}</span>}
+              {order?.delivery_method && (
+                <span>{t('نوع التسليم:')} {t(DELIVERY_LABELS[order.delivery_method as DeliveryType] ?? order.delivery_method)}</span>
+              )}
+              {order && <span>{t('الكمية:')} {order.robux_amount.toLocaleString(lang === 'ar' ? 'ar-SA' : 'en-US')} R$</span>}
+              {!order && ticket?.catalog_item_id && (
+                <span>{t('الكمية:')} {Number(ticket.catalog_quantity ?? 1).toLocaleString(lang === 'ar' ? 'ar-SA' : 'en-US')}</span>
+              )}
+              {ticket?.purchase_price_sar !== null && ticket?.purchase_price_sar !== undefined && (
+                <span>{Number(ticket.purchase_price_sar).toFixed(2)} {lang === 'ar' ? 'ر.س' : 'SAR'}</span>
+              )}
             </p>
           </div>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
@@ -789,7 +799,7 @@ export function TicketThread({
           {sellerCanDeliver && (
             <Button onClick={markDelivered} disabled={acting} className="w-full gap-2">
               {acting ? <Loader2 className="h-4 w-4 animate-spin" /> : <PackageCheck className="h-4 w-4" />}
-              {ticket?.catalog_item_id ? t('تأكيد تسليم المنتج للمشتري') : t('تأكيد تسليم الطلب')}
+              {ticket?.catalog_item_id ? t('تأكيد تسليم المنتج للمشتري') : t('تأكيد تسليم ا��طلب')}
             </Button>
           )}
 
