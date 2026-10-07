@@ -7,7 +7,6 @@ import { TicketsProvider } from '@/components/tickets/tickets-provider'
 import { LocaleProvider } from '@/components/i18n/locale-provider'
 import { SiteFooter } from '@/components/site-footer'
 import { PushNotificationPrompt } from '@/components/push-notification-controls'
-import { PopupAnnouncementLayer } from '@/components/popup-announcement-layer'
 import './globals.css'
 
 const cairo = Cairo({
@@ -49,10 +48,7 @@ export default async function RootLayout({
           <div className="min-w-0 w-full flex-1">
             <AuthProvider>
               <PushNotificationPrompt />
-              <TicketsProvider>
-                {children}
-                <PopupAnnouncementLayer />
-              </TicketsProvider>
+              <TicketsProvider>{children}</TicketsProvider>
             </AuthProvider>
           </div>
           <SiteFooter />
