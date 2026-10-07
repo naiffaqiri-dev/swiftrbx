@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { requirePopupAnnouncementOwner } from '@/lib/popup-announcement-auth'
 import { validatePopupAnnouncementDraft } from '@/lib/popup-announcements'
 
-const CAMPAIGN_COLUMNS = 'id,title,subject,kind,audience,target_roles,target_user_ids,target_emails,frequency,steps,starts_at,ends_at,active,priority,created_at'
+const CAMPAIGN_COLUMNS = 'id,title,subject,kind,audience,steps,starts_at,ends_at,active,priority,created_at'
 
 export async function GET() {
   const owner = await requirePopupAnnouncementOwner()
