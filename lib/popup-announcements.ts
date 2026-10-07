@@ -367,9 +367,8 @@ export function popupCampaignIsLive(announcement: PopupAnnouncement, now = Date.
   return announcement.active && isPopupAnnouncementInSchedule(announcement, now)
 }
 
-export function popupCampaignButtonCopy(kind: PopupAnnouncementKind, lang: 'ar' | 'en') {
-  if (kind === 'survey') return lang === 'ar' ? 'إرسال التصويت' : 'Submit vote'
-  return lang === 'ar' ? 'تم' : 'Done'
+export function popupCampaignButtonCopy() {
+  return 'DONE'
 }
 
 export function popupCampaignForwardCopy(lang: 'ar' | 'en') {

@@ -38,12 +38,12 @@ import {
 
 const NAV = [
   { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard className="h-4 w-4" /> },
-  { key: 'announcements', label: 'الإعلانات', icon: <Megaphone className="h-4 w-4" /> },
   { key: 'verify', label: 'مراجعة التحويلات', icon: <Receipt className="h-4 w-4" /> },
   { key: 'tickets', label: 'التذاكر والنزاعات', icon: <Ticket className="h-4 w-4" /> },
   { key: 'ticket-logs', label: 'سجلات التذاكر', icon: <Receipt className="h-4 w-4" /> },
   { key: 'sellers', label: 'الموردون', icon: <Store className="h-4 w-4" /> },
   { key: 'map-categories', label: 'فئات المابات', icon: <Gamepad2 className="h-4 w-4" /> },
+  { key: 'announcements', label: 'الإعلانات والاحصائيات', icon: <Megaphone className="h-4 w-4" /> },
   { key: 'support', label: 'الدعم الفني', icon: <Headphones className="h-4 w-4" /> },
   { key: 'coupons', label: 'الكوبونات والإحالة', icon: <Ticket className="h-4 w-4" /> },
   { key: 'reviews', label: 'تقييمات الموقع', icon: <MessageSquareQuote className="h-4 w-4" /> },
@@ -300,23 +300,6 @@ export function OwnerPanel() {
       {permissionError && <p role="alert" className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">{permissionError}</p>}
       {active === 'overview' && (
         <div className="space-y-5">
-          <section className="flex flex-col gap-4 rounded-xl border border-primary/30 bg-primary/5 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
-            <div className="flex items-start gap-3">
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                <Megaphone className="size-5" />
-              </span>
-              <div>
-                <h2 className="font-bold">{t('رسائل العملاء والإعلانات')}</h2>
-                <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
-                  {t('أنشئ إعلانًا منبثقًا، واختر جمهوره وموعد ظهوره، ثم أدر حملاتك من هنا.')}
-                </p>
-              </div>
-            </div>
-            <Button type="button" className="shrink-0" onClick={() => setActive('announcements')}>
-              <Megaphone data-icon="inline-start" />
-              {t('إنشاء رسالة للعملاء')}
-            </Button>
-          </section>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard label={t('الموردون النشطون')} value={activeSellers} accent icon={<Store className="h-5 w-5" />} />
             <StatCard label={t('الدعم النشط')} value={activeSupport} icon={<Headphones className="h-5 w-5" />} />

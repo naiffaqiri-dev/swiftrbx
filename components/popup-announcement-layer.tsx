@@ -177,12 +177,12 @@ export function PopupAnnouncementLayer() {
             className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >{step.buttonLabel}<Arrow className="size-4" /></a>}
 
-          {campaign.kind !== 'survey' && !customAction && <div className="flex items-center justify-between gap-3">
+          {campaign.kind !== 'survey' && (!customAction || campaign.steps.length > 1) && <div className="flex items-center justify-between gap-3">
             {stepIndex > 0 ? <Button type="button" variant="outline" onClick={() => setStepIndex((index) => Math.max(0, index - 1))}><ArrowRight data-icon="inline-start" />{popupCampaignBackCopy(lang)}</Button> : <span />}
-            <Button type="button" onClick={nextStep}>{campaign.kind === 'guide' && stepIndex < campaign.steps.length - 1 ? popupCampaignForwardCopy(lang) : popupCampaignButtonCopy(campaign.kind, lang)}{campaign.kind === 'guide' && stepIndex < campaign.steps.length - 1 && <Arrow data-icon="inline-end" />}</Button>
+            <Button type="button" onClick={nextStep}>{stepIndex < campaign.steps.length - 1 ? popupCampaignForwardCopy(lang) : popupCampaignButtonCopy()}{stepIndex < campaign.steps.length - 1 && <Arrow data-icon="inline-end" />}</Button>
           </div>}
 
-          {campaign.kind === 'survey' && voted && <div className="flex justify-end"><Button type="button" onClick={() => closeCampaign('complete')}>{popupCampaignButtonCopy(campaign.kind, lang)}</Button></div>}
+          {campaign.kind === 'survey' && voted && <div className="flex justify-end"><Button type="button" onClick={() => closeCampaign('complete')}>{popupCampaignButtonCopy()}</Button></div>}
         </div>
       </div>
     </dialog>
