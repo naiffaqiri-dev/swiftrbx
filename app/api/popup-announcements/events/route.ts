@@ -12,6 +12,7 @@ import {
   type PopupAnnouncement,
 } from '@/lib/popup-announcements'
 import { getPopupAnnouncementViewer } from '@/lib/popup-announcement-auth'
+import { isCompletedPurchaser } from '@/lib/popup-announcement-audience'
 
 const ANNOUNCEMENT_COLUMNS = 'id,title,subject,kind,audience,target_roles,target_user_ids,target_emails,frequency,steps,starts_at,ends_at,active,priority,created_at'
 
@@ -59,10 +60,13 @@ export async function POST(request: Request) {
   }
   const announcement = campaign as PopupAnnouncement | null
   const isCustomer = profile?.role === 'user' && profile.active
+  const isPurchaser = Boolean(
+    user && isCustomer && announcement?.audience === 'purchasers' && await isCompletedPurchaser(user.id),
+  )
   if (
     !announcement ||
     !isPopupAnnouncementInSchedule(announcement) ||
-    !audienceMatchesAnnouncement(announcement.audience, isCustomer) ||
+    !audienceMatchesAnnouncement(announcement.audience, isCustomer, isPurchaser) ||
     (user && announcement.audience === 'guests') ||
     !popupAnnouncementTargetsViewer(announcement, { id: user?.id, role: profile?.role, email: profile?.email ?? user?.email })
   ) {

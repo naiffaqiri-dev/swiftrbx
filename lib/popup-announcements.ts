@@ -1,5 +1,5 @@
 export type PopupAnnouncementKind = 'announcement' | 'guide' | 'survey'
-export type PopupAnnouncementAudience = 'all' | 'guests' | 'customers'
+export type PopupAnnouncementAudience = 'all' | 'guests' | 'customers' | 'purchasers'
 export type PopupAnnouncementRole = 'owner' | 'seller' | 'support' | 'user'
 export type PopupAnnouncementFrequency = 'once' | 'daily' | 'session'
 export type PopupAnnouncementEventType = 'view' | 'click' | 'complete' | 'dismiss' | 'poll'
@@ -83,6 +83,7 @@ export function announcementAudienceLabel(audience: PopupAnnouncementAudience, l
     all: { ar: 'الجميع', en: 'Everyone' },
     guests: { ar: 'الزوار فقط', en: 'Visitors only' },
     customers: { ar: 'العملاء المسجلون', en: 'Signed-in customers' },
+    purchasers: { ar: 'العملاء المشترون', en: 'Customers who purchased' },
   }
   return labels[audience][lang]
 }
@@ -121,7 +122,7 @@ export function validatePopupAnnouncementDraft(value: unknown): PopupAnnouncemen
     typeof draft.title !== 'string' || !draft.title.trim() || draft.title.trim().length > 120 ||
     typeof draft.subject !== 'string' || draft.subject.length > 180 ||
     !['announcement', 'guide', 'survey'].includes(draft.kind ?? '') ||
-    !['all', 'guests', 'customers'].includes(draft.audience ?? '') ||
+    !['all', 'guests', 'customers', 'purchasers'].includes(draft.audience ?? '') ||
     (draft.frequency !== undefined && !['once', 'daily', 'session'].includes(draft.frequency)) ||
     (draft.target_roles !== undefined && (!Array.isArray(draft.target_roles) || draft.target_roles.length > 4 || draft.target_roles.some((role) => !['owner', 'seller', 'support', 'user'].includes(String(role))))) ||
     (draft.target_user_ids !== undefined && (!Array.isArray(draft.target_user_ids) || draft.target_user_ids.length > 500 || draft.target_user_ids.some((id) => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)))) ||
@@ -220,7 +221,7 @@ export function isPopupAnnouncementEvent(value: unknown): value is PopupAnnounce
   return ['view', 'click', 'complete', 'dismiss', 'poll'].includes(String(value))
 }
 export function isPopupAnnouncementAudience(value: unknown): value is PopupAnnouncementAudience {
-  return ['all', 'guests', 'customers'].includes(String(value))
+  return ['all', 'guests', 'customers', 'purchasers'].includes(String(value))
 }
 
 export function isPopupAnnouncementKind(value: unknown): value is PopupAnnouncementKind {
@@ -239,8 +240,15 @@ export function isPopupAnnouncementId(value: unknown) {
   return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
-export function audienceMatchesAnnouncement(audience: PopupAnnouncementAudience, isCustomer: boolean) {
-  return audience === 'all' || (audience === 'customers' && isCustomer) || (audience === 'guests' && !isCustomer)
+export function audienceMatchesAnnouncement(
+  audience: PopupAnnouncementAudience,
+  isCustomer: boolean,
+  isPurchaser = false,
+) {
+  return audience === 'all' ||
+    (audience === 'customers' && isCustomer) ||
+    (audience === 'purchasers' && isCustomer && isPurchaser) ||
+    (audience === 'guests' && !isCustomer)
 }
 
 export function popupAnnouncementTargetsViewer(

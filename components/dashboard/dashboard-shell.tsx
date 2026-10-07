@@ -30,6 +30,8 @@ export function DashboardShell({
   const { user, logout } = useAuth()
   const { t } = useLocale()
   const router = useRouter()
+  const announcementsItem = nav.find((item) => item.key === 'announcements')
+  const primaryNav = nav.filter((item) => item.key !== 'announcements')
 
   async function handleLogout() {
     await logout()
@@ -44,8 +46,23 @@ export function DashboardShell({
         <div className="mb-6 px-2">
           <BrandLogo />
         </div>
+        {announcementsItem && (
+          <button
+            type="button"
+            onClick={() => onNavigate(announcementsItem.key)}
+            aria-current={active === announcementsItem.key ? 'page' : undefined}
+            className={`mb-3 flex min-h-11 items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold transition-colors ${
+              active === announcementsItem.key
+                ? 'border-primary/40 bg-primary/15 text-primary'
+                : 'border-primary/25 bg-primary/5 text-primary hover:bg-primary/10'
+            }`}
+          >
+            <span className="shrink-0">{announcementsItem.icon}</span>
+            {announcementsItem.label}
+          </button>
+        )}
         <nav className="flex flex-1 flex-col gap-1">
-          {nav.map((item) => (
+          {primaryNav.map((item) => (
             <button
               key={item.key}
               onClick={() => onNavigate(item.key)}

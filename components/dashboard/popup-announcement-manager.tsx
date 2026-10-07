@@ -294,8 +294,13 @@ export function PopupAnnouncementManager() {
             <div className="flex flex-col gap-2">
               <Label htmlFor="campaign-audience">{tx('الجمهور', 'Audience')}</Label>
               <select id="campaign-audience" value={draft.audience} onChange={(event) => updateDraft('audience', event.target.value as PopupAnnouncementDraft['audience'])} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
-                {(['all', 'guests', 'customers'] as const).map((audience) => <option key={audience} value={audience}>{announcementAudienceLabel(audience, lang)}</option>)}
+                {(['all', 'guests', 'customers', 'purchasers'] as const).map((audience) => <option key={audience} value={audience}>{announcementAudienceLabel(audience, lang)}</option>)}
               </select>
+              {draft.audience === 'purchasers' && (
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {tx('سيظهر الإعلان للحسابات التي لديها طلب روبوكس مكتمل أو دفعة سوق مؤكدة.', 'This announcement is shown to accounts with a completed Robux order or a confirmed marketplace payment.')}
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="campaign-frequency">{tx('تكرار الظهور', 'Display frequency')}</Label>
