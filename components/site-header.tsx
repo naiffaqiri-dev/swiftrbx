@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { LayoutDashboard, LogOut, Trophy, Wallet, Ticket } from 'lucide-react'
+import { LayoutDashboard, LogOut, Trophy, Wallet, Ticket, ShieldCheck } from 'lucide-react'
 import { BrandLogo } from '@/components/brand-logo'
 import { ProfileAvatar } from '@/components/profile-avatar'
 import { LogoutConfirmation } from '@/components/auth/logout-confirmation'
@@ -45,9 +45,18 @@ export function SiteHeader() {
                 <Ticket className="size-4" />
                 <span className="hidden sm:inline">{t('nav.tickets')}</span>
               </Link>
-              <Link href="/dashboard" className={buttonVariants({ variant: 'ghost', className: 'gap-2' })}>
-                <LayoutDashboard className="size-4" />
-                <span className="hidden sm:inline">{t('nav.dashboard')}</span>
+              <Link
+                href="/dashboard"
+                aria-label={user.role === 'owner' ? t('لوحة الإدارة العليا') : t('nav.dashboard')}
+                className={buttonVariants({
+                  variant: user.role === 'owner' ? 'default' : 'ghost',
+                  className: 'gap-2',
+                })}
+              >
+                {user.role === 'owner' ? <ShieldCheck className="size-4" /> : <LayoutDashboard className="size-4" />}
+                <span className={user.role === 'owner' ? '' : 'hidden sm:inline'}>
+                  {user.role === 'owner' ? t('لوحة الإدارة العليا') : t('nav.dashboard')}
+                </span>
               </Link>
               <span className="flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
                 <Wallet className="size-4" />
