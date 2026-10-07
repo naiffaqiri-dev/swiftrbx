@@ -38,7 +38,7 @@ import {
 
 const NAV = [
   { key: 'overview', label: 'نظرة عامة', icon: <LayoutDashboard className="h-4 w-4" /> },
-  { key: 'announcements', label: 'الإعلانات', icon: <Megaphone className="h-4 w-4" /> },
+  { key: 'announcements', label: 'الإعلانات المنبثقة', icon: <Megaphone className="h-4 w-4" /> },
   { key: 'verify', label: 'مراجعة التحويلات', icon: <Receipt className="h-4 w-4" /> },
   { key: 'tickets', label: 'التذاكر والنزاعات', icon: <Ticket className="h-4 w-4" /> },
   { key: 'ticket-logs', label: 'سجلات التذاكر', icon: <Receipt className="h-4 w-4" /> },
