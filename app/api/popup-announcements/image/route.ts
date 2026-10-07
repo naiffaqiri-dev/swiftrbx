@@ -1,8 +1,7 @@
 import { get } from '@vercel/blob'
 import { NextRequest, NextResponse } from 'next/server'
 import { requirePopupAnnouncementOwner, getPopupAnnouncementViewer } from '@/lib/popup-announcement-auth'
-import { audienceMatchesAnnouncement, isPopupAnnouncementInSchedule, popupAnnouncementTargetsViewer, type PopupAnnouncement } from '@/lib/popup-announcements'
-import { isCompletedPurchaser } from '@/lib/popup-announcement-audience'
+import { audienceMatchesAnnouncement, isPopupAnnouncementInSchedule, type PopupAnnouncement } from '@/lib/popup-announcements'
 
 const PATH_PREFIX = 'popup-announcements/'
 
@@ -28,23 +27,12 @@ export async function GET(request: NextRequest) {
 
     const { data: campaigns, error } = await admin
       .from('popup_announcements')
-      .select('id,title,subject,kind,audience,target_roles,target_user_ids,target_emails,excluded_roles,excluded_user_ids,steps,starts_at,ends_at,active,priority,created_at')
+      .select('id,title,subject,kind,audience,steps,starts_at,ends_at,active,priority,created_at')
       .eq('active', true)
-    const publishedCampaigns = (campaigns ?? []) as PopupAnnouncement[]
-    const hasPurchaserCampaign = publishedCampaigns.some((campaign) => campaign.audience === 'purchasers')
-    const isPurchaser = Boolean(
-      user && isCustomer && hasPurchaserCampaign && await isCompletedPurchaser(user.id),
-    )
     const now = Date.now()
-    const imageIsPublished = !error && publishedCampaigns.some((campaign) =>
+    const imageIsPublished = !error && ((campaigns ?? []) as PopupAnnouncement[]).some((campaign) =>
       isPopupAnnouncementInSchedule(campaign, now) &&
-      audienceMatchesAnnouncement(campaign.audience, isCustomer, isPurchaser) &&
-      !(user && campaign.audience === 'guests') &&
-      popupAnnouncementTargetsViewer(campaign, {
-        id: user?.id,
-        role: isCustomer ? 'user' : undefined,
-        email: user?.email,
-      }) &&
+      audienceMatchesAnnouncement(campaign.audience, isCustomer) &&
       campaign.steps.some((step) => {
         try {
           const url = new URL(step.imageUrl, request.nextUrl.origin)

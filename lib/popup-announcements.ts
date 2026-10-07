@@ -1,5 +1,5 @@
 export type PopupAnnouncementKind = 'announcement' | 'guide' | 'survey'
-export type PopupAnnouncementAudience = 'all' | 'guests' | 'customers' | 'purchasers'
+export type PopupAnnouncementAudience = 'all' | 'guests' | 'customers'
 export type PopupAnnouncementRole = 'owner' | 'seller' | 'support' | 'user'
 export type PopupAnnouncementFrequency = 'once' | 'daily' | 'session'
 export type PopupAnnouncementEventType = 'view' | 'click' | 'complete' | 'dismiss' | 'poll'
@@ -22,8 +22,6 @@ export type PopupAnnouncement = {
   target_roles: PopupAnnouncementRole[]
   target_user_ids: string[]
   target_emails: string[]
-  excluded_roles: PopupAnnouncementRole[]
-  excluded_user_ids: string[]
   frequency: PopupAnnouncementFrequency
   steps: PopupAnnouncementStep[]
   starts_at: string | null
@@ -85,7 +83,6 @@ export function announcementAudienceLabel(audience: PopupAnnouncementAudience, l
     all: { ar: 'الجميع', en: 'Everyone' },
     guests: { ar: 'الزوار فقط', en: 'Visitors only' },
     customers: { ar: 'العملاء المسجلون', en: 'Signed-in customers' },
-    purchasers: { ar: 'العملاء المشترون', en: 'Customers who purchased' },
   }
   return labels[audience][lang]
 }
@@ -108,8 +105,6 @@ export function emptyPopupAnnouncement(): PopupAnnouncementDraft {
     target_roles: [],
     target_user_ids: [],
     target_emails: [],
-    excluded_roles: [],
-    excluded_user_ids: [],
     frequency: 'session',
     steps: [{ ...EMPTY_ANNOUNCEMENT_STEP }],
     starts_at: null,
@@ -126,12 +121,10 @@ export function validatePopupAnnouncementDraft(value: unknown): PopupAnnouncemen
     typeof draft.title !== 'string' || !draft.title.trim() || draft.title.trim().length > 120 ||
     typeof draft.subject !== 'string' || draft.subject.length > 180 ||
     !['announcement', 'guide', 'survey'].includes(draft.kind ?? '') ||
-    !['all', 'guests', 'customers', 'purchasers'].includes(draft.audience ?? '') ||
+    !['all', 'guests', 'customers'].includes(draft.audience ?? '') ||
     (draft.frequency !== undefined && !['once', 'daily', 'session'].includes(draft.frequency)) ||
     (draft.target_roles !== undefined && (!Array.isArray(draft.target_roles) || draft.target_roles.length > 4 || draft.target_roles.some((role) => !['owner', 'seller', 'support', 'user'].includes(String(role))))) ||
     (draft.target_user_ids !== undefined && (!Array.isArray(draft.target_user_ids) || draft.target_user_ids.length > 500 || draft.target_user_ids.some((id) => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)))) ||
-    (draft.excluded_roles !== undefined && (!Array.isArray(draft.excluded_roles) || draft.excluded_roles.length > 4 || draft.excluded_roles.some((role) => !['owner', 'seller', 'support', 'user'].includes(String(role))))) ||
-    (draft.excluded_user_ids !== undefined && (!Array.isArray(draft.excluded_user_ids) || draft.excluded_user_ids.length > 500 || draft.excluded_user_ids.some((id) => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)))) ||
     (draft.target_emails !== undefined && (!Array.isArray(draft.target_emails) || draft.target_emails.length > 500 || draft.target_emails.some((email) => typeof email !== 'string' || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())))) ||
     typeof draft.active !== 'boolean' ||
     !Number.isInteger(draft.priority) || (draft.priority ?? 0) < -10_000 || (draft.priority ?? 0) > 10_000 ||
@@ -176,8 +169,6 @@ export function validatePopupAnnouncementDraft(value: unknown): PopupAnnouncemen
     target_roles: [...new Set((draft.target_roles ?? []) as PopupAnnouncementRole[])],
     target_user_ids: [...new Set((draft.target_user_ids ?? []).map((id) => id.toLowerCase()))],
     target_emails: [...new Set((draft.target_emails ?? []).map((email) => email.trim().toLowerCase()))],
-    excluded_roles: [...new Set((draft.excluded_roles ?? []) as PopupAnnouncementRole[])],
-    excluded_user_ids: [...new Set((draft.excluded_user_ids ?? []).map((id) => id.toLowerCase()))],
     frequency: (draft.frequency ?? 'session') as PopupAnnouncementFrequency,
     steps,
     starts_at: startsAt,
@@ -229,7 +220,7 @@ export function isPopupAnnouncementEvent(value: unknown): value is PopupAnnounce
   return ['view', 'click', 'complete', 'dismiss', 'poll'].includes(String(value))
 }
 export function isPopupAnnouncementAudience(value: unknown): value is PopupAnnouncementAudience {
-  return ['all', 'guests', 'customers', 'purchasers'].includes(String(value))
+  return ['all', 'guests', 'customers'].includes(String(value))
 }
 
 export function isPopupAnnouncementKind(value: unknown): value is PopupAnnouncementKind {
@@ -248,28 +239,17 @@ export function isPopupAnnouncementId(value: unknown) {
   return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
-export function audienceMatchesAnnouncement(
-  audience: PopupAnnouncementAudience,
-  isCustomer: boolean,
-  isPurchaser = false,
-) {
-  return audience === 'all' ||
-    (audience === 'customers' && isCustomer) ||
-    (audience === 'purchasers' && isCustomer && isPurchaser) ||
-    (audience === 'guests' && !isCustomer)
+export function audienceMatchesAnnouncement(audience: PopupAnnouncementAudience, isCustomer: boolean) {
+  return audience === 'all' || (audience === 'customers' && isCustomer) || (audience === 'guests' && !isCustomer)
 }
 
 export function popupAnnouncementTargetsViewer(
-  announcement: Pick<PopupAnnouncement, 'target_roles' | 'target_user_ids' | 'target_emails' | 'excluded_roles' | 'excluded_user_ids'>,
+  announcement: Pick<PopupAnnouncement, 'target_roles' | 'target_user_ids' | 'target_emails'>,
   viewer: { id?: string; role?: string; email?: string | null },
 ) {
   const roles = announcement.target_roles ?? []
   const userIds = announcement.target_user_ids ?? []
   const emails = announcement.target_emails ?? []
-  const excludedRoles = announcement.excluded_roles ?? []
-  const excludedUserIds = announcement.excluded_user_ids ?? []
-  if ((viewer.role && excludedRoles.includes(viewer.role as PopupAnnouncementRole)) ||
-    (viewer.id && excludedUserIds.includes(viewer.id))) return false
   if (!roles.length && !userIds.length && !emails.length) return true
   if (!viewer.id) return false
   return (roles.length > 0 && !!viewer.role && roles.includes(viewer.role as PopupAnnouncementRole)) ||
