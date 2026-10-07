@@ -7,8 +7,9 @@ import {
   type PopupAnnouncement,
 } from '@/lib/popup-announcements'
 import { getPopupAnnouncementViewer } from '@/lib/popup-announcement-auth'
+import { isCompletedPurchaser } from '@/lib/popup-announcement-audience'
 
-const ANNOUNCEMENT_COLUMNS = 'id,title,subject,kind,audience,target_roles,target_user_ids,target_emails,frequency,steps,starts_at,ends_at,active,priority,created_at'
+const ANNOUNCEMENT_COLUMNS = 'id,title,subject,kind,audience,target_roles,target_user_ids,target_emails,excluded_roles,excluded_user_ids,frequency,steps,starts_at,ends_at,active,priority,created_at'
 
 export async function GET(request: Request) {
   const sessionId = new URL(request.url).searchParams.get('sessionId')
@@ -46,14 +47,19 @@ export async function GET(request: Request) {
   }
 
   const now = Date.now()
+  const campaigns = (data ?? []) as PopupAnnouncement[]
+  const hasPurchaserCampaign = campaigns.some((campaign) => campaign.audience === 'purchasers')
+  const isPurchaser = Boolean(
+    user && profile?.role === 'user' && hasPurchaserCampaign && await isCompletedPurchaser(user.id),
+  )
   const viewer = {
     id: user?.id,
     role: profile?.role,
     email: profile?.email ?? user?.email,
   }
-  const eligible = ((data ?? []) as PopupAnnouncement[]).filter((campaign) =>
+  const eligible = campaigns.filter((campaign) =>
     isPopupAnnouncementInSchedule(campaign, now) &&
-    audienceMatchesAnnouncement(campaign.audience, profile?.role === 'user') &&
+    audienceMatchesAnnouncement(campaign.audience, profile?.role === 'user', isPurchaser) &&
     !(user && campaign.audience === 'guests') &&
     popupAnnouncementTargetsViewer(campaign, viewer),
   )
@@ -86,6 +92,6 @@ export async function GET(request: Request) {
     return sessionHistory.length === 0
   })
 
-  const announcements = shown.map(({ target_roles: _roles, target_user_ids: _users, target_emails: _emails, ...campaign }) => campaign)
+  const announcements = shown.map(({ target_roles: _roles, target_user_ids: _users, target_emails: _emails, excluded_roles: _excludedRoles, excluded_user_ids: _excludedUsers, ...campaign }) => campaign)
   return NextResponse.json({ announcements }, { headers: { 'Cache-Control': 'private, no-store' } })
 }
