@@ -118,19 +118,41 @@ export async function sendReviewReminderPush(
   }
 }
 
+const PUSH_SERVICE_HOSTS = new Set([
+  'fcm.googleapis.com',
+  'updates.push.services.mozilla.com',
+  'web.push.apple.com',
+])
+const BASE64_URL_PATTERN = /^[A-Za-z0-9_-]+$/
+
 export function isValidPushSubscription(value: unknown): value is {
   endpoint: string
   keys: { p256dh: string; auth: string }
 } {
   if (!value || typeof value !== 'object') return false
   const candidate = value as { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } }
-  return typeof candidate.endpoint === 'string'
-    && candidate.endpoint.startsWith('https://')
-    && candidate.endpoint.length <= 4096
-    && typeof candidate.keys?.p256dh === 'string'
-    && candidate.keys.p256dh.length <= 256
-    && typeof candidate.keys?.auth === 'string'
-    && candidate.keys.auth.length <= 256
+  if (typeof candidate.endpoint !== 'string' || candidate.endpoint.length > 4096) return false
+
+  let endpoint: URL
+  try {
+    endpoint = new URL(candidate.endpoint)
+  } catch {
+    return false
+  }
+
+  const p256dh = candidate.keys?.p256dh
+  const auth = candidate.keys?.auth
+  return endpoint.protocol === 'https:'
+    && endpoint.port === ''
+    && PUSH_SERVICE_HOSTS.has(endpoint.hostname.toLowerCase())
+    && typeof p256dh === 'string'
+    && p256dh.length >= 32
+    && p256dh.length <= 256
+    && BASE64_URL_PATTERN.test(p256dh)
+    && typeof auth === 'string'
+    && auth.length >= 16
+    && auth.length <= 256
+    && BASE64_URL_PATTERN.test(auth)
 }
 
 export function getPushKeys(value: { keys: { p256dh: string; auth: string } }) {

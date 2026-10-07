@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { Dialog } from '@base-ui/react/dialog'
 import { Bell, Loader2 } from 'lucide-react'
 import { useAuth } from '@/components/auth/mock-auth'
 import { useLocale } from '@/components/i18n/locale-provider'
@@ -41,7 +42,7 @@ function copy(lang: 'ar' | 'en') {
         off: 'متوقفة',
         loading: 'جارٍ تحميل إعدادات الإشعارات…',
         error: 'تعذّر تحديث إعدادات الإشعارات. حاول مرة أخرى.',
-        unavailable: 'هذا المتصفح لا يدعم إشعارات الدفع عبر الاتصال الحالي.',
+        unavailable: 'هذا المتصفح لا يدعم الإشعارات الفورية عبر الاتصال الحالي.',
       }
 }
 
@@ -120,40 +121,37 @@ export function PushNotificationPrompt() {
   if (!open) return null
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4 backdrop-blur-sm"
-      onClick={dismiss}
-      onKeyDown={(event) => {
-        if (event.key === 'Escape' && !busy) dismiss()
+    <Dialog.Root
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !busy) dismiss()
       }}
     >
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="push-prompt-title"
-        aria-describedby="push-prompt-description"
-        className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-2xl"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
-          <Bell aria-hidden="true" className="size-6" />
-        </div>
-        <h2 id="push-prompt-title" className="text-balance text-lg font-bold">{text.title}</h2>
-        <p id="push-prompt-description" className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          {text.description}
-        </p>
-        {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
-        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-          <Button type="button" variant="outline" onClick={dismiss} disabled={busy}>
-            {text.later}
-          </Button>
-          <Button type="button" onClick={enable} disabled={busy}>
-            {busy ? <Loader2 aria-hidden="true" data-icon="inline-start" className="animate-spin" /> : <Bell aria-hidden="true" data-icon="inline-start" />}
-            {text.enable}
-          </Button>
-        </div>
-      </section>
-    </div>
+      <Dialog.Portal>
+        <Dialog.Backdrop className="fixed inset-0 bg-background/80 backdrop-blur-sm transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
+        <Dialog.Viewport className="fixed inset-0 flex items-center justify-center p-4">
+          <Dialog.Popup className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-2xl outline-none">
+            <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Bell aria-hidden="true" className="size-6" />
+            </div>
+            <Dialog.Title className="text-balance text-lg font-bold">{text.title}</Dialog.Title>
+            <Dialog.Description className="mt-2 text-sm leading-relaxed text-muted-foreground">
+              {text.description}
+            </Dialog.Description>
+            {error && <p role="alert" className="mt-4 text-sm text-destructive">{error}</p>}
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <Button type="button" variant="outline" onClick={dismiss} disabled={busy}>
+                {text.later}
+              </Button>
+              <Button type="button" onClick={enable} disabled={busy}>
+                {busy ? <Loader2 aria-hidden="true" data-icon="inline-start" className="animate-spin" /> : <Bell aria-hidden="true" data-icon="inline-start" />}
+                {text.enable}
+              </Button>
+            </div>
+          </Dialog.Popup>
+        </Dialog.Viewport>
+      </Dialog.Portal>
+    </Dialog.Root>
   )
 }
 

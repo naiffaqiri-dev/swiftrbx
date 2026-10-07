@@ -1,11 +1,14 @@
 self.addEventListener('push', (event) => {
-  let payload = {}
+  let parsedPayload = {}
   try {
-    payload = event.data ? event.data.json() : {}
+    parsedPayload = event.data ? event.data.json() : {}
   } catch {
-    payload = { body: event.data?.text() ?? '' }
+    parsedPayload = { body: event.data?.text() ?? '' }
   }
 
+  const payload = parsedPayload && typeof parsedPayload === 'object' && !Array.isArray(parsedPayload)
+    ? parsedPayload
+    : {}
   const title = typeof payload.title === 'string' ? payload.title : 'SwiftRBX'
   const body = typeof payload.body === 'string' ? payload.body : ''
   const tag = typeof payload.tag === 'string' ? payload.tag : 'swiftrbx-notification'
