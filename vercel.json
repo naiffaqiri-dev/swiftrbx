@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/ticket-review-reminders",
-      "schedule": "* * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
