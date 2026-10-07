@@ -1,5 +1,7 @@
 export type PopupAnnouncementKind = 'announcement' | 'guide' | 'survey'
 export type PopupAnnouncementAudience = 'all' | 'guests' | 'customers'
+export type PopupAnnouncementRole = 'owner' | 'seller' | 'support' | 'user'
+export type PopupAnnouncementFrequency = 'once' | 'daily' | 'session'
 export type PopupAnnouncementEventType = 'view' | 'click' | 'complete' | 'dismiss' | 'poll'
 
 export type PopupAnnouncementStep = {
@@ -17,6 +19,10 @@ export type PopupAnnouncement = {
   subject: string
   kind: PopupAnnouncementKind
   audience: PopupAnnouncementAudience
+  target_roles: PopupAnnouncementRole[]
+  target_user_ids: string[]
+  target_emails: string[]
+  frequency: PopupAnnouncementFrequency
   steps: PopupAnnouncementStep[]
   starts_at: string | null
   ends_at: string | null
@@ -96,6 +102,10 @@ export function emptyPopupAnnouncement(): PopupAnnouncementDraft {
     subject: '',
     kind: 'announcement',
     audience: 'all',
+    target_roles: [],
+    target_user_ids: [],
+    target_emails: [],
+    frequency: 'session',
     steps: [{ ...EMPTY_ANNOUNCEMENT_STEP }],
     starts_at: null,
     ends_at: null,
@@ -112,6 +122,10 @@ export function validatePopupAnnouncementDraft(value: unknown): PopupAnnouncemen
     typeof draft.subject !== 'string' || draft.subject.length > 180 ||
     !['announcement', 'guide', 'survey'].includes(draft.kind ?? '') ||
     !['all', 'guests', 'customers'].includes(draft.audience ?? '') ||
+    (draft.frequency !== undefined && !['once', 'daily', 'session'].includes(draft.frequency)) ||
+    (draft.target_roles !== undefined && (!Array.isArray(draft.target_roles) || draft.target_roles.length > 4 || draft.target_roles.some((role) => !['owner', 'seller', 'support', 'user'].includes(String(role))))) ||
+    (draft.target_user_ids !== undefined && (!Array.isArray(draft.target_user_ids) || draft.target_user_ids.length > 500 || draft.target_user_ids.some((id) => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)))) ||
+    (draft.target_emails !== undefined && (!Array.isArray(draft.target_emails) || draft.target_emails.length > 500 || draft.target_emails.some((email) => typeof email !== 'string' || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())))) ||
     typeof draft.active !== 'boolean' ||
     !Number.isInteger(draft.priority) || (draft.priority ?? 0) < -10_000 || (draft.priority ?? 0) > 10_000 ||
     !Array.isArray(draft.steps) || draft.steps.length < 1 || draft.steps.length > 12
@@ -152,6 +166,10 @@ export function validatePopupAnnouncementDraft(value: unknown): PopupAnnouncemen
     subject: draft.subject.trim(),
     kind: draft.kind as PopupAnnouncementKind,
     audience: draft.audience as PopupAnnouncementAudience,
+    target_roles: [...new Set((draft.target_roles ?? []) as PopupAnnouncementRole[])],
+    target_user_ids: [...new Set((draft.target_user_ids ?? []).map((id) => id.toLowerCase()))],
+    target_emails: [...new Set((draft.target_emails ?? []).map((email) => email.trim().toLowerCase()))],
+    frequency: (draft.frequency ?? 'session') as PopupAnnouncementFrequency,
     steps,
     starts_at: startsAt,
     ends_at: endsAt,
@@ -223,6 +241,29 @@ export function isPopupAnnouncementId(value: unknown) {
 
 export function audienceMatchesAnnouncement(audience: PopupAnnouncementAudience, isCustomer: boolean) {
   return audience === 'all' || (audience === 'customers' && isCustomer) || (audience === 'guests' && !isCustomer)
+}
+
+export function popupAnnouncementTargetsViewer(
+  announcement: Pick<PopupAnnouncement, 'target_roles' | 'target_user_ids' | 'target_emails'>,
+  viewer: { id?: string; role?: string; email?: string | null },
+) {
+  const roles = announcement.target_roles ?? []
+  const userIds = announcement.target_user_ids ?? []
+  const emails = announcement.target_emails ?? []
+  if (!roles.length && !userIds.length && !emails.length) return true
+  if (!viewer.id) return false
+  return (roles.length > 0 && !!viewer.role && roles.includes(viewer.role as PopupAnnouncementRole)) ||
+    userIds.includes(viewer.id) ||
+    (emails.length > 0 && !!viewer.email && emails.includes(viewer.email.trim().toLowerCase()))
+}
+
+export function popupAnnouncementFrequencyLabel(frequency: PopupAnnouncementFrequency, lang: 'ar' | 'en') {
+  const labels = {
+    once: { ar: 'مرة واحدة للحساب (والزوار للجلسة)', en: 'Once per account (guests per session)' },
+    daily: { ar: 'مرة كل 24 ساعة (للزوار للجلسة)', en: 'Every 24 hours (guests per session)' },
+    session: { ar: 'في كل جلسة زيارة', en: 'Every visit session' },
+  }
+  return labels[frequency][lang]
 }
 
 export function isPopupAnnouncementInSchedule(announcement: Pick<PopupAnnouncement, 'starts_at' | 'ends_at'>, now = Date.now()) {

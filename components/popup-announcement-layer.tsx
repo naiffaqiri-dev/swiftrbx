@@ -3,7 +3,6 @@
 import Image from 'next/image'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
-import { usePathname } from 'next/navigation'
 import { useAuth } from '@/components/auth/mock-auth'
 import { useLocale } from '@/components/i18n/locale-provider'
 import { Button } from '@/components/ui/button'
@@ -36,16 +35,14 @@ async function fetchCampaigns(url: string): Promise<PublicCampaignResponse> {
 export function PopupAnnouncementLayer() {
   const { user, ready } = useAuth()
   const { lang } = useLocale()
-  const pathname = usePathname()
   const ar = lang === 'ar'
   const tx = (arabic: string, english: string) => (ar ? arabic : english)
-  const inDashboard = pathname === '/dashboard' || pathname.startsWith('/dashboard/') || pathname.startsWith('/admin')
-  const staff = Boolean(user && user.role !== 'user')
-  const { data } = useSWR(ready && !inDashboard && !staff ? '/api/popup-announcements' : null, fetchCampaigns, {
+  const viewerKey = user?.id ?? 'guest'
+  const [sessionId, setSessionId] = useState('')
+  const { data } = useSWR(ready && sessionId ? [`/api/popup-announcements?sessionId=${encodeURIComponent(sessionId)}`, viewerKey] as const : null, ([url]) => fetchCampaigns(url), {
     revalidateOnFocus: true,
     refreshInterval: 60_000,
   })
-  const [sessionId, setSessionId] = useState('')
   const [closedIds, setClosedIds] = useState<string[]>([])
   const [stepIndex, setStepIndex] = useState(0)
   const [selectedChoice, setSelectedChoice] = useState('')
@@ -57,9 +54,16 @@ export function PopupAnnouncementLayer() {
     setSessionId(readPopupAnnouncementSessionId() || createPopupSessionId())
   }, [])
 
+  useEffect(() => {
+    setClosedIds([])
+    viewedId.current = null
+  }, [viewerKey])
+
   const campaign = useMemo(() => {
     if (!sessionId) return undefined
-    return data?.announcements.find((item) => !closedIds.includes(item.id) && !readPopupAnnouncementSeen(item.id))
+    return data?.announcements.find((item) =>
+      !closedIds.includes(item.id) && (item.frequency !== 'session' || !readPopupAnnouncementSeen(item.id)),
+    )
   }, [closedIds, data, sessionId])
   const step = campaign?.steps[Math.min(stepIndex, (campaign?.steps.length ?? 1) - 1)]
 
@@ -70,13 +74,14 @@ export function PopupAnnouncementLayer() {
   }, [campaign?.id])
 
   useEffect(() => {
-    if (!campaign || !sessionId || viewedId.current === campaign.id) return
-    viewedId.current = campaign.id
+    const viewKey = campaign ? `${viewerKey}:${campaign.id}` : ''
+    if (!campaign || !sessionId || viewedId.current === viewKey) return
+    viewedId.current = viewKey
     void recordEvent(campaign, sessionId, 'view', 0)
     setStepIndex(0)
     setSelectedChoice('')
     setVoted(false)
-  }, [campaign?.id, sessionId])
+  }, [campaign?.id, sessionId, viewerKey])
 
   async function recordEvent(item: PopupAnnouncement, session: string, eventType: PopupAnnouncementEventType, index: number, choice?: string) {
     try {
@@ -93,8 +98,12 @@ export function PopupAnnouncementLayer() {
 
   function closeCampaign(eventType: 'complete' | 'dismiss' = 'dismiss') {
     if (!campaign) return
-    markPopupAnnouncementSeen(campaign.id)
+    if (campaign.frequency === 'session') markPopupAnnouncementSeen(campaign.id)
     setClosedIds((ids) => ids.includes(campaign.id) ? ids : [...ids, campaign.id])
+    if (campaign.frequency === 'daily') {
+      const closedCampaignId = campaign.id
+      window.setTimeout(() => setClosedIds((ids) => ids.filter((id) => id !== closedCampaignId)), 24 * 60 * 60 * 1000)
+    }
     void recordEvent(campaign, sessionId, eventType, stepIndex)
     if (dialogRef.current?.open) dialogRef.current.close()
   }

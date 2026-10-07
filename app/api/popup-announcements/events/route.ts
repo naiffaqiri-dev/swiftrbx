@@ -7,10 +7,13 @@ import {
   isPopupAnnouncementKind,
   isSafePopupChoice,
   isSafePopupStepIndex,
+  popupAnnouncementTargetsViewer,
   validPopupSessionId,
   type PopupAnnouncement,
 } from '@/lib/popup-announcements'
 import { getPopupAnnouncementViewer } from '@/lib/popup-announcement-auth'
+
+const ANNOUNCEMENT_COLUMNS = 'id,title,subject,kind,audience,target_roles,target_user_ids,target_emails,frequency,steps,starts_at,ends_at,active,priority,created_at'
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null)
@@ -28,19 +31,25 @@ export async function POST(request: Request) {
   }
 
   const { user, admin } = await getPopupAnnouncementViewer()
-  let isCustomer = false
+  let profile: { role: string; active: boolean; email: string | null } | null = null
   if (user) {
-    const { data: profile } = await admin
+    const { data, error: profileError } = await admin
       .from('profiles')
-      .select('role,active')
+      .select('role,active,email')
       .eq('id', user.id)
       .maybeSingle()
-    isCustomer = profile?.role === 'user' && profile.active !== false
+    if (profileError) {
+      return NextResponse.json({ error: 'تعذّر التحقق من المستخدم' }, { status: 500 })
+    }
+    profile = data
+    if (profile?.active === false) {
+      return NextResponse.json({ error: 'الإعلان غير متاح' }, { status: 404 })
+    }
   }
 
   const { data: campaign, error: campaignError } = await admin
     .from('popup_announcements')
-    .select('id,title,subject,kind,audience,steps,starts_at,ends_at,active,priority,created_at')
+    .select(ANNOUNCEMENT_COLUMNS)
     .eq('id', event.announcementId)
     .eq('active', true)
     .maybeSingle()
@@ -48,11 +57,18 @@ export async function POST(request: Request) {
   if (campaignError) {
     return NextResponse.json({ error: 'تعذّر تسجيل التفاعل' }, { status: 500 })
   }
-  if (!campaign || !isPopupAnnouncementInSchedule(campaign as PopupAnnouncement) || !audienceMatchesAnnouncement(campaign.audience, isCustomer)) {
+  const announcement = campaign as PopupAnnouncement | null
+  const isCustomer = profile?.role === 'user' && profile.active
+  if (
+    !announcement ||
+    !isPopupAnnouncementInSchedule(announcement) ||
+    !audienceMatchesAnnouncement(announcement.audience, isCustomer) ||
+    (user && announcement.audience === 'guests') ||
+    !popupAnnouncementTargetsViewer(announcement, { id: user?.id, role: profile?.role, email: profile?.email ?? user?.email })
+  ) {
     return NextResponse.json({ error: 'الإعلان غير متاح' }, { status: 404 })
   }
 
-  const announcement = campaign as PopupAnnouncement
   if (!isSafePopupStepIndex(event.stepIndex, announcement.steps.length)) {
     return NextResponse.json({ error: 'الخطوة غير صالحة' }, { status: 400 })
   }
@@ -86,15 +102,22 @@ export async function POST(request: Request) {
   }
 
   if (event.eventType === 'view') {
-    const { data: previousView, error: viewLookupError } = await admin
+    let viewLookup = admin
       .from('popup_announcement_events')
       .select('id')
       .eq('announcement_id', announcement.id)
-      .eq('session_id', event.sessionId)
       .eq('event_type', 'view')
-      .limit(1)
-      .maybeSingle()
 
+    if (user && profile && announcement.frequency !== 'session') {
+      viewLookup = viewLookup.eq('profile_id', user.id)
+      if (announcement.frequency === 'daily') {
+        viewLookup = viewLookup.gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+      }
+    } else {
+      viewLookup = viewLookup.eq('session_id', event.sessionId)
+    }
+
+    const { data: previousView, error: viewLookupError } = await viewLookup.limit(1).maybeSingle()
     if (viewLookupError) {
       return NextResponse.json({ error: 'تعذّر تسجيل المشاهدة' }, { status: 500 })
     }
@@ -106,6 +129,7 @@ export async function POST(request: Request) {
   const { error } = await admin.from('popup_announcement_events').insert({
     announcement_id: announcement.id,
     session_id: event.sessionId,
+    profile_id: user && profile ? user.id : null,
     event_type: event.eventType,
     step_index: event.stepIndex,
     choice,
