@@ -13,7 +13,6 @@ import { CouponManager } from './coupon-manager'
 import { ReviewsAdmin } from './reviews-admin'
 import { MapCategoryManager } from './map-category-manager'
 import { AdminUserActions } from './admin-user-actions'
-import { PopupAnnouncementManager } from './popup-announcement-manager'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -33,7 +32,6 @@ import {
   Ticket,
   MessageSquareQuote,
   Gamepad2,
-  Megaphone,
 } from 'lucide-react'
 
 const NAV = [
@@ -46,7 +44,6 @@ const NAV = [
   { key: 'support', label: 'الدعم الفني', icon: <Headphones className="h-4 w-4" /> },
   { key: 'coupons', label: 'الكوبونات والإحالة', icon: <Ticket className="h-4 w-4" /> },
   { key: 'reviews', label: 'تقييمات الموقع', icon: <MessageSquareQuote className="h-4 w-4" /> },
-  { key: 'announcements', label: 'الإعلانات المنبثقة', icon: <Megaphone className="h-4 w-4" /> },
   { key: 'staff', label: 'إدارة الموظفين', icon: <Users className="h-4 w-4" /> },
 ]
 
@@ -353,8 +350,6 @@ export function OwnerPanel() {
       {active === 'coupons' && <CouponManager />}
 
       {active === 'reviews' && <ReviewsAdmin />}
-
-      {active === 'announcements' && <PopupAnnouncementManager />}
 
       {active === 'staff' && (
         <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
