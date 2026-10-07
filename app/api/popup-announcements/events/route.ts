@@ -14,7 +14,7 @@ import {
 import { getPopupAnnouncementViewer } from '@/lib/popup-announcement-auth'
 import { isCompletedPurchaser } from '@/lib/popup-announcement-audience'
 
-const ANNOUNCEMENT_COLUMNS = 'id,title,subject,kind,audience,target_roles,target_user_ids,target_emails,frequency,steps,starts_at,ends_at,active,priority,created_at'
+const ANNOUNCEMENT_COLUMNS = 'id,title,subject,kind,audience,target_roles,target_user_ids,target_emails,excluded_roles,excluded_user_ids,frequency,steps,starts_at,ends_at,active,priority,created_at'
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null)

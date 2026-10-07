@@ -22,6 +22,8 @@ export type PopupAnnouncement = {
   target_roles: PopupAnnouncementRole[]
   target_user_ids: string[]
   target_emails: string[]
+  excluded_roles: PopupAnnouncementRole[]
+  excluded_user_ids: string[]
   frequency: PopupAnnouncementFrequency
   steps: PopupAnnouncementStep[]
   starts_at: string | null
@@ -106,6 +108,8 @@ export function emptyPopupAnnouncement(): PopupAnnouncementDraft {
     target_roles: [],
     target_user_ids: [],
     target_emails: [],
+    excluded_roles: [],
+    excluded_user_ids: [],
     frequency: 'session',
     steps: [{ ...EMPTY_ANNOUNCEMENT_STEP }],
     starts_at: null,
@@ -126,6 +130,8 @@ export function validatePopupAnnouncementDraft(value: unknown): PopupAnnouncemen
     (draft.frequency !== undefined && !['once', 'daily', 'session'].includes(draft.frequency)) ||
     (draft.target_roles !== undefined && (!Array.isArray(draft.target_roles) || draft.target_roles.length > 4 || draft.target_roles.some((role) => !['owner', 'seller', 'support', 'user'].includes(String(role))))) ||
     (draft.target_user_ids !== undefined && (!Array.isArray(draft.target_user_ids) || draft.target_user_ids.length > 500 || draft.target_user_ids.some((id) => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)))) ||
+    (draft.excluded_roles !== undefined && (!Array.isArray(draft.excluded_roles) || draft.excluded_roles.length > 4 || draft.excluded_roles.some((role) => !['owner', 'seller', 'support', 'user'].includes(String(role))))) ||
+    (draft.excluded_user_ids !== undefined && (!Array.isArray(draft.excluded_user_ids) || draft.excluded_user_ids.length > 500 || draft.excluded_user_ids.some((id) => typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)))) ||
     (draft.target_emails !== undefined && (!Array.isArray(draft.target_emails) || draft.target_emails.length > 500 || draft.target_emails.some((email) => typeof email !== 'string' || email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())))) ||
     typeof draft.active !== 'boolean' ||
     !Number.isInteger(draft.priority) || (draft.priority ?? 0) < -10_000 || (draft.priority ?? 0) > 10_000 ||
@@ -170,6 +176,8 @@ export function validatePopupAnnouncementDraft(value: unknown): PopupAnnouncemen
     target_roles: [...new Set((draft.target_roles ?? []) as PopupAnnouncementRole[])],
     target_user_ids: [...new Set((draft.target_user_ids ?? []).map((id) => id.toLowerCase()))],
     target_emails: [...new Set((draft.target_emails ?? []).map((email) => email.trim().toLowerCase()))],
+    excluded_roles: [...new Set((draft.excluded_roles ?? []) as PopupAnnouncementRole[])],
+    excluded_user_ids: [...new Set((draft.excluded_user_ids ?? []).map((id) => id.toLowerCase()))],
     frequency: (draft.frequency ?? 'session') as PopupAnnouncementFrequency,
     steps,
     starts_at: startsAt,
@@ -252,12 +260,16 @@ export function audienceMatchesAnnouncement(
 }
 
 export function popupAnnouncementTargetsViewer(
-  announcement: Pick<PopupAnnouncement, 'target_roles' | 'target_user_ids' | 'target_emails'>,
+  announcement: Pick<PopupAnnouncement, 'target_roles' | 'target_user_ids' | 'target_emails' | 'excluded_roles' | 'excluded_user_ids'>,
   viewer: { id?: string; role?: string; email?: string | null },
 ) {
   const roles = announcement.target_roles ?? []
   const userIds = announcement.target_user_ids ?? []
   const emails = announcement.target_emails ?? []
+  const excludedRoles = announcement.excluded_roles ?? []
+  const excludedUserIds = announcement.excluded_user_ids ?? []
+  if ((viewer.role && excludedRoles.includes(viewer.role as PopupAnnouncementRole)) ||
+    (viewer.id && excludedUserIds.includes(viewer.id))) return false
   if (!roles.length && !userIds.length && !emails.length) return true
   if (!viewer.id) return false
   return (roles.length > 0 && !!viewer.role && roles.includes(viewer.role as PopupAnnouncementRole)) ||

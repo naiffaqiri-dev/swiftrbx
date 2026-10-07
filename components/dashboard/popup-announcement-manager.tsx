@@ -53,6 +53,7 @@ export function PopupAnnouncementManager() {
   const { data: recipientData, error: recipientError } = useSWR('/api/admin/popup-announcements/recipients', fetchRecipients)
   const [draft, setDraft] = useState<PopupAnnouncementDraft>(() => emptyPopupAnnouncement())
   const [recipientSearch, setRecipientSearch] = useState('')
+  const [excludedRecipientSearch, setExcludedRecipientSearch] = useState('')
   const [editingId, setEditingId] = useState<string | null>(null)
   const [stepIndex, setStepIndex] = useState(0)
   const [saving, setSaving] = useState(false)
@@ -62,10 +63,12 @@ export function PopupAnnouncementManager() {
   const imageInput = useRef<HTMLInputElement>(null)
   const campaigns = data?.announcements ?? []
   const recipients = recipientData?.recipients ?? []
-  const filteredRecipients = recipients.filter((recipient) => {
-    const query = recipientSearch.trim().toLowerCase()
-    return !query || `${recipient.username} ${recipient.display_name ?? ''} ${recipient.email ?? ''}`.toLowerCase().includes(query)
+  const filterRecipients = (query: string) => recipients.filter((recipient) => {
+    const normalizedQuery = query.trim().toLowerCase()
+    return !normalizedQuery || `${recipient.username} ${recipient.display_name ?? ''} ${recipient.email ?? ''}`.toLowerCase().includes(normalizedQuery)
   }).slice(0, 12)
+  const filteredRecipients = filterRecipients(recipientSearch)
+  const filteredExcludedRecipients = filterRecipients(excludedRecipientSearch)
   const step = draft.steps[stepIndex] ?? draft.steps[0] ?? EMPTY_ANNOUNCEMENT_STEP
 
   function updateDraft<K extends keyof PopupAnnouncementDraft>(key: K, value: PopupAnnouncementDraft[K]) {
@@ -78,10 +81,22 @@ export function PopupAnnouncementManager() {
       : [...draft.target_roles, role])
   }
 
-  function toggleTargetUser(id: string) {
+  function toggleTargetUser(id: string, excluded = false) {
+    if (excluded) {
+      updateDraft('excluded_user_ids', draft.excluded_user_ids.includes(id)
+        ? draft.excluded_user_ids.filter((item) => item !== id)
+        : [...draft.excluded_user_ids, id])
+      return
+    }
     updateDraft('target_user_ids', draft.target_user_ids.includes(id)
       ? draft.target_user_ids.filter((item) => item !== id)
       : [...draft.target_user_ids, id])
+  }
+
+  function toggleExcludedRole(role: PopupAnnouncementRole) {
+    updateDraft('excluded_roles', draft.excluded_roles.includes(role)
+      ? draft.excluded_roles.filter((item) => item !== role)
+      : [...draft.excluded_roles, role])
   }
 
   function updateTargetEmails(value: string) {
@@ -111,6 +126,8 @@ export function PopupAnnouncementManager() {
       target_roles: campaign.target_roles ?? [],
       target_user_ids: campaign.target_user_ids ?? [],
       target_emails: campaign.target_emails ?? [],
+      excluded_roles: campaign.excluded_roles ?? [],
+      excluded_user_ids: campaign.excluded_user_ids ?? [],
       frequency: campaign.frequency ?? 'session',
       steps: campaign.steps.map((item) => ({ ...item, options: [...item.options] })),
       starts_at: campaign.starts_at,
@@ -305,10 +322,11 @@ export function PopupAnnouncementManager() {
             <div className="flex flex-col gap-2">
               <Label htmlFor="campaign-frequency">{tx('تكرار الظهور', 'Display frequency')}</Label>
               <select id="campaign-frequency" value={draft.frequency} onChange={(event) => updateDraft('frequency', event.target.value as PopupAnnouncementDraft['frequency'])} className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50">
-                <option value="once">{tx('مرة واحدة للحساب (والزوار للجلسة)', 'Once per account (guests per session)')}</option>
-                <option value="daily">{tx('مرة كل 24 ساعة (للزوار للجلسة)', 'Every 24 hours (guests per session)')}</option>
-                <option value="session">{tx('في كل جلسة زيارة', 'Every visit session')}</option>
+                <option value="once">{tx('مرة واحدة للحساب (والزائر لهذه الجلسة)', 'Once per account (guests: this session)')}</option>
+                <option value="daily">{tx('مرة كل 24 ساعة (والزائر مرة في الجلسة)', 'Every 24 hours (guests: once per session)')}</option>
+                <option value="session">{tx('مرة واحدة في كل جلسة زيارة', 'Once per visit session')}</option>
               </select>
+              <p className="text-xs leading-relaxed text-muted-foreground">{tx('يتذكر النظام المشاهدة للحساب المسجل؛ أما الزوار فتُحسب لهم الجلسة الحالية فقط.', 'Signed-in accounts are tracked by account; guests are tracked for the current browser session.')}</p>
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="campaign-priority">{tx('أولوية العرض', 'Display priority')}</Label>
@@ -327,7 +345,7 @@ export function PopupAnnouncementManager() {
           <section className="flex flex-col gap-4 rounded-xl border border-border/60 bg-background/40 p-4 sm:p-5" aria-labelledby="campaign-targeting-title">
             <div>
               <h3 id="campaign-targeting-title" className="font-bold">{tx('استهداف الرسالة', 'Message targeting')}</h3>
-              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{tx('اختر أدوارًا أو حسابات أو عناوين بريد مرتبطة بحساب نشط. عند اختيار أكثر من نوع، يكفي أن يطابق الحساب أحدها.', 'Choose roles, accounts, or emails linked to an active account. If you choose more than one type, matching any one is enough.')}</p>
+              <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{tx('اختر من يستقبل الإعلان حسب الدور أو الحساب. إذا اخترت أكثر من نوع يكفي تطابق واحد، والاستثناءات أدناه لها الأولوية دائمًا.', 'Choose recipients by role or account. If you select multiple target types, matching any one is enough; exclusions below always take priority.')}</p>
             </div>
 
             <fieldset className="flex flex-col gap-2">
@@ -341,6 +359,24 @@ export function PopupAnnouncementManager() {
                 ] as [PopupAnnouncementRole, string][]).map(([role, label]) => (
                   <label key={role} className="inline-flex min-h-9 items-center gap-2 text-sm">
                     <input type="checkbox" checked={draft.target_roles.includes(role)} onChange={() => toggleTargetRole(role)} className="size-4 accent-primary" />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-sm font-medium">{tx('استثناء أدوار', 'Exclude roles')}</legend>
+              <p className="text-xs leading-relaxed text-muted-foreground">{tx('لن تصل الرسالة إلى أي حساب يحمل دورًا محددًا هنا، حتى لو طابق الجمهور أو الحسابات المختارة.', 'Accounts with any role selected here will never receive this message, even if they match another target.')}</p>
+              <div className="flex flex-wrap gap-x-4 gap-y-2">
+                {([
+                  ['user', tx('المستخدمون', 'Customers')],
+                  ['seller', tx('البائعون / الموردون', 'Sellers / suppliers')],
+                  ['support', tx('الدعم الفني', 'Support')],
+                  ['owner', tx('الإدارة العليا', 'Owners')],
+                ] as [PopupAnnouncementRole, string][]).map(([role, label]) => (
+                  <label key={role} className="inline-flex min-h-9 items-center gap-2 text-sm">
+                    <input type="checkbox" checked={draft.excluded_roles.includes(role)} onChange={() => toggleExcludedRole(role)} className="size-4 accent-primary" />
                     {label}
                   </label>
                 ))}
@@ -364,6 +400,25 @@ export function PopupAnnouncementManager() {
                 ))}
                 {recipients.length > filteredRecipients.length && !recipientSearch.trim() && <p className="px-2 py-1 text-xs text-muted-foreground">{tx('اكتب للبحث ضمن القائمة.', 'Search to narrow the list.')}</p>}
               </div>}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="excluded-recipient-search">{tx('استثناء حسابات بعينها', 'Exclude specific accounts')} <span className="font-normal text-muted-foreground">({draft.excluded_user_ids.length})</span></Label>
+              <Input id="excluded-recipient-search" value={excludedRecipientSearch} onChange={(event) => setExcludedRecipientSearch(event.target.value)} placeholder={tx('ابحث باسم المستخدم أو البريد…', 'Search username or email…')} />
+              {!recipientError && <div className="max-h-52 overflow-y-auto rounded-lg border border-border/60 bg-card/50 p-2">
+                {filteredExcludedRecipients.length === 0 && <p className="p-2 text-sm text-muted-foreground">{tx('لا توجد حسابات مطابقة.', 'No matching accounts.')}</p>}
+                {filteredExcludedRecipients.map((recipient) => (
+                  <label key={recipient.id} className="flex min-h-10 cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50">
+                    <input type="checkbox" checked={draft.excluded_user_ids.includes(recipient.id)} onChange={() => toggleTargetUser(recipient.id, true)} className="size-4 shrink-0 accent-primary" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate font-medium">{recipient.display_name || recipient.username}</span>
+                      <span className="block truncate text-xs text-muted-foreground" dir="ltr">{recipient.email || recipient.username} · {recipient.role}</span>
+                    </span>
+                  </label>
+                ))}
+                {recipients.length > filteredExcludedRecipients.length && !excludedRecipientSearch.trim() && <p className="px-2 py-1 text-xs text-muted-foreground">{tx('اكتب للبحث ضمن القائمة.', 'Search to narrow the list.')}</p>}
+              </div>}
+              <p className="text-xs leading-relaxed text-muted-foreground">{tx('تُطبّق الاستثناءات على الحسابات النشطة فقط، وتبقى قائمة على هذا الإعلان حتى تعدّلها.', 'Exclusions apply to active accounts and remain saved with this campaign until you change them.')}</p>
             </div>
 
             <div className="flex flex-col gap-2">
@@ -465,8 +520,10 @@ export function PopupAnnouncementManager() {
             </article>
             <div className="mt-3 rounded-lg border border-border/60 bg-card/70 p-3 text-xs leading-relaxed">
               <p className="font-semibold">{tx('التوزيع', 'Delivery')}</p>
-              <p className="mt-1 text-muted-foreground">{tx('الأدوار', 'Roles')}: {draft.target_roles.length ? draft.target_roles.join('، ') : tx('بدون تقييد', 'Any')}</p>
-              <p className="text-muted-foreground">{tx('حسابات محددة', 'Accounts')}: {draft.target_user_ids.length} · {tx('عناوين بريد', 'Emails')}: {draft.target_emails.length}</p>
+              <p className="mt-1 text-muted-foreground">{tx('الأدوار المستهدفة', 'Target roles')}: {draft.target_roles.length ? draft.target_roles.join('، ') : tx('بدون تقييد', 'Any')}</p>
+              <p className="text-muted-foreground">{tx('الحسابات المستهدفة', 'Target accounts')}: {draft.target_user_ids.length} · {tx('عناوين بريد', 'Emails')}: {draft.target_emails.length}</p>
+              <p className="text-muted-foreground">{tx('الأدوار المستثناة', 'Excluded roles')}: {draft.excluded_roles.length ? draft.excluded_roles.join('، ') : tx('لا يوجد', 'None')}</p>
+              <p className="text-muted-foreground">{tx('الحسابات المستثناة', 'Excluded accounts')}: {draft.excluded_user_ids.length}</p>
               <p className="text-muted-foreground">{popupAnnouncementFrequencyLabel(draft.frequency, lang)}</p>
             </div>
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{tx('تُعرض المعاينة وفق اتجاه اللغة الحالي. الصور المرفوعة لا تظهر إلا مع حملة منشورة أو من لوحة المالك.', 'Preview follows the current language. Uploaded images are served only for a published campaign or to an owner.')}</p>
