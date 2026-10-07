@@ -261,7 +261,7 @@ export function PopupAnnouncementManager() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="mb-1 flex items-center gap-2 text-sm font-semibold text-primary"><Megaphone className="size-4" />{tx('مركز الحملات', 'Campaign studio')}</p>
-          <h2 className="text-balance text-2xl font-bold">{tx('الإعلانات والاحصائيات', 'Announcements & analytics')}</h2>
+          <h2 className="text-balance text-2xl font-bold">{tx('الإعلانات المنبثقة', 'Popup announcements')}</h2>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-muted-foreground">
             {tx('أنشئ إعلانًا، دليلًا تفاعليًا أو استطلاعًا، وحدّد الجمهور وموعد الظهور.', 'Create an announcement, guided walkthrough, or poll, then schedule when and to whom it appears.')}
           </p>
@@ -514,7 +514,7 @@ export function PopupAnnouncementManager() {
                   {step.options.filter(Boolean).slice(0, 8).map((option, index) => <div key={`${option}-${index}`} className="rounded-lg border border-border/60 px-3 py-2 text-sm">{option || `${tx('خيار', 'Option')} ${index + 1}`}</div>)}
                   <div className="mt-1 h-9 rounded-lg bg-primary px-3 py-2 text-center text-sm font-semibold text-primary-foreground">{tx('إرسال التصويت', 'Submit vote')}</div>
                 </div>}
-                {draft.kind !== 'survey' && <div className="mt-1 flex min-h-9 items-center justify-center rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">{step.buttonLabel || (stepIndex < draft.steps.length - 1 ? tx('التالي', 'Next') : 'DONE')}</div>}
+                {draft.kind !== 'survey' && <div className="mt-1 flex min-h-9 items-center justify-center rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground">{step.buttonLabel || (draft.kind === 'guide' ? tx('التالي', 'Next') : tx('تم', 'Done'))}</div>}
                 {draft.steps.length > 1 && <p className="text-center text-xs text-muted-foreground">{stepIndex + 1} / {draft.steps.length}</p>}
               </div>
             </article>
