@@ -5,7 +5,14 @@ import { USERNAME_RE, validatePassword } from '@/lib/password'
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export async function POST(req: Request) {
-  let body: { username?: string; displayName?: string; email?: string; password?: string }
+  let body: {
+    username?: string
+    displayName?: string
+    email?: string
+    password?: string
+    privacyPolicyAccepted?: boolean
+    termsOfUseAccepted?: boolean
+  }
   try {
     body = await req.json()
   } catch {
@@ -16,6 +23,13 @@ export async function POST(req: Request) {
   const displayName = String(body.displayName ?? '').trim()
   const password = String(body.password ?? '')
   const email = String(body.email ?? '').trim().toLowerCase()
+
+  if (body.privacyPolicyAccepted !== true || body.termsOfUseAccepted !== true) {
+    return NextResponse.json(
+      { error: 'يجب قبول سياسة الخصوصية وشروط الاستخدام لإنشاء الحساب' },
+      { status: 400 },
+    )
+  }
 
   if (!USERNAME_RE.test(username)) {
     return NextResponse.json(
@@ -46,11 +60,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'اسم المستخدم مستخدم بالفعل' }, { status: 409 })
   }
 
+  const acceptedAt = new Date().toISOString()
   const { error } = await admin.auth.admin.createUser({
     email,
     password,
     email_confirm: true,
     user_metadata: { username, display_name: displayName },
+    app_metadata: {
+      privacy_policy_accepted_at: acceptedAt,
+      terms_of_use_accepted_at: acceptedAt,
+    },
   })
 
   if (error) {

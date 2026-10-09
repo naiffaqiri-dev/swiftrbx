@@ -2,7 +2,8 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
+import { Dialog } from '@base-ui/react/dialog'
 import { Eye, EyeOff, Loader2 } from 'lucide-react'
 import { AuthShell } from '@/components/auth/auth-shell'
 import { SocialButtons } from '@/components/auth/social-buttons'
@@ -22,11 +23,53 @@ export default function RegisterPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [privacyAccepted, setPrivacyAccepted] = useState(false)
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [consentDialogOpen, setConsentDialogOpen] = useState(false)
+  const formRef = useRef<HTMLFormElement>(null)
+  const consentCopy = {
+    title: t('موافقة على السياسات والشروط'),
+    description: t('قبل إنشاء حسابك، يرجى مراجعة سياسة الخصوصية وشروط الاستخدام والموافقة عليهما.'),
+    privacy: t('سياسة الخصوصية'),
+    terms: t('شروط الاستخدام'),
+    reject: t('رفض'),
+    accept: t('أوافق وأتابع إنشاء الحساب'),
+  }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function completeRegistration() {
+    const form = formRef.current
+    if (!form) return
+
+    setConsentDialogOpen(false)
+    setLoading(true)
+    setError(null)
+
+    const formData = new FormData(form)
+    try {
+      const { error } = await register({
+        username: String(formData.get('username') ?? '').trim(),
+        displayName: String(formData.get('displayName') ?? '').trim(),
+        email: String(formData.get('email') ?? '').trim(),
+        password: String(formData.get('password') ?? ''),
+        privacyPolicyAccepted: true,
+        termsOfUseAccepted: true,
+      })
+      if (error) {
+        setError(error)
+        return
+      }
+      router.replace(getAuthReturnPath())
+    } catch {
+      setError(t('تعذّر إنشاء الحساب، حاول مرة أخرى'))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setError(null)
-    const form = e.currentTarget as HTMLFormElement
+    const form = e.currentTarget
     const username =
       (form.elements.namedItem('username') as HTMLInputElement)?.value.trim() ?? ''
     const displayName =
@@ -60,14 +103,7 @@ export default function RegisterPage() {
       return
     }
 
-    setLoading(true)
-    const { error } = await register({ username, displayName, email, password })
-    if (error) {
-      setError(error)
-      setLoading(false)
-      return
-    }
-    router.replace(getAuthReturnPath())
+    setConsentDialogOpen(true)
   }
 
   return (
@@ -90,7 +126,7 @@ export default function RegisterPage() {
         </>
       }
     >
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      <form ref={formRef} onSubmit={handleSubmit} className="flex flex-col gap-5">
         {error && (
           <p
             role="alert"
@@ -189,6 +225,42 @@ export default function RegisterPage() {
           />
         </div>
 
+        <fieldset className="flex flex-col gap-3 rounded-lg border border-border p-4">
+          <legend className="px-1 text-sm font-semibold">{t('الموافقة على السياسات')}</legend>
+          <div className="flex items-start gap-3">
+            <input
+              id="privacyPolicyAccepted"
+              type="checkbox"
+              checked={privacyAccepted}
+              onChange={(event) => setPrivacyAccepted(event.target.checked)}
+              aria-label={t('أوافق على سياسة الخصوصية')}
+              className="mt-1 size-4 shrink-0 accent-success focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            />
+            <p className="text-sm leading-relaxed">
+              <label htmlFor="privacyPolicyAccepted">{t('أوافق على قراءة')}</label>{' '}
+              <Link href="/privacy" className="font-semibold text-success underline underline-offset-4 hover:text-success/80">
+                {t('سياسة الخصوصية')}
+              </Link>
+            </p>
+          </div>
+          <div className="flex items-start gap-3">
+            <input
+              id="termsOfUseAccepted"
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(event) => setTermsAccepted(event.target.checked)}
+              aria-label={t('أوافق على شروط الاستخدام')}
+              className="mt-1 size-4 shrink-0 accent-success focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+            />
+            <p className="text-sm leading-relaxed">
+              <label htmlFor="termsOfUseAccepted">{t('أوافق على قراءة')}</label>{' '}
+              <Link href="/terms" className="font-semibold text-success underline underline-offset-4 hover:text-success/80">
+                {t('شروط الاستخدام')}
+              </Link>
+            </p>
+          </div>
+        </fieldset>
+
         <Button
           type="submit"
           disabled={loading}
@@ -198,14 +270,49 @@ export default function RegisterPage() {
           {loading ? t('جارٍ الإنشاء…') : t('إنشاء الحساب')}
         </Button>
 
-        <p className="text-center text-xs text-muted-foreground">
-          {t('بإنشائك للحساب فأنت توافق على')}{' '}
-          <Link href="/privacy" className="text-primary hover:underline">
-            {t('سياسة الخصوصية')}
-          </Link>
-          .
-        </p>
       </form>
+
+      <Dialog.Root open={consentDialogOpen} onOpenChange={setConsentDialogOpen}>
+        <Dialog.Portal>
+          <Dialog.Backdrop className="fixed inset-0 bg-foreground/55 backdrop-blur-sm transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
+          <Dialog.Viewport className="fixed inset-0 flex items-center justify-center p-4">
+            <Dialog.Popup dir="rtl" className="flex w-full max-w-md flex-col gap-5 rounded-2xl border border-border bg-card p-6 text-card-foreground shadow-2xl outline-none">
+              <div className="flex flex-col gap-2">
+                <Dialog.Title className="text-xl font-bold text-balance">{consentCopy.title}</Dialog.Title>
+                <Dialog.Description className="text-sm leading-relaxed text-muted-foreground">
+                  {consentCopy.description}
+                </Dialog.Description>
+              </div>
+              <div className="flex flex-col gap-3 rounded-lg border border-border p-4 text-sm">
+                <Link href="/privacy" className="font-semibold text-success underline underline-offset-4 hover:text-success/80">
+                  {consentCopy.privacy}
+                </Link>
+                <Link href="/terms" className="font-semibold text-success underline underline-offset-4 hover:text-success/80">
+                  {consentCopy.terms}
+                </Link>
+              </div>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="outline" onClick={() => setConsentDialogOpen(false)} disabled={loading}>
+                  {consentCopy.reject}
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setPrivacyAccepted(true)
+                    setTermsAccepted(true)
+                    void completeRegistration()
+                  }}
+                  disabled={loading}
+                  className="bg-success text-success-foreground hover:bg-success/90"
+                >
+                  {loading && <Loader2 aria-hidden="true" data-icon="inline-start" className="animate-spin" />}
+                  {consentCopy.accept}
+                </Button>
+              </div>
+            </Dialog.Popup>
+          </Dialog.Viewport>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       <div className="flex items-center gap-4">
         <Separator className="flex-1" />

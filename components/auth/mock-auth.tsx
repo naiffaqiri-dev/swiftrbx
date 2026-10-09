@@ -107,6 +107,8 @@ type AuthContextValue = {
     displayName?: string
     email?: string
     password: string
+    privacyPolicyAccepted: boolean
+    termsOfUseAccepted: boolean
   }) => Promise<{ error?: string }>
   logout: () => Promise<void>
   addStaff: (data: {
@@ -259,7 +261,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   )
 
   const register = useCallback(
-    async (data: { username: string; displayName?: string; email?: string; password: string }) => {
+    async (data: {
+      username: string
+      displayName?: string
+      email?: string
+      password: string
+      privacyPolicyAccepted: boolean
+      termsOfUseAccepted: boolean
+    }) => {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
