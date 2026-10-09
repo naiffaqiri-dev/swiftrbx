@@ -6,6 +6,7 @@ import { LayoutDashboard, LogOut, Trophy, Wallet, Ticket } from 'lucide-react'
 import { BrandLogo } from '@/components/brand-logo'
 import { ProfileAvatar } from '@/components/profile-avatar'
 import { LogoutConfirmation } from '@/components/auth/logout-confirmation'
+import { BalanceTransferButton } from '@/components/account/balance-transfer-button'
 import { useAuth, ROLE_LABELS } from '@/components/auth/mock-auth'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { LanguageToggle, useLocale } from '@/components/i18n/locale-provider'
@@ -49,10 +50,11 @@ export function SiteHeader() {
                 <LayoutDashboard className="size-4" />
                 <span className="hidden sm:inline">{t('nav.dashboard')}</span>
               </Link>
-              <span className="flex items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
+              <span className="flex shrink-0 items-center gap-1.5 rounded-full border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary">
                 <Wallet className="size-4" />
                 {user.balance.toFixed(2)} $
               </span>
+              <BalanceTransferButton />
               <Link href="/account" className="flex items-center gap-2 rounded-full transition-opacity hover:opacity-80">
                 <ProfileAvatar
                   src={user.avatarUrl}
