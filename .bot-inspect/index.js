@@ -1,8 +1,7 @@
 /**
- * SwiftRBX System Bot - المرحلة 1
- * - ينشر لوحة التذاكر (4 أزرار) بالقناة المحددة.
- * - عند ضغط أي زر يتحقق هل حساب ديسكورد مربوط بحساب بالموقع.
- *   (فتح التذاكر الفعلي يجي بالمرحلة القادمة)
+ * SwiftRBX Discord ticket bot.
+ * Handles linked-account checks, Robux offer selection, private ticket channels,
+ * service tickets, participant confirmations, ticket closure, and restart recovery.
  */
 
 require("dotenv").config();
@@ -81,6 +80,7 @@ function buildPanel() {
         "🆘 **الدعم والاستفسارات** (أي سؤال عام أو مشكلة)",
         "",
         "⚠️ لازم تكون مسجل بالموقع بحساب ديسكورد عشان نربط طلبك بحسابك.",
+        "🔒 لا ترسل كلمات المرور أو رموز التحقق داخل التذكرة.",
       ].join("\n")
     )
     .setFooter({ text: PANEL_MARKER });
@@ -154,6 +154,18 @@ const T = {
     dmOpenedTitle: "🎫 تم فتح تذكرة جديدة",
     dmOpenedBody: (id) => `رقم التذكرة: **${id}**\nاضغط الزر بالأسفل للانتقال للتذكرة.`,
     viewTicket: "عرض التذكرة",
+    formTitle: (type) => `تذكرة ${TICKET_TYPES[type].label}`,
+    detailsLabel: "اشرح طلبك أو المشكلة",
+    usernameOptionalLabel: "يوزرنيم روبلوكس (اختياري)",
+    submitTicket: "فتح التذكرة",
+    ticketCreatedStandard: (channelMention) => `✅ تم فتح تذكرتك: ${channelMention}`,
+    ticketEmbedTitle: (type) => `🎫 ${TICKET_TYPES[type].label}`,
+    ticketOwner: "صاحب التذكرة",
+    closeTicket: "إغلاق التذكرة",
+    ticketClosed: "تم إغلاق التذكرة مع الاحتفاظ بسجل المحادثة.",
+    onlyTicketStaff: "يمكن لصاحب التذكرة أو فريق الدعم إغلاقها.",
+    ticketAlreadyOpen: "لديك تذكرة مفتوحة من هذا النوع بالفعل.",
+    onlyPartyCanConfirm: "تأكيد الطلب للمشتري، وتأكيد بيانات البائع للبائع فقط.",
   },
   en: {
     pickLang: "Choose language:",
@@ -191,6 +203,18 @@ const T = {
     dmOpenedTitle: "🎫 New ticket opened",
     dmOpenedBody: (id) => `Ticket ID: **${id}**\nClick the button below to jump to the ticket.`,
     viewTicket: "View Ticket",
+    formTitle: (type) => `${TICKET_TYPES[type].label} ticket`,
+    detailsLabel: "Describe your request or issue",
+    usernameOptionalLabel: "Roblox username (optional)",
+    submitTicket: "Open ticket",
+    ticketCreatedStandard: (channelMention) => `✅ Your ticket is open: ${channelMention}`,
+    ticketEmbedTitle: (type) => `🎫 ${TICKET_TYPES[type].label}`,
+    ticketOwner: "Ticket owner",
+    closeTicket: "Close ticket",
+    ticketClosed: "The ticket is closed and the conversation is preserved.",
+    onlyTicketStaff: "Only the ticket owner or support staff can close it.",
+    ticketAlreadyOpen: "You already have an open ticket of this type.",
+    onlyPartyCanConfirm: "The buyer confirms the order, and the seller confirms their details.",
   },
 };
 
@@ -198,16 +222,79 @@ function generateTicketId() {
   return crypto.randomBytes(5).toString("base64url").slice(0, 7);
 }
 
+const TICKET_TOPIC_MARKER = "swiftrbx-ticket-v1:";
+
+function encodeTicketTopic(ticket) {
+  const persisted = {
+    id: ticket.id,
+    kind: ticket.kind,
+    lang: ticket.lang,
+    buyerId: ticket.buyerId,
+    sellerDiscordId: ticket.sellerDiscordId || null,
+    sellerProfileId: ticket.sellerProfileId || null,
+    offerId: ticket.offerId || null,
+    username: ticket.username || null,
+    quantity: ticket.quantity || null,
+    deliveryType: ticket.deliveryType || null,
+    rate: ticket.rate || null,
+    orderConfirmed: !!ticket.orderConfirmed,
+    sellerConfirmed: !!ticket.sellerConfirmed,
+    createdAt: ticket.createdAt,
+  };
+  const topic = `${TICKET_TOPIC_MARKER}${Buffer.from(JSON.stringify(persisted)).toString("base64url")}`;
+  if (topic.length > 1024) throw new Error("Ticket metadata exceeds Discord topic limit");
+  return topic;
+}
+
+function decodeTicketTopic(topic) {
+  if (!topic?.startsWith(TICKET_TOPIC_MARKER)) return null;
+  try {
+    const ticket = JSON.parse(Buffer.from(topic.slice(TICKET_TOPIC_MARKER.length), "base64url").toString("utf8"));
+    if (!ticket.id || !ticket.buyerId || !["robux", "limiteds", "items", "accounts", "support"].includes(ticket.kind)) return null;
+    if (ticket.kind === "robux" && (!ticket.sellerDiscordId || !DELIVERY_LABELS[ticket.deliveryType])) return null;
+    return ticket;
+  } catch {
+    return null;
+  }
+}
+
+async function persistTicket(channel, ticket) {
+  await channel.setTopic(encodeTicketTopic(ticket));
+}
+
 // حالة التذاكر المفتوحة بالذاكرة: channelId -> { ... }
 const activeTickets = new Map();
-
-// حالة مؤقتة بالذاكرة لكل عضو أثناء تعبئة نموذج الطلب (تُمسح بعد إعادة تشغيل البوت)
 const pendingOrders = new Map();
+const openingTickets = new Set();
+const MAX_ORDER_QUANTITY = 9_999_999_999;
+const MAX_OPEN_TICKETS_PER_USER = 3;
 
-async function searchOffers(deliveryType, quantity) {
+function isValidRobloxUsername(value) {
+  return /^[A-Za-z0-9_]{3,20}$/.test(value);
+}
+
+function hasSupportAccess(interaction) {
+  const memberRoles = interaction.member?.roles;
+  const hasRole = (roleId) => !!(
+    roleId && (memberRoles?.cache?.has(roleId) || memberRoles?.includes?.(roleId))
+  );
+  return !!(
+    interaction.memberPermissions?.has(PermissionFlagsBits.Administrator) ||
+    hasRole(SUPPORT_ROLE_ID) ||
+    hasRole(SALER_ROLE_ID)
+  );
+}
+
+function ticketLimitMessage(lang) {
+  return lang === "ar"
+    ? `لديك بالفعل ${MAX_OPEN_TICKETS_PER_USER} تذاكر مفتوحة كحد أقصى.`
+    : `You can have up to ${MAX_OPEN_TICKETS_PER_USER} open tickets at a time.`;
+}
+
+async function searchOffers(deliveryType, quantity, excludeProfileId) {
   const url = `${SUPABASE_URL}/rest/v1/offers`;
   const params = new URLSearchParams({
-    select: "id,seller_id,rate,available,min_amount,max_amount,profiles(username,display_name)",
+    select: "id,seller_id,rate,available,min_amount,max_amount,profiles(username,display_name,active)",
     delivery_type: `eq.${deliveryType}`,
     active: "eq.true",
     available: `gte.${quantity}`,
@@ -216,11 +303,13 @@ async function searchOffers(deliveryType, quantity) {
     order: "rate.asc",
     limit: "25",
   });
+  if (excludeProfileId) params.set("seller_id", `neq.${excludeProfileId}`);
   const res = await fetch(`${url}?${params.toString()}`, {
     headers: { apikey: SUPABASE_SECRET_KEY, Authorization: `Bearer ${SUPABASE_SECRET_KEY}` },
   });
-  if (!res.ok) throw new Error(`Supabase ${res.status}: ${await res.text().catch(() => "")}`);
-  return res.json();
+  if (!res.ok) throw new Error(`Supabase request failed (${res.status})`);
+  const offers = await res.json();
+  return Array.isArray(offers) ? offers.filter((offer) => offer.profiles && offer.profiles.active !== false) : [];
 }
 
 async function getDiscordIdByProfileId(profileId) {
@@ -229,7 +318,7 @@ async function getDiscordIdByProfileId(profileId) {
     headers: { apikey: SUPABASE_SECRET_KEY, "Content-Type": "application/json" },
     body: JSON.stringify({ p_user_id: profileId }),
   });
-  if (!res.ok) throw new Error(`Supabase ${res.status}: ${await res.text().catch(() => "")}`);
+  if (!res.ok) throw new Error(`Supabase request failed (${res.status})`);
   const result = await res.json();
   return result || null;
 }
@@ -323,6 +412,43 @@ async function sendTicketOpenedDm(client, discordUserId, ticketId, channelId, gu
   }
 }
 
+function scheduleOrderExpiry(channel, ticket) {
+  if (ticket.timeout) clearTimeout(ticket.timeout);
+  if (ticket.orderConfirmed && ticket.sellerConfirmed) return;
+  const remaining = Math.max(0, TICKET_TIMEOUT_MS - (Date.now() - ticket.createdAt));
+  ticket.timeout = setTimeout(async () => {
+    const current = activeTickets.get(channel.id);
+    if (!current || (current.orderConfirmed && current.sellerConfirmed)) return;
+    activeTickets.delete(channel.id);
+    await channel.setTopic(`swiftrbx-closed-v1:${ticket.id}`).catch(() => {});
+    await channel.send(T[ticket.lang].expired).catch(() => {});
+    setTimeout(() => channel.delete().catch(() => {}), 10_000);
+  }, remaining);
+}
+
+async function restoreTickets(client) {
+  for (const guild of client.guilds.cache.values()) {
+    const channels = await guild.channels.fetch().catch(() => null);
+    if (!channels) continue;
+    for (const channel of channels.values()) {
+      if (!channel?.isTextBased?.() || !("topic" in channel)) continue;
+      const ticket = decodeTicketTopic(channel.topic);
+      if (!ticket) continue;
+      ticket.channelId = channel.id;
+      ticket.guildId = guild.id;
+      activeTickets.set(channel.id, ticket);
+      if (ticket.kind === "robux" && !(ticket.orderConfirmed && ticket.sellerConfirmed)) {
+        const messages = await channel.messages.fetch({ limit: 25 }).catch(() => null);
+        for (const message of messages?.values?.() || []) {
+          if (message.embeds[0]?.title === T[ticket.lang].orderEmbedTitle) ticket.orderMessageId = message.id;
+          if (message.embeds[0]?.title === T[ticket.lang].sellerEmbedTitle) ticket.sellerMessageId = message.id;
+        }
+        scheduleOrderExpiry(channel, ticket);
+      }
+    }
+  }
+}
+
 async function createOrderTicket(interaction, data) {
   const { lang, buyerId, sellerDiscordId, username, quantity, deliveryType, rate } = data;
   const guild = interaction.guild;
@@ -335,7 +461,12 @@ async function createOrderTicket(interaction, data) {
     PermissionFlagsBits.ReadMessageHistory,
     PermissionFlagsBits.AttachFiles,
   ];
-  const viewOnly = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory];
+  const staffAccess = [
+    PermissionFlagsBits.ViewChannel,
+    PermissionFlagsBits.SendMessages,
+    PermissionFlagsBits.ReadMessageHistory,
+    PermissionFlagsBits.AttachFiles,
+  ];
 
   const permissionOverwrites = [
     { id: guild.roles.everyone.id, type: OverwriteType.Role, deny: [PermissionFlagsBits.ViewChannel] },
@@ -348,10 +479,10 @@ async function createOrderTicket(interaction, data) {
     },
   ];
   if (SUPPORT_ROLE_ID) {
-    permissionOverwrites.push({ id: SUPPORT_ROLE_ID, type: OverwriteType.Role, allow: viewOnly });
+    permissionOverwrites.push({ id: SUPPORT_ROLE_ID, type: OverwriteType.Role, allow: staffAccess });
   }
   if (SALER_ROLE_ID) {
-    permissionOverwrites.push({ id: SALER_ROLE_ID, type: OverwriteType.Role, allow: viewOnly });
+    permissionOverwrites.push({ id: SALER_ROLE_ID, type: OverwriteType.Role, allow: staffAccess });
   }
 
   const channel = await guild.channels.create({
@@ -363,6 +494,7 @@ async function createOrderTicket(interaction, data) {
 
   const ticket = {
     id: ticketId,
+    kind: "robux",
     lang,
     buyerId,
     sellerDiscordId,
@@ -373,10 +505,12 @@ async function createOrderTicket(interaction, data) {
     deliveryType,
     rate,
     channelId: channel.id,
+    guildId: guild.id,
     orderConfirmed: false,
     sellerConfirmed: false,
     createdAt: Date.now(),
   };
+  await persistTicket(channel, ticket);
 
   const { orderEmbed, sellerEmbed } = buildTicketEmbeds(ticket);
   const orderMsg = await channel.send({ content: `<@${buyerId}>`, embeds: [orderEmbed] });
@@ -386,20 +520,92 @@ async function createOrderTicket(interaction, data) {
   ticket.orderMessageId = orderMsg.id;
   ticket.sellerMessageId = sellerMsg.id;
   activeTickets.set(channel.id, ticket);
+  await persistTicket(channel, ticket);
   await refreshTicketConfirmMessage(channel, ticket);
-
-  ticket.timeout = setTimeout(async () => {
-    const t = activeTickets.get(channel.id);
-    if (!t || (t.orderConfirmed && t.sellerConfirmed)) return;
-    activeTickets.delete(channel.id);
-    await channel.send(T[lang].expired).catch(() => {});
-    setTimeout(() => channel.delete().catch(() => {}), 10_000);
-  }, TICKET_TIMEOUT_MS);
+  scheduleOrderExpiry(channel, ticket);
 
   await sendTicketOpenedDm(interaction.client, buyerId, ticketId, channel.id, guild.id, lang);
   await sendTicketOpenedDm(interaction.client, sellerDiscordId, ticketId, channel.id, guild.id, lang);
 
   return channel;
+}
+
+async function createServiceTicket(interaction, data) {
+  const { kind, profile, details, username, lang } = data;
+  const guild = interaction.guild;
+  const ticketId = generateTicketId();
+  const memberPermissions = [
+    PermissionFlagsBits.ViewChannel,
+    PermissionFlagsBits.SendMessages,
+    PermissionFlagsBits.ReadMessageHistory,
+    PermissionFlagsBits.AttachFiles,
+  ];
+  const permissionOverwrites = [
+    { id: guild.roles.everyone.id, type: OverwriteType.Role, deny: [PermissionFlagsBits.ViewChannel] },
+    { id: interaction.user.id, type: OverwriteType.Member, allow: memberPermissions },
+    {
+      id: interaction.client.user.id,
+      type: OverwriteType.Member,
+      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory],
+    },
+  ];
+  const staffRoleIds = [...new Set([SUPPORT_ROLE_ID, SALER_ROLE_ID].filter(Boolean))];
+  for (const roleId of staffRoleIds) {
+    permissionOverwrites.push({ id: roleId, type: OverwriteType.Role, allow: memberPermissions });
+  }
+
+  const channel = await guild.channels.create({
+    name: `${lang === "ar" ? "تذكرة" : "ticket"}-${kind}-${ticketId}`.toLowerCase().slice(0, 90),
+    type: ChannelType.GuildText,
+    parent: TICKETS_CATEGORY_ID || undefined,
+    permissionOverwrites,
+  });
+  const ticket = {
+    id: ticketId,
+    kind,
+    lang,
+    buyerId: interaction.user.id,
+    guildId: guild.id,
+    channelId: channel.id,
+    orderConfirmed: true,
+    sellerConfirmed: true,
+    createdAt: Date.now(),
+  };
+  activeTickets.set(channel.id, ticket);
+  await persistTicket(channel, ticket);
+
+  const embed = new EmbedBuilder()
+    .setColor(0x2b2d31)
+    .setTitle(T[lang].ticketEmbedTitle(kind))
+    .setDescription(details.slice(0, 1000))
+    .addFields({ name: T[lang].ticketOwner, value: `<@${interaction.user.id}>`, inline: true });
+  if (username) embed.addFields({ name: lang === "ar" ? "يوزرنيم روبلوكس" : "Roblox username", value: username, inline: true });
+  const closeRow = new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setCustomId(`close:${ticketId}`).setLabel(T[lang].closeTicket).setStyle(ButtonStyle.Secondary)
+  );
+  await channel.send({
+    content: `<@${interaction.user.id}>${staffRoleIds.map((roleId) => ` <@&${roleId}>`).join("")}`,
+    embeds: [embed],
+    components: [closeRow],
+    allowedMentions: { users: [interaction.user.id], roles: staffRoleIds },
+  });
+  await sendTicketOpenedDm(interaction.client, interaction.user.id, ticketId, channel.id, guild.id, lang);
+  return channel;
+}
+
+async function closeTicketChannel(channel, ticket) {
+  if (ticket.timeout) clearTimeout(ticket.timeout);
+  activeTickets.delete(channel.id);
+  const closedName = `${ticket.lang === "ar" ? "مغلق" : "closed"}-${ticket.id}`.slice(0, 90);
+  await channel.setName(closedName).catch(() => {});
+  await channel.setTopic(`swiftrbx-closed-v1:${ticket.id}`).catch(() => {});
+  for (const userId of [ticket.buyerId, ticket.sellerDiscordId].filter(Boolean)) {
+    await channel.permissionOverwrites.edit(userId, { SendMessages: false, AddReactions: false }).catch(() => {});
+  }
+  for (const roleId of [...new Set([SUPPORT_ROLE_ID, SALER_ROLE_ID].filter(Boolean))]) {
+    await channel.permissionOverwrites.edit(roleId, { SendMessages: false, AddReactions: false }).catch(() => {});
+  }
+  await channel.send(T[ticket.lang].ticketClosed).catch(() => {});
 }
 
 async function getProfileByDiscordId(discordId) {
@@ -412,10 +618,7 @@ async function getProfileByDiscordId(discordId) {
     body: JSON.stringify({ p_discord_id: discordId }),
   });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`Supabase ${res.status}: ${text}`);
-  }
+  if (!res.ok) throw new Error(`Supabase request failed (${res.status})`);
 
   const rows = await res.json();
   return Array.isArray(rows) && rows.length ? rows[0] : null;
@@ -462,8 +665,10 @@ const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBit
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`✅ تم تسجيل الدخول باسم: ${c.user.tag}`);
+  await restoreTickets(c);
   await ensurePanel(c);
 });
+
 
 async function requireLinkedProfile(interaction) {
   const profile = await getProfileByDiscordId(interaction.user.id);
@@ -486,7 +691,35 @@ async function requireLinkedProfile(interaction) {
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     // ------------------------------------------------------------------
-    // 1) زر من اللوحة الرئيسية
+    // 1) نموذج تذاكر الدعم والليميتد والأغراض والحسابات
+    // ------------------------------------------------------------------
+    if (interaction.isButton() && interaction.customId.startsWith("ticket:form:")) {
+      const typeKey = interaction.customId.split(":")[2];
+      if (!TICKET_TYPES[typeKey] || typeKey === "robux") return;
+      const lang = interaction.locale?.toLowerCase().startsWith("en") ? "en" : "ar";
+      const modal = new ModalBuilder()
+        .setCustomId(`ticket:details:${typeKey}`)
+        .setTitle(T[lang].formTitle(typeKey).slice(0, 45));
+      const usernameInput = new TextInputBuilder()
+        .setCustomId("username")
+        .setLabel(T[lang].usernameOptionalLabel)
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setMaxLength(20);
+      const detailsInput = new TextInputBuilder()
+        .setCustomId("details")
+        .setLabel(T[lang].detailsLabel)
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true)
+        .setMinLength(5)
+        .setMaxLength(1000);
+      modal.addComponents(new ActionRowBuilder().addComponents(usernameInput), new ActionRowBuilder().addComponents(detailsInput));
+      await interaction.showModal(modal);
+      return;
+    }
+
+    // ------------------------------------------------------------------
+    // 2) زر من اللوحة الرئيسية
     // ------------------------------------------------------------------
     if (interaction.isButton() && interaction.customId.startsWith("ticket:")) {
       const typeKey = interaction.customId.split(":")[1];
@@ -497,8 +730,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
       const profile = await requireLinkedProfile(interaction);
       if (!profile) return;
 
+      const lang = interaction.locale?.toLowerCase().startsWith("en") ? "en" : "ar";
+      const openTickets = [...activeTickets.values()].filter((ticket) => ticket.guildId === interaction.guildId && ticket.buyerId === interaction.user.id);
+      if (openTickets.length >= MAX_OPEN_TICKETS_PER_USER) {
+        await interaction.editReply(ticketLimitMessage(lang));
+        return;
+      }
+      if (openTickets.some((ticket) => ticket.kind === typeKey)) {
+        await interaction.editReply(T[lang].ticketAlreadyOpen);
+        return;
+      }
+
       if (typeKey === "robux") {
-        pendingOrders.set(interaction.user.id, {});
+        pendingOrders.set(interaction.user.id, { buyerProfileId: profile.id, guildId: interaction.guildId, createdAt: Date.now() });
         const row = new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId("order:lang:ar").setLabel("العربية").setStyle(ButtonStyle.Primary),
           new ButtonBuilder().setCustomId("order:lang:en").setLabel("English").setStyle(ButtonStyle.Primary)
@@ -507,11 +751,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
-      const name = profile.display_name || profile.username;
-      await interaction.editReply(
-        `✅ حسابك مربوط باسم **${name}**.\n` +
-          `طلب **${type.label}**: فتح التذكرة بيتفعّل بالتحديث القادم.`
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`ticket:form:${typeKey}`)
+          .setLabel(T[lang].submitTicket)
+          .setStyle(ButtonStyle.Primary)
       );
+      await interaction.editReply({
+        content: lang === "ar" ? `حسابك مربوط باسم **${profile.display_name || profile.username}**. أكمل النموذج لفتح التذكرة.` : `Your account is linked as **${profile.display_name || profile.username}**. Complete the form to open a ticket.`,
+        components: [row],
+      });
       return;
     }
 
@@ -520,7 +769,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // ------------------------------------------------------------------
     if (interaction.isButton() && interaction.customId.startsWith("order:lang:")) {
       const lang = interaction.customId.split(":")[2] === "en" ? "en" : "ar";
-      pendingOrders.set(interaction.user.id, { lang });
+      const state = pendingOrders.get(interaction.user.id);
+      if (!state || state.guildId !== interaction.guildId || Date.now() - state.createdAt > 15 * 60 * 1000) {
+        await interaction.update({ content: "انتهت صلاحية الطلب، ابدأ من جديد.", components: [] });
+        return;
+      }
+      state.lang = lang;
 
       const menu = new StringSelectMenuBuilder()
         .setCustomId("order:delivery")
@@ -539,8 +793,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
     // 3) اختيار نوع التسليم -> فتح Modal (يوزرنيم + كمية)
     // ------------------------------------------------------------------
     if (interaction.isStringSelectMenu() && interaction.customId === "order:delivery") {
-      const state = pendingOrders.get(interaction.user.id) || { lang: "ar" };
+      const state = pendingOrders.get(interaction.user.id);
       const deliveryType = interaction.values[0];
+      if (!state || state.guildId !== interaction.guildId || Date.now() - state.createdAt > 15 * 60 * 1000 || !DELIVERY_LABELS[deliveryType]) {
+        await interaction.update({ content: "انتهت صلاحية الطلب، ابدأ من جديد.", components: [] });
+        return;
+      }
       state.deliveryType = deliveryType;
       pendingOrders.set(interaction.user.id, state);
       const lang = state.lang || "ar";
@@ -568,17 +826,73 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // ------------------------------------------------------------------
-    // 4) إرسال Modal -> البحث عن بائعين مطابقين
+    // 4) حفظ تذكرة الخدمة بعد التحقق من الحساب والمدخلات
+    // ------------------------------------------------------------------
+    if (interaction.isModalSubmit() && interaction.customId.startsWith("ticket:details:")) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const typeKey = interaction.customId.split(":")[2];
+      if (!TICKET_TYPES[typeKey] || typeKey === "robux") {
+        await interaction.editReply("Invalid ticket type.");
+        return;
+      }
+      const profile = await requireLinkedProfile(interaction);
+      if (!profile) return;
+      const lang = interaction.locale?.toLowerCase().startsWith("en") ? "en" : "ar";
+      const details = interaction.fields.getTextInputValue("details").trim();
+      const username = interaction.fields.getTextInputValue("username").trim();
+      if (details.length < 5 || (username && !isValidRobloxUsername(username))) {
+        await interaction.editReply(lang === "ar" ? "تحقق من التفاصيل ويوزرنيم روبلوكس." : "Check the details and Roblox username.");
+        return;
+      }
+      const openTickets = [...activeTickets.values()].filter((ticket) => ticket.guildId === interaction.guildId && ticket.buyerId === interaction.user.id);
+      if (openTickets.length >= MAX_OPEN_TICKETS_PER_USER) {
+        await interaction.editReply(ticketLimitMessage(lang));
+        return;
+      }
+      if (openTickets.some((ticket) => ticket.kind === typeKey)) {
+        await interaction.editReply(T[lang].ticketAlreadyOpen);
+        return;
+      }
+      const openingKey = `${interaction.guildId}:${interaction.user.id}`;
+      if (openingTickets.has(openingKey)) {
+        await interaction.editReply(ticketLimitMessage(lang));
+        return;
+      }
+      openingTickets.add(openingKey);
+      try {
+        const channel = await createServiceTicket(interaction, { kind: typeKey, profile, details, username, lang });
+        await interaction.editReply(T[lang].ticketCreatedStandard(channel.toString()));
+      } finally {
+        openingTickets.delete(openingKey);
+      }
+      return;
+    }
+
+    // ------------------------------------------------------------------
+    // 5) إرسال Modal -> البحث عن بائعين مطابقين
     // ------------------------------------------------------------------
     if (interaction.isModalSubmit() && interaction.customId === "order:detailsmodal") {
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const state = pendingOrders.get(interaction.user.id) || { lang: "ar" };
-      const lang = state.lang || "ar";
+      const state = pendingOrders.get(interaction.user.id);
+      const lang = state?.lang || "ar";
+      if (!state || state.guildId !== interaction.guildId || Date.now() - state.createdAt > 15 * 60 * 1000 || !DELIVERY_LABELS[state.deliveryType]) {
+        pendingOrders.delete(interaction.user.id);
+        await interaction.editReply("انتهت صلاحية الطلب، ابدأ من جديد.");
+        return;
+      }
+      const profile = await requireLinkedProfile(interaction);
+      if (!profile || profile.id !== state.buyerProfileId) {
+        pendingOrders.delete(interaction.user.id);
+        return;
+      }
       const username = interaction.fields.getTextInputValue("username").trim();
       const quantityRaw = interaction.fields.getTextInputValue("quantity").trim();
-      const quantity = Number.parseInt(quantityRaw, 10);
-
-      if (!Number.isInteger(quantity) || quantity <= 0) {
+      if (!isValidRobloxUsername(username) || !/^\d{1,10}$/.test(quantityRaw)) {
+        await interaction.editReply(T[lang].invalidQuantity);
+        return;
+      }
+      const quantity = Number(quantityRaw);
+      if (!Number.isSafeInteger(quantity) || quantity <= 0 || quantity > MAX_ORDER_QUANTITY) {
         await interaction.editReply(T[lang].invalidQuantity);
         return;
       }
@@ -587,7 +901,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       state.quantity = quantity;
       pendingOrders.set(interaction.user.id, state);
 
-      const offers = await searchOffers(state.deliveryType, quantity);
+      const offers = await searchOffers(state.deliveryType, quantity, profile.id);
       if (!offers.length) {
         await interaction.editReply(T[lang].noSellers(quantity, state.deliveryType));
         pendingOrders.delete(interaction.user.id);
@@ -617,7 +931,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isStringSelectMenu() && interaction.customId === "order:seller") {
       await interaction.deferUpdate();
       const state = pendingOrders.get(interaction.user.id);
-      if (!state || !state.offers) {
+      if (!state || state.guildId !== interaction.guildId || Date.now() - state.createdAt > 15 * 60 * 1000 || !state.offers) {
         await interaction.editReply({ content: "انتهت صلاحية الطلب، ابدأ من جديد.", components: [] });
         return;
       }
@@ -631,8 +945,19 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
+      const buyerProfile = await getProfileByDiscordId(interaction.user.id);
+      if (!buyerProfile || buyerProfile.active === false || buyerProfile.id !== state.buyerProfileId) {
+        await interaction.editReply({ content: "تعذر التحقق من ارتباط حسابك، ابدأ من جديد.", components: [] });
+        return;
+      }
+      const openTickets = [...activeTickets.values()].filter((ticket) => ticket.guildId === interaction.guildId && ticket.buyerId === interaction.user.id);
+      if (openTickets.length >= MAX_OPEN_TICKETS_PER_USER || openTickets.some((ticket) => ticket.kind === "robux")) {
+        await interaction.editReply({ content: ticketLimitMessage(lang), components: [] });
+        return;
+      }
+
       const sellerDiscordId = await getDiscordIdByProfileId(offer.seller_id);
-      if (!sellerDiscordId) {
+      if (!sellerDiscordId || sellerDiscordId === interaction.user.id || offer.seller_id === buyerProfile.id || offer.profiles.active === false) {
         await interaction.editReply({
           content:
             lang === "ar"
@@ -648,6 +973,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         components: [],
       });
 
+      const openingKey = `${interaction.guildId}:${interaction.user.id}`;
+      if (openingTickets.has(openingKey)) {
+        await interaction.followUp({ content: ticketLimitMessage(lang), flags: MessageFlags.Ephemeral });
+        return;
+      }
+      openingTickets.add(openingKey);
       try {
         await createOrderTicket(interaction, {
           lang,
@@ -662,11 +993,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
           offerId: offer.id,
         });
       } catch (e) {
-        console.error("فشل إنشاء التذكرة:", e);
+        console.error("فشل إنشاء التذكرة:", e.message);
         await interaction.followUp({
           content: "صار خطأ أثناء فتح التذكرة، حاول مرة ثانية أو تواصل مع الدعم.",
           flags: MessageFlags.Ephemeral,
         });
+      } finally {
+        openingTickets.delete(openingKey);
       }
       return;
     }
@@ -683,34 +1016,66 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
       const lang = ticket.lang;
 
-      if (interaction.user.id !== ticket.buyerId) {
-        await interaction.reply({ content: T[lang].onlyBuyerCanConfirm, flags: MessageFlags.Ephemeral });
+      if (ticket.kind !== "robux" || !["order", "seller"].includes(part)) return;
+      const expectedUserId = part === "order" ? ticket.buyerId : ticket.sellerDiscordId;
+      if (interaction.user.id !== expectedUserId) {
+        await interaction.reply({ content: T[lang].onlyPartyCanConfirm, flags: MessageFlags.Ephemeral });
+        return;
+      }
+      if ((part === "order" && ticket.orderConfirmed) || (part === "seller" && ticket.sellerConfirmed)) {
+        await interaction.reply({ content: T[lang].confirmed, flags: MessageFlags.Ephemeral });
         return;
       }
 
       if (part === "order") ticket.orderConfirmed = true;
-      else if (part === "seller") ticket.sellerConfirmed = true;
-      else return;
+      else ticket.sellerConfirmed = true;
 
       await interaction.deferUpdate();
+      await persistTicket(interaction.channel, ticket);
       await refreshTicketConfirmMessage(interaction.channel, ticket, part);
 
       if (ticket.orderConfirmed && ticket.sellerConfirmed) {
         if (ticket.timeout) clearTimeout(ticket.timeout);
         const newName = lang === "ar" ? `تم-التأكيد-${ticket.id}` : `confirmed-${ticket.id}`;
         await interaction.channel.setName(newName).catch(() => {});
-        await interaction.channel.send(T[lang].bothConfirmedNext);
+        const closeRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`close:${ticket.id}`).setLabel(T[lang].closeTicket).setStyle(ButtonStyle.Secondary)
+        );
+        await interaction.channel.send({ content: T[lang].bothConfirmedNext, components: [closeRow] });
       }
       return;
     }
 
     // ------------------------------------------------------------------
-    // 7) زر إلغاء الطلب (المشتري بس)
+    // إغلاق التذاكر بعد انتهاء الطلب أو الدعم
+    // ------------------------------------------------------------------
+    if (interaction.isButton() && interaction.customId.startsWith("close:")) {
+      const ticketId = interaction.customId.split(":")[1];
+      const ticket = activeTickets.get(interaction.channelId);
+      if (!ticket || ticket.id !== ticketId) {
+        await interaction.reply({ content: "هذه التذكرة غير نشطة.", flags: MessageFlags.Ephemeral });
+        return;
+      }
+      const isParticipant = interaction.user.id === ticket.buyerId || interaction.user.id === ticket.sellerDiscordId;
+      const allowed = hasSupportAccess(interaction) || (ticket.kind === "robux"
+        ? isParticipant && ticket.orderConfirmed && ticket.sellerConfirmed
+        : interaction.user.id === ticket.buyerId);
+      if (!allowed) {
+        await interaction.reply({ content: T[ticket.lang].onlyTicketStaff, flags: MessageFlags.Ephemeral });
+        return;
+      }
+      await interaction.deferUpdate();
+      await closeTicketChannel(interaction.channel, ticket);
+      return;
+    }
+
+    // ------------------------------------------------------------------
+    // 8) زر إلغاء الطلب (المشتري بس)
     // ------------------------------------------------------------------
     if (interaction.isButton() && interaction.customId.startsWith("cancel:")) {
       const [, , ticketId] = interaction.customId.split(":");
       const ticket = activeTickets.get(interaction.channelId);
-      if (!ticket || ticket.id !== ticketId) {
+      if (!ticket || ticket.id !== ticketId || ticket.kind !== "robux") {
         await interaction.reply({ content: "هذه التذكرة غير نشطة.", flags: MessageFlags.Ephemeral });
         return;
       }
@@ -720,21 +1085,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
+      if (ticket.orderConfirmed && ticket.sellerConfirmed) {
+        await interaction.reply({ content: T[lang].onlyTicketStaff, flags: MessageFlags.Ephemeral });
+        return;
+      }
       if (ticket.timeout) clearTimeout(ticket.timeout);
       activeTickets.delete(interaction.channelId);
       await interaction.deferUpdate();
+      await interaction.channel.setTopic(`swiftrbx-closed-v1:${ticket.id}`).catch(() => {});
       await interaction.channel.send(T[lang].cancelled);
       setTimeout(() => interaction.channel.delete().catch(() => {}), 8_000);
       return;
     }
 
     // ------------------------------------------------------------------
-    // 8) زر تغيير البائع (المشتري بس) -> قائمة بائعي�� جدد
+    // 9) زر تغيير البائع (للمشتري فقط) -> اختيار بائع بديل
     // ------------------------------------------------------------------
     if (interaction.isButton() && interaction.customId.startsWith("changeseller:")) {
       const [, , ticketId] = interaction.customId.split(":");
       const ticket = activeTickets.get(interaction.channelId);
-      if (!ticket || ticket.id !== ticketId) {
+      if (!ticket || ticket.id !== ticketId || ticket.kind !== "robux") {
         await interaction.reply({ content: "هذه التذكرة غير نشطة.", flags: MessageFlags.Ephemeral });
         return;
       }
@@ -745,9 +1115,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-      const offers = (await searchOffers(ticket.deliveryType, ticket.quantity)).filter(
-        (o) => o.seller_id !== ticket.sellerProfileId
+      const buyerProfile = await getProfileByDiscordId(ticket.buyerId);
+      if (!buyerProfile || buyerProfile.active === false) {
+        await interaction.editReply(T[lang].noSellersForChange);
+        return;
+      }
+      const offers = (await searchOffers(ticket.deliveryType, ticket.quantity, buyerProfile.id)).filter(
+        (offer) => offer.seller_id !== ticket.sellerProfileId
       );
+
       if (!offers.length) {
         await interaction.editReply(T[lang].noSellersForChange);
         return;
@@ -788,7 +1164,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       const newSellerDiscordId = await getDiscordIdByProfileId(offer.seller_id);
-      if (!newSellerDiscordId) {
+      if (!newSellerDiscordId || newSellerDiscordId === ticket.buyerId || offer.seller_id === ticket.sellerProfileId || offer.profiles?.active === false) {
         await interaction.update({ content: T[lang].noSellersForChange, components: [] });
         return;
       }
@@ -806,6 +1182,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
       ticket.offerId = offer.id;
       ticket.rate = offer.rate;
       ticket.sellerConfirmed = false;
+      ticket.createdAt = Date.now();
+      await persistTicket(interaction.channel, ticket);
+      scheduleOrderExpiry(interaction.channel, ticket);
 
       await interaction.update({ content: T[lang].sellerChanged, components: [] });
       await refreshTicketConfirmMessage(interaction.channel, ticket, "seller");
