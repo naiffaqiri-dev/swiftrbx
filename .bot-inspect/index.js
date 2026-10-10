@@ -137,7 +137,8 @@ const T = {
     linkedAccountRequired: (siteUrl) => `❌ حساب ديسكورد غير مربوط بالموقع. سجّل الدخول إلى ${siteUrl} باستخدام Discord ثم أعد المحاولة.`,
     accountDisabled: "⛔ حسابك بالموقع موقوف. تواصل مع الدعم.",
     sellerUnlinked: "⚠️ البائع المختار لم يربط حساب ديسكورد. اختر بائعاً آخر.",
-    noSellers: (quantity, delivery) => `😔 لا يوجد بائع متاح لكمية **${quantity}** بطريقة **${DELIVERY_LABELS[delivery].ar}** حالياً.`,
+    noSellers: (quantity, delivery) => `😔 لا يوجد بائع آخر متاح لكمية **${quantity}** بطريقة **${DELIVERY_LABELS[delivery].ar}** حالياً.`,
+    ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المطابقين.`,
     onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل الطلب أو إلغاؤه متاح لصاحب الطلب فقط.",
     onlySellerCanConfirm: "⚠️ تأكيد بيانات البائع متاح للبائع المختار فقط.",
     alreadyConfirmed: "تم تأكيد الطلب بالكامل ولا يمكن تعديله.",
@@ -186,7 +187,8 @@ const T = {
     linkedAccountRequired: (siteUrl) => `❌ Your Discord account is not linked. Sign in at ${siteUrl} with Discord, then try again.`,
     accountDisabled: "⛔ Your site account is disabled. Contact support.",
     sellerUnlinked: "⚠️ The selected seller has not linked Discord. Choose another seller.",
-    noSellers: (quantity, delivery) => `😔 No seller is currently available for **${quantity}** via **${DELIVERY_LABELS[delivery].en}**.`,
+    noSellers: (quantity, delivery) => `😔 No other seller is currently available for **${quantity}** via **${DELIVERY_LABELS[delivery].en}**.`,
+    ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ Your website offer is active: **${name}** — price **${rate} SAR/1,000**, stock **${stock}**, limits **${minimum}–${maximum}**. It is not listed as a seller because this Discord account owns the offer; you cannot buy from yourself. Other buyers will see it when their quantity and delivery type match.`,
     onlyBuyerCanConfirm: "⚠️ Only the buyer can confirm order details or cancel the order.",
     onlySellerCanConfirm: "⚠️ Only the selected seller can confirm seller details.",
     alreadyConfirmed: "Both parties have confirmed this order; it can no longer be changed.",
@@ -357,13 +359,13 @@ async function getActiveOffers() {
   return Array.isArray(offers) ? offers : [];
 }
 
-function offerMatchesOrder(offer, deliveryType, quantity, buyerProfileId) {
+function offerMatchesOrder(offer, deliveryType, quantity, buyerProfileId, includeBuyerOffer = false) {
   const available = Number(offer.available);
   const minimum = Number(offer.min_amount);
   const maximum = Number(offer.max_amount);
   const rate = Number(offer.rate);
   return (
-    offer.seller_id !== buyerProfileId &&
+    (includeBuyerOffer || offer.seller_id !== buyerProfileId) &&
     Array.isArray(offer.delivery) &&
     offer.delivery.includes(deliveryType) &&
     Number.isFinite(available) && available >= quantity &&
@@ -373,9 +375,9 @@ function offerMatchesOrder(offer, deliveryType, quantity, buyerProfileId) {
   );
 }
 
-async function searchOffers(deliveryType, quantity, buyerProfileId) {
+async function searchOffers(deliveryType, quantity, buyerProfileId, includeBuyerOffer = false) {
   return (await getActiveOffers())
-    .filter((offer) => offerMatchesOrder(offer, deliveryType, quantity, buyerProfileId))
+    .filter((offer) => offerMatchesOrder(offer, deliveryType, quantity, buyerProfileId, includeBuyerOffer))
     .sort((left, right) => Number(left.rate) - Number(right.rate) || Number(right.rating) - Number(left.rating))
     .slice(0, 25);
 }
@@ -962,8 +964,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
       try {
         const offers = await searchOffers(state.deliveryType, quantity, state.buyerProfileId);
         if (!offers.length) {
+          const ownOffers = await searchOffers(state.deliveryType, quantity, state.buyerProfileId, true);
+          const ownOffer = ownOffers.find((offer) => offer.seller_id === state.buyerProfileId);
           pendingOrders.delete(interaction.user.id);
-          await interaction.editReply(T[lang].noSellers(quantity.toLocaleString("en-US"), state.deliveryType));
+          if (ownOffer) {
+            await interaction.editReply(T[lang].ownOfferOnly(
+              ownOffer.username || "Seller",
+              Number(ownOffer.rate).toLocaleString("en-US"),
+              Number(ownOffer.available).toLocaleString("en-US"),
+              Number(ownOffer.min_amount).toLocaleString("en-US"),
+              Number(ownOffer.max_amount).toLocaleString("en-US")
+            ));
+          } else {
+            await interaction.editReply(T[lang].noSellers(quantity.toLocaleString("en-US"), state.deliveryType));
+          }
           return;
         }
         state.username = username;
