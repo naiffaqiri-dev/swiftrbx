@@ -48,12 +48,12 @@ async function fetchDiscordPayment(url: string) {
   return body as { payment: DiscordPayment }
 }
 
-export function Checkout() {
+export function Checkout({ initialDiscordTicketPaymentToken = '' }: { initialDiscordTicketPaymentToken?: string }) {
   const router = useRouter()
   const params = useSearchParams()
   const { t } = useLocale()
   const { user, ready, refresh } = useAuth()
-  const discordTicketPaymentToken = params.get('discordTicketPayment') ?? ''
+  const discordTicketPaymentToken = initialDiscordTicketPaymentToken || params.get('discordTicketPayment') || ''
   const paymentKey = discordTicketPaymentToken && user
     ? `/api/discord-ticket-payments?token=${encodeURIComponent(discordTicketPaymentToken)}`
     : null
@@ -226,6 +226,9 @@ export function Checkout() {
             if (!open) router.push('/market')
           }}
           returnTo={`/checkout?${params.toString()}`}
+          description={isDiscordTicketPayment
+            ? 'سجّل الدخول بحساب المشتري المرتبط بديسكورد؛ سيعيدك الموقع إلى هذا الرابط ويحمّل مبلغ التحويل الصحيح.'
+            : undefined}
         />
       </div>
     )
@@ -257,7 +260,7 @@ export function Checkout() {
           {paid
             ? 'تم الدفع من رصيدك وبدأ تنفيذ الطلب.'
             : isDiscordTicketPayment
-              ? 'استلمنا إيصال التحويل وأرسلناه إلى الإدارة للمراجعة. تم استخدام رابط الدفع ولا يمكن إعادة استخدامه.'
+              ? 'استلمنا إيصال التحويل وأرسلناه إلى الإدارة العليا للمراجعة. لن يبدأ التسليم حتى تؤكد الإدارة الحوالة.'
               : 'استلمنا إيصالك، وستراجعه الإدارة وتؤكد المبلغ قريباً. تتبّع الحالة من تذكرة الطلب.'}
         </p>
         <p className="mt-2 text-xs text-muted-foreground">رقم الطلب: {result.orderId.slice(0, 8)}</p>

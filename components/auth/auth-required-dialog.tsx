@@ -10,10 +10,12 @@ export function AuthRequiredDialog({
   open,
   onOpenChange,
   returnTo,
+  description,
 }: {
   open: boolean
   onOpenChange: (open: boolean) => void
   returnTo: string
+  description?: string
 }) {
   const next = safeInternalPath(returnTo, '/market')
   const loginHref = `/login?${new URLSearchParams({ next }).toString()}`
@@ -32,7 +34,7 @@ export function AuthRequiredDialog({
               <div className="flex flex-col gap-1.5">
                 <Dialog.Title className="text-xl font-bold text-balance">يلزم تسجيل الدخول لإتمام الشراء</Dialog.Title>
                 <Dialog.Description className="text-sm leading-relaxed text-muted-foreground">
-                  يمكنك تصفح المتجر والمنتجات دون حساب. أنشئ حساباً أو سجّل الدخول للمتابعة وإتمام طلبك بأمان.
+                  {description ?? 'يمكنك تصفح المتجر والمنتجات دون حساب. أنشئ حساباً أو سجّل الدخول للمتابعة وإتمام طلبك بأمان.'}
                 </Dialog.Description>
               </div>
             </div>

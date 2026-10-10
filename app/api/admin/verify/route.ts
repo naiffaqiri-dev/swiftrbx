@@ -92,6 +92,14 @@ export async function POST(req: Request) {
       await admin.from("tickets").update({ status: "closed", close_reason: CLOSE_REASON, updated_at: now }).eq("id", tk.id)
       await admin.from("ticket_messages").insert({ ticket_id: tk.id, sender_id: userId, body: CLOSE_REASON })
     }
+    if (order.discord_ticket_payment_id) {
+      const { error: paymentQueueError } = await admin
+        .from("discord_ticket_payments")
+        .update({ discord_reviewed_at: now, discord_review_notified_at: null, updated_at: now })
+        .eq("id", order.discord_ticket_payment_id)
+        .eq("status", "submitted")
+      if (paymentQueueError) console.error("تعذّر جدولة تحديث مراجعة دفعة Discord:", paymentQueueError.message)
+    }
     await notifyDiscord("orders", { title: "تم رفض تحويل طلب وإغلاق التذكرة" })
     return NextResponse.json({ ok: true })
   }
@@ -107,6 +115,14 @@ export async function POST(req: Request) {
     }
   }
   await admin.from("tickets").update({ status: "open" }).eq("order_id", id)
+  if (order.discord_ticket_payment_id) {
+    const { error: paymentQueueError } = await admin
+      .from("discord_ticket_payments")
+      .update({ discord_reviewed_at: new Date().toISOString(), discord_review_notified_at: null, updated_at: new Date().toISOString() })
+      .eq("id", order.discord_ticket_payment_id)
+      .eq("status", "submitted")
+    if (paymentQueueError) console.error("تعذّر جدولة تحديث مراجعة دفعة Discord:", paymentQueueError.message)
+  }
 
   await notifyDiscord("orders", {
     title: "تم تأكيد الدفع وبدء تنفيذ الطلب",
