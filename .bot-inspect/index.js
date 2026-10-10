@@ -40,6 +40,9 @@ const DISCORD_TOKEN = (process.env.DISCORD_TOKEN || "").trim();
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
 const SUPABASE_SECRET_KEY = (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
 const PANEL_CHANNEL_ID = (process.env.PANEL_CHANNEL_ID || "").trim();
+const LIVE_STOCK_CHANNEL_ID = (process.env.LIVE_STOCK_CHANNEL_ID || "1481253146209681478").trim();
+const LIVE_STOCK_MARKER = "SwiftRBX • المخزون المباشر";
+const LIVE_STOCK_REFRESH_MS = 30_000;
 const SITE_URL = (process.env.SITE_URL || "https://www.swiftrbx.site").trim().replace(/\/+$/, "");
 const SUPPORT_ROLE_ID = (process.env.SUPPORT_ROLE_ID || "").trim();
 const SALER_ROLE_ID = (process.env.SALER_ROLE_ID || process.env.SALES_ROLE_ID || "").trim();
@@ -716,6 +719,210 @@ async function ensurePanel(client) {
   }
 }
 
+const LIVE_STOCK_DELIVERIES = [
+  { key: "gift", label: "بائعين روبكس In-Game Gifting" },
+  { key: "gamepass", label: "بائعين روبكس Gamepass" },
+  { key: "group", label: "بائعين روبكس Group Payouts" },
+  { key: "plus", label: "بائعين روبكس Plus Transfer" },
+];
+
+const LIVE_STOCK_CATEGORIES = [
+  { key: "account", label: "بائع حسابات Roblox Accounts", path: "/market/accounts" },
+  { key: "limited", label: "بائع أغراض ليمتد Limited", path: "/market/limiteds" },
+  { key: "map_item", label: "بائع أغراض مابات", path: "/market/map-items" },
+];
+
+let liveStockMessageId = "";
+let liveStockRefreshing = false;
+
+async function getActiveCatalogSellerNames() {
+  const items = await supabaseRequest(
+    "marketplace_catalog_items?select=seller_id,category&active=eq.true&limit=10000"
+  );
+  const sellerIds = [...new Set((Array.isArray(items) ? items : []).map((item) => item.seller_id))]
+    .filter((id) => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+  const sellers = [];
+
+  for (let index = 0; index < sellerIds.length; index += 100) {
+    const batch = sellerIds.slice(index, index + 100);
+    const profiles = await supabaseRequest(
+      `profiles?select=id,username,display_name&active=eq.true&id=in.(${batch.join(",")})`
+    );
+    if (Array.isArray(profiles)) sellers.push(...profiles);
+  }
+
+  const sellerNames = new Map(
+    sellers.map((seller) => [seller.id, (seller.display_name || seller.username || "بائع").trim()])
+  );
+  const byCategory = new Map(LIVE_STOCK_CATEGORIES.map(({ key }) => [key, new Set()]));
+
+  for (const item of Array.isArray(items) ? items : []) {
+    const categorySellers = byCategory.get(item.category);
+    const sellerName = sellerNames.get(item.seller_id);
+    if (categorySellers && sellerName) categorySellers.add(sellerName);
+  }
+
+  return byCategory;
+}
+
+async function addRobuxSellerDisplayNames(offers) {
+  const sellerIds = [...new Set((Array.isArray(offers) ? offers : []).map((offer) => offer.seller_id))]
+    .filter((id) => typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+  const profiles = [];
+
+  for (let index = 0; index < sellerIds.length; index += 100) {
+    const batch = sellerIds.slice(index, index + 100);
+    const rows = await supabaseRequest(
+      `profiles?select=id,username,display_name&active=eq.true&id=in.(${batch.join(",")})`
+    );
+    if (Array.isArray(rows)) profiles.push(...rows);
+  }
+
+  const displayNames = new Map(
+    profiles.map((profile) => [profile.id, (profile.display_name || profile.username || "بائع").trim()])
+  );
+  return (Array.isArray(offers) ? offers : []).map((offer) => ({
+    ...offer,
+    username: displayNames.get(offer.seller_id) || offer.username || "بائع",
+  }));
+}
+
+function escapeStockName(value) {
+  return String(value).replace(/[\\*_~|]/g, "\\$&").slice(0, 80);
+}
+
+function stockFieldValue(lines) {
+  if (!lines.length) return "لا يوجد بائعون متاحون حاليًا.";
+
+  const visible = [];
+  let length = 0;
+  for (const line of lines) {
+    if (length + line.length + (visible.length ? 1 : 0) > 750) break;
+    visible.push(line);
+    length += line.length + (visible.length > 1 ? 1 : 0);
+  }
+
+  const remaining = lines.length - visible.length;
+  if (remaining > 0) visible.push(`و${remaining} بائعين آخرين`);
+  return visible.join("\n");
+}
+
+function buildLiveStockEmbed(offers, catalogSellers) {
+  const embed = new EmbedBuilder()
+    .setColor(0x22c55e)
+    .setTitle("المخزون المباشر | SwiftRBX")
+    .setDescription(`الأسعار والكميات والحدود من عروض المتجر المنشورة. تتم المزامنة تلقائيًا كل ${LIVE_STOCK_REFRESH_MS / 1000} ثانية.`)
+    .setFooter({ text: LIVE_STOCK_MARKER })
+    .setTimestamp();
+
+  for (const delivery of LIVE_STOCK_DELIVERIES) {
+    const lines = (Array.isArray(offers) ? offers : [])
+      .filter((offer) => Array.isArray(offer.delivery) && offer.delivery.includes(delivery.key))
+      .map((offer) => {
+        const available = Number(offer.available);
+        const minimum = Number(offer.min_amount);
+        const listedMaximum = Number(offer.max_amount);
+        const rate = Number(offer.rate);
+        const maximum = Math.min(listedMaximum, available);
+        return { offer, available, minimum, maximum, rate };
+      })
+      .filter(({ available, minimum, maximum, rate }) =>
+        Number.isFinite(available) && available > 0 &&
+        Number.isFinite(minimum) && minimum > 0 &&
+        Number.isFinite(maximum) && maximum >= minimum &&
+        Number.isFinite(rate) && rate > 0
+      )
+      .sort((left, right) =>
+        left.rate - right.rate || String(left.offer.username || "").localeCompare(String(right.offer.username || ""))
+      )
+      .map(({ offer, available, minimum, maximum, rate }) => {
+        const formattedRate = rate.toLocaleString("en-US", { maximumFractionDigits: 2 });
+        const formattedMinimum = Math.floor(minimum).toLocaleString("en-US");
+        const formattedMaximum = Math.floor(maximum).toLocaleString("en-US");
+        const formattedAvailable = Math.floor(available).toLocaleString("en-US");
+        return `**${escapeStockName(offer.username || "بائع")}** — (1k / ${formattedRate} ريال) — الحد ${formattedMinimum}–${formattedMaximum} — المتاح ${formattedAvailable}`;
+      });
+
+    embed.addFields({ name: delivery.label, value: stockFieldValue(lines) });
+  }
+
+  for (const category of LIVE_STOCK_CATEGORIES) {
+    const sellers = [...(catalogSellers.get(category.key) || [])].sort((left, right) => left.localeCompare(right, "ar"));
+    const value = sellers.length
+      ? stockFieldValue(sellers.map((seller) => `• ${escapeStockName(seller)}`))
+      : "لا يوجد بائعون لديهم منشورات نشطة حاليًا.";
+    embed.addFields({
+      name: `[${category.label}](${SITE_URL}${category.path})`,
+      value,
+    });
+  }
+
+  return embed;
+}
+
+function liveStockEmbedsMatch(current, next) {
+  const comparable = (embed) => {
+    const json = embed.toJSON();
+    return JSON.stringify({
+      title: json.title,
+      description: json.description,
+      color: json.color,
+      fields: json.fields,
+      footer: json.footer,
+    });
+  };
+  return current && comparable(current) === comparable(next);
+}
+
+async function refreshLiveStock(client) {
+  if (liveStockRefreshing) return;
+  liveStockRefreshing = true;
+
+  try {
+    const [activeOffers, catalogSellers] = await Promise.all([
+      getActiveOffers(),
+      getActiveCatalogSellerNames(),
+    ]);
+    const offers = await addRobuxSellerDisplayNames(activeOffers);
+    const channel = await client.channels.fetch(LIVE_STOCK_CHANNEL_ID);
+    if (!channel || !channel.isTextBased() || !channel.messages) {
+      throw new Error("قناة المخزون المباشر غير صالحة أو لا تدعم الرسائل.");
+    }
+
+    let message = null;
+    if (liveStockMessageId) {
+      try {
+        message = await channel.messages.fetch(liveStockMessageId);
+      } catch (error) {
+        if (error.code !== 10008 && error.status !== 404) throw error;
+        liveStockMessageId = "";
+      }
+    }
+
+    if (!message) {
+      const recent = await channel.messages.fetch({ limit: 100 });
+      message = recent.find(
+        (candidate) => candidate.author.id === client.user.id && candidate.embeds[0]?.footer?.text === LIVE_STOCK_MARKER
+      ) || null;
+    }
+
+    const embed = buildLiveStockEmbed(offers, catalogSellers);
+    if (!message) {
+      message = await channel.send({ embeds: [embed] });
+      console.log("تم نشر رسالة المخزون المباشر في Discord.");
+    } else if (!liveStockEmbedsMatch(message.embeds[0], embed)) {
+      await message.edit({ embeds: [embed] });
+      console.log("تم تحديث رسالة المخزون المباشر في Discord.");
+    }
+
+    liveStockMessageId = message.id;
+  } catch (error) {
+    console.error("تعذّر تحديث المخزون المباشر:", error.message);
+  } finally {
+    liveStockRefreshing = false;
+  }
+}
+
 // ----------------------------------------------------------------------
 // Discord
 // ----------------------------------------------------------------------
@@ -725,6 +932,8 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`✅ تم تسجيل الدخول باسم: ${c.user.tag}`);
   await restoreTickets(c);
   await ensurePanel(c);
+  await refreshLiveStock(c);
+  setInterval(() => refreshLiveStock(c), LIVE_STOCK_REFRESH_MS);
 });
 
 
