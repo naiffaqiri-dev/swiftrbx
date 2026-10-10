@@ -1,7 +1,7 @@
 {
   "name": "swiftrbx-system-bot",
   "version": "1.0.0",
-  "description": "البوت الأساسي لمتجر SwiftRBX - لوحة التذاكر وربط الحسابات",
+  "description": "SwiftRBX Discord store ticket bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
