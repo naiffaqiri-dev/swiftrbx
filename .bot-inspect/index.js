@@ -125,9 +125,10 @@ const T = {
     pickDelivery: "اختر نوع التسليم:",
     deliveryPlaceholder: "نوع التسليم",
     modalTitle: "تفاصيل طلب الروبكس",
-    usernameLabel: "يوزرنيم روبلوكس",
-    quantityLabel: "الكمية المطلوبة (رقم)",
-    invalidQuantity: "❌ الكمية لازم تكون رقم صحيح أكبر من صفر.",
+  usernameLabel: "يوزرنيم روبلوكس (3-20 إنجليزي/رقم/_)",
+  quantityLabel: "الكمية المطلوبة (1000 أو ١٠٠٠)",
+  invalidUsername: "❌ اكتب يوزرنيم روبلوكس صحيحاً: من 3 إلى 20 حرفاً إنجليزياً أو رقماً أو _. لا تكتب اسم العرض.",
+  invalidQuantity: "❌ اكتب الكمية كرقم صحيح أكبر من صفر، مثل 1000 أو ١٠٠٠.",
     pickSeller: "اختر البائع:",
     sellerOption: (name, rate, qty) => `${name} — ${rate} ريال/1000 — متوفر: ${qty}`,
     ticketCreated: (channelMention) => `✅ تم فتح تذكرتك: ${channelMention}`,
@@ -171,9 +172,10 @@ const T = {
     pickDelivery: "Choose delivery type:",
     deliveryPlaceholder: "Delivery type",
     modalTitle: "Robux Order Details",
-    usernameLabel: "Roblox Username",
-    quantityLabel: "Quantity (number)",
-    invalidQuantity: "❌ Quantity must be a whole number greater than zero.",
+  usernameLabel: "Roblox username (3-20 letters, digits, or _)",
+  quantityLabel: "Quantity (1000 or ١٠٠٠)",
+  invalidUsername: "❌ Enter a valid Roblox username: 3-20 letters, digits, or _. Display names are not accepted.",
+  invalidQuantity: "❌ Enter a whole number greater than zero, such as 1000.",
     pickSeller: "Choose a seller:",
     sellerOption: (name, rate, qty) => `${name} — ${rate} SAR/1000 — available: ${qty}`,
     ticketCreated: (channelMention) => `✅ Your ticket is open: ${channelMention}`,
@@ -801,7 +803,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         .setLabel(T[lang].usernameLabel)
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
-        .setMaxLength(32);
+        .setMaxLength(20);
       const quantityInput = new TextInputBuilder()
         .setCustomId("quantity")
         .setLabel(T[lang].quantityLabel)
@@ -869,8 +871,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       const username = interaction.fields.getTextInputValue("username").trim();
-      const quantityRaw = interaction.fields.getTextInputValue("quantity").trim();
-      if (!isValidRobloxUsername(username) || !/^\d{1,10}$/.test(quantityRaw)) {
+      const quantityRaw = interaction.fields.getTextInputValue("quantity").trim()
+        .replace(/[٠-٩]/g, (digit) => String(digit.charCodeAt(0) - 0x0660))
+        .replace(/[۰-۹]/g, (digit) => String(digit.charCodeAt(0) - 0x06f0))
+        .replace(/[٬,]/g, "");
+      if (!isValidRobloxUsername(username)) {
+        await interaction.editReply(T[lang].invalidUsername);
+        return;
+      }
+      if (!/^\d{1,10}$/.test(quantityRaw)) {
         await interaction.editReply(T[lang].invalidQuantity);
         return;
       }
