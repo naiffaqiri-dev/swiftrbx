@@ -1,6 +1,7 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import useSWR from 'swr'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/components/auth/mock-auth'
 import { AuthRequiredDialog } from '@/components/auth/auth-required-dialog'
@@ -28,28 +29,55 @@ import {
 
 type PayMethod = 'balance' | 'bank_transfer'
 type AppliedCoupon = { code: string; discount: number; subtotal: number }
+type DiscordPayment = {
+  ticketId: string
+  sellerName: string
+  offerId: string
+  robloxUsername: string
+  amount: number
+  delivery: DeliveryType
+  totalSar: number
+  expiresAt: string
+  bank: Bank
+}
+
+async function fetchDiscordPayment(url: string) {
+  const response = await fetch(url, { cache: 'no-store' })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(body.error ?? 'تعذّر تحميل بيانات الدفع.')
+  return body as { payment: DiscordPayment }
+}
 
 export function Checkout() {
   const router = useRouter()
   const params = useSearchParams()
   const { t } = useLocale()
   const { user, ready, refresh } = useAuth()
+  const discordTicketPaymentToken = params.get('discordTicketPayment') ?? ''
+  const paymentKey = discordTicketPaymentToken && user
+    ? `/api/discord-ticket-payments?token=${encodeURIComponent(discordTicketPaymentToken)}`
+    : null
+  const { data: discordPaymentData, error: discordPaymentError, isLoading: loadingDiscordPayment } = useSWR(paymentKey, fetchDiscordPayment)
+  const discordPayment = discordPaymentData?.payment
+  const isDiscordTicketPayment = !!discordTicketPaymentToken
 
-  const amount = Number(params.get('amount') ?? 0)
-  const delivery = (params.get('delivery') ?? 'group') as DeliveryType
-  const offerId = params.get('offer') ?? ''
-  const sellerName = params.get('seller') ?? ''
-  const subtotal = Number(params.get('price') ?? 0)
+  const amount = discordPayment?.amount ?? Number(params.get('amount') ?? 0)
+  const delivery = (discordPayment?.delivery ?? params.get('delivery') ?? 'group') as DeliveryType
+  const offerId = discordPayment?.offerId ?? params.get('offer') ?? ''
+  const sellerName = discordPayment?.sellerName ?? params.get('seller') ?? ''
+  const subtotal = discordPayment?.totalSar ?? Number(params.get('price') ?? 0)
 
   const [robloxUsername, setRobloxUsername] = useState('')
-  const [method, setMethod] = useState<PayMethod>('balance')
+  const checkoutRobloxUsername = discordPayment?.robloxUsername ?? robloxUsername
+  const [method, setMethod] = useState<PayMethod>(() => params.get('discordTicketPayment') ? 'bank_transfer' : 'balance')
   const [useBalance, setUseBalance] = useState(true)
   const [couponInput, setCouponInput] = useState('')
   const [coupon, setCoupon] = useState<AppliedCoupon | null>(null)
   const [couponError, setCouponError] = useState('')
   const [validatingCoupon, setValidatingCoupon] = useState(false)
 
-  const [bank] = useState<Bank>(() => randomBank())
+  const [fallbackBank] = useState<Bank>(() => randomBank())
+  const bank = discordPayment?.bank ?? fallbackBank
   const [copied, setCopied] = useState<string | null>(null)
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -62,14 +90,17 @@ export function Checkout() {
   const balance = user?.balance ?? 0
 
   const totals = useMemo(() => {
+    if (discordPayment) {
+      return { discount: 0, afterCoupon: discordPayment.totalSar, balanceUsed: 0, toPay: discordPayment.totalSar }
+    }
     const discount = coupon?.subtotal === subtotal ? coupon.discount : 0
     const afterCoupon = Math.max(0, +(subtotal - discount).toFixed(2))
     const balanceUsed = useBalance ? Math.min(balance, afterCoupon) : 0
     const toPay = +(afterCoupon - balanceUsed).toFixed(2)
     return { discount, afterCoupon, balanceUsed, toPay }
-  }, [subtotal, coupon, useBalance, balance])
+  }, [discordPayment, subtotal, coupon, useBalance, balance])
 
-  const needsBank = totals.toPay > 0
+  const needsBank = isDiscordTicketPayment || totals.toPay > 0
 
   async function checkCoupon() {
     setCouponError('')
@@ -119,12 +150,16 @@ export function Checkout() {
   }
 
   async function submit() {
-    if (!offerId || !amount) return
-    if (!robloxUsername.trim()) {
+    if (!isDiscordTicketPayment && (!offerId || !amount)) return
+    if (!checkoutRobloxUsername.trim()) {
       setError('اسم المستخدم في روبلوكس مطلوب قبل المتابعة.')
       return
     }
-    if (needsBank && (method !== 'bank_transfer')) {
+    if (isDiscordTicketPayment && !discordPayment) {
+      setError('تعذّر التحقق من رابط الدفع.')
+      return
+    }
+    if (!isDiscordTicketPayment && needsBank && method !== 'bank_transfer') {
       setError('اختر التحويل البنكي لإكمال المبلغ المتبقي.')
       return
     }
@@ -135,26 +170,30 @@ export function Checkout() {
     setSubmitting(true)
     setError('')
     try {
-      const res = await fetch('/api/orders', {
+      const endpoint = isDiscordTicketPayment ? '/api/discord-ticket-payments' : '/api/orders'
+      const payload = isDiscordTicketPayment
+        ? { token: discordTicketPaymentToken, receiptUrl, senderName: senderName.trim() }
+        : {
+            offerId,
+            amount,
+            delivery,
+            robloxUsername: checkoutRobloxUsername.trim(),
+            useBalance,
+            couponCode: coupon?.subtotal === subtotal ? coupon.code : null,
+            paymentMethod: needsBank ? 'bank_transfer' : 'balance',
+            bankKey: needsBank ? bank.key : null,
+            receiptUrl: needsBank ? receiptUrl : null,
+            senderName: needsBank ? senderName.trim() : null,
+          }
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          offerId,
-          amount,
-          delivery,
-          robloxUsername: robloxUsername.trim(),
-          useBalance,
-          couponCode: coupon?.subtotal === subtotal ? coupon.code : null,
-          paymentMethod: needsBank ? 'bank_transfer' : 'balance',
-          bankKey: needsBank ? bank.key : null,
-          receiptUrl: needsBank ? receiptUrl : null,
-          senderName: needsBank ? senderName.trim() : null,
-        }),
+        body: JSON.stringify(payload),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'تعذّر إنشاء الطلب')
       await refresh?.()
-      setResult({ orderId: json.orderId, ticketId: json.ticketId, status: json.status })
+      setResult({ orderId: json.orderId, ticketId: json.ticketId ?? null, status: json.status })
     } catch (e) {
       setError(e instanceof Error ? e.message : 'حدث خطأ')
     } finally {
@@ -162,7 +201,7 @@ export function Checkout() {
     }
   }
 
-  if (!amount || !offerId) {
+  if (!isDiscordTicketPayment && (!amount || !offerId)) {
     return (
       <div className="rounded-2xl border border-border/60 bg-card/40 p-10 text-center">
         <p className="text-muted-foreground">لا يوجد طلب. ابدأ من صفحة الشراء.</p>
@@ -192,6 +231,18 @@ export function Checkout() {
     )
   }
 
+  if (isDiscordTicketPayment && !loadingDiscordPayment && discordPaymentError) {
+    return <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-6 text-center text-destructive">{discordPaymentError.message}</p>
+  }
+
+  if (isDiscordTicketPayment && loadingDiscordPayment) {
+    return <p role="status" className="text-center text-muted-foreground">جارٍ تحميل بيانات التحويل…</p>
+  }
+
+  if (isDiscordTicketPayment && !discordPayment) {
+    return <p role="alert" className="rounded-xl border border-destructive/40 bg-destructive/5 p-6 text-center text-destructive">رابط الدفع غير صالح أو منتهي.</p>
+  }
+
   if (result) {
     const paid = result.status === 'processing'
     return (
@@ -205,7 +256,9 @@ export function Checkout() {
         <p className="mt-2 text-muted-foreground">
           {paid
             ? 'تم الدفع من رصيدك وبدأ تنفيذ الطلب.'
-            : 'استلمنا إيصالك، وستراجعه الإدارة وتؤكد المبلغ قريباً. تتبّع الحالة من تذكرة الطلب.'}
+            : isDiscordTicketPayment
+              ? 'استلمنا إيصال التحويل وأرسلناه إلى الإدارة للمراجعة. تم استخدام رابط الدفع ولا يمكن إعادة استخدامه.'
+              : 'استلمنا إيصالك، وستراجعه الإدارة وتؤكد المبلغ قريباً. تتبّع الحالة من تذكرة الطلب.'}
         </p>
         <p className="mt-2 text-xs text-muted-foreground">رقم الطلب: {result.orderId.slice(0, 8)}</p>
         <div className="mt-6 flex flex-col gap-2">
@@ -233,9 +286,10 @@ export function Checkout() {
             </Label>
             <Input
               id="roblox"
-              value={robloxUsername}
+              value={checkoutRobloxUsername}
               onChange={(e) => setRobloxUsername(e.target.value)}
               placeholder="Roblox Username"
+              readOnly={isDiscordTicketPayment}
               required
             />
             <p className="text-xs text-muted-foreground">
@@ -247,36 +301,45 @@ export function Checkout() {
         {/* طريقة الدفع */}
         <div className="rounded-2xl border border-border/60 bg-card/40 p-6">
           <h2 className="mb-4 text-lg font-bold">طريقة الدفع</h2>
-          <label className="flex cursor-pointer items-center justify-between rounded-xl border border-border/60 p-4">
-            <div className="flex items-center gap-3">
-              <Wallet className="h-5 w-5 text-primary" />
-              <div>
-                <div className="text-sm font-medium">الدفع من الرصيد الداخلي</div>
-                <div className="text-xs text-muted-foreground">رصيدك: {formatSar(balance)}</div>
+          {isDiscordTicketPayment && discordPayment && (
+            <p className="mb-4 rounded-lg border border-border/60 bg-background/40 p-3 text-sm text-muted-foreground">
+              رابط الدفع صالح حتى {new Intl.DateTimeFormat('ar-SA', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(discordPayment.expiresAt))}. التحويل البنكي وإرسال الإيصال متاحان مرة واحدة فقط.
+            </p>
+          )}
+          {!isDiscordTicketPayment && (
+            <label className="flex cursor-pointer items-center justify-between rounded-xl border border-border/60 p-4">
+              <div className="flex items-center gap-3">
+                <Wallet className="h-5 w-5 text-primary" />
+                <div>
+                  <div className="text-sm font-medium">الدفع من الرصيد الداخلي</div>
+                  <div className="text-xs text-muted-foreground">رصيدك: {formatSar(balance)}</div>
+                </div>
               </div>
-            </div>
-            <input
-              type="checkbox"
-              checked={useBalance}
-              onChange={(e) => setUseBalance(e.target.checked)}
-              className="h-5 w-5 accent-primary"
-            />
-          </label>
+              <input
+                type="checkbox"
+                checked={useBalance}
+                onChange={(e) => setUseBalance(e.target.checked)}
+                className="h-5 w-5 accent-primary"
+              />
+            </label>
+          )}
 
           {needsBank && (
             <div className="mt-4 space-y-4">
-              <button
-                onClick={() => setMethod('bank_transfer')}
-                className={`flex w-full items-center gap-3 rounded-xl border p-4 text-right transition-colors ${
-                  method === 'bank_transfer' ? 'border-primary bg-primary/10' : 'border-border/60'
-                }`}
-              >
-                <Landmark className="h-5 w-5 text-primary" />
-                <div>
-                  <div className="text-sm font-medium">تحويل بنكي</div>
-                  <div className="text-xs text-muted-foreground">أكمل المتبقي {formatSar(totals.toPay)}</div>
-                </div>
-              </button>
+              {!isDiscordTicketPayment && (
+                <button
+                  onClick={() => setMethod('bank_transfer')}
+                  className={`flex w-full items-center gap-3 rounded-xl border p-4 text-right transition-colors ${
+                    method === 'bank_transfer' ? 'border-primary bg-primary/10' : 'border-border/60'
+                  }`}
+                >
+                  <Landmark className="h-5 w-5 text-primary" />
+                  <div>
+                    <div className="text-sm font-medium">تحويل بنكي</div>
+                    <div className="text-xs text-muted-foreground">أكمل المتبقي {formatSar(totals.toPay)}</div>
+                  </div>
+                </button>
+              )}
 
               {method === 'bank_transfer' && (
                 <div className="space-y-4 rounded-xl border border-border/60 bg-background/40 p-4">
@@ -336,7 +399,7 @@ export function Checkout() {
         </div>
 
         {/* كوبون / إحالة موحّد */}
-        <div className="rounded-2xl border border-border/60 bg-card/40 p-6">
+        {!isDiscordTicketPayment && <div className="rounded-2xl border border-border/60 bg-card/40 p-6">
           <h2 className="mb-4 flex items-center gap-2 text-lg font-bold">
             <Tag className="h-4 w-4 text-primary" />
             كود الخصم أو الإحالة
@@ -354,7 +417,7 @@ export function Checkout() {
               تم تطبيق {coupon.code} — خصم {formatSar(coupon.discount)}
             </p>
           )}
-        </div>
+        </div>}
       </div>
 
       {/* الملخص */}
@@ -416,12 +479,16 @@ export function Checkout() {
             <Loader2 className="h-4 w-4 animate-spin" />
           ) : totals.toPay === 0 ? (
             'إتمام الطلب بالرصيد'
+          ) : isDiscordTicketPayment ? (
+            `إرسال إيصال التحويل (${formatSar(totals.toPay)})`
           ) : (
             `تأكيد الطلب (${formatSar(totals.toPay)})`
           )}
         </Button>
         <p className="text-center text-xs text-muted-foreground">
-          تُفتح تذكرة تلقائياً لمتابعة التسليم مع الدعم والبائع.
+          {isDiscordTicketPayment
+            ? 'بعد إرسال الإيصال سيصل تأكيد التحويل إلى الإدارة وتبقى التذكرة مفتوحة لمتابعة التسليم.'
+            : 'تُفتح تذكرة تلقائياً لمتابعة التسليم مع الدعم والبائع.'}
         </p>
       </aside>
     </div>

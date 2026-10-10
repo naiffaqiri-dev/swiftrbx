@@ -49,7 +49,11 @@ const SITE_URL = (process.env.SITE_URL || "https://www.swiftrbx.site").trim().re
 const SUPPORT_ROLE_ID = (process.env.SUPPORT_ROLE_ID || "").trim();
 const SALER_ROLE_ID = (process.env.SALER_ROLE_ID || process.env.SALES_ROLE_ID || "").trim();
 const TICKETS_CATEGORY_ID = (process.env.TICKETS_CATEGORY_ID || "").trim();
+const TRANSCRIPTS_CHANNEL_ID = "1426198826724888577";
+const TRANSFER_CONFIRMATIONS_CHANNEL_ID = "1558441717743751169";
 const TICKET_TIMEOUT_MS = 30 * 60 * 1000;
+const PAYMENT_TIMEOUT_MS = 60 * 60 * 1000;
+const PAYMENT_RECEIPT_POLL_MS = 15_000;
 const PENDING_ORDER_TIMEOUT_MS = 15 * 60 * 1000;
 
 if (!DISCORD_TOKEN) {
@@ -145,21 +149,35 @@ const T = {
     noSellers: (quantity, delivery) => `😔 لا يوجد بائع آخر متاح لكمية **${quantity}** بطريقة **${DELIVERY_LABELS[delivery].ar}** حالياً.`,
     ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المطابقين.`,
     onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل الطلب أو إلغاؤه متاح لصاحب الطلب فقط.",
-    onlySellerCanConfirm: "⚠️ تأكيد بيانات البائع متاح للبائع المختار فقط.",
+    onlySellerCanConfirm: "⚠️ تأكيد بيانات الطلب والبائع متاح لصاحب الطلب فقط.",
     alreadyConfirmed: "تم تأكيد الطلب بالكامل ولا يمكن تعديله.",
     cancelled: "❌ ألغى المشتري الطلب. سيتم إغلاق التذكرة.",
     pickNewSeller: "اختر البائع الجديد:",
     noSellersForChange: "😔 لا يوجد بائع آخر متاح لنفس الكمية وطريقة التسليم.",
-    sellerChanged: "✅ تم تغيير البائع. على المشتري والبائع الجديد تأكيد التفاصيل.",
+    sellerChanged: "✅ تم تغيير البائع. على المشتري تأكيد تفاصيل الطلب وبيانات البائع من جديد.",
     expired: "⏰ انتهت مهلة التأكيد (30 دقيقة)، وتم إغلاق التذكرة.",
     orderEmbedTitle: "📦 تفاصيل الطلب",
     sellerEmbedTitle: "🧑‍💼 بيانات البائع",
     confirmButton: "تأكيد",
+    paymentRetryButton: "إعادة تجهيز رابط الدفع",
     cancelButton: "❌ إلغاء",
     changeSellerButton: "🔄 تغيير البائع",
     confirmed: "✅ تم التأكيد",
     pleaseConfirm: "⚠️ يرجى تأكيد البيانات أعلاه قبل إرسال رسائل بالتذكرة.",
-    bothConfirmedNext: "✅ أكد الطرفان التفاصيل. تواصل مع فريق الدعم لاستكمال الدفع والتسليم.",
+    bothConfirmedNext: "✅ تم تأكيد بيانات الطلب والبائع بواسطة المشتري. استخدم رابط الدفع أدناه خلال ساعة؛ بعدها تُلغى التذكرة تلقائيًا.",
+    paymentLinkTitle: "💳 تأكيد الطلب ورابط الدفع",
+    paymentLinkDescription: (amount) => `تم اعتماد بيانات الطلب. حوّل **${amount} ريال** عبر الموقع وأرسل الإيصال خلال ساعة. الرابط مخصص للمشتري ويُستخدم مرة واحدة.`,
+    paymentExpired: "⏰ انتهت مهلة الدفع (ساعة)، وأُلغيت التذكرة.",
+    paymentSubmitted: "✅ وصل إيصال التحويل إلى الإدارة للمراجعة. ستبقى التذكرة مفتوحة حتى متابعة التسليم.",
+    paymentReceiptTitle: "🧾 إيصال تحويل طلب Discord",
+    paymentReceiptDm: "✅ استلمنا إيصال التحويل وأرسلناه إلى الإدارة للمراجعة.",
+    paymentReviewButton: "مراجعة الطلب",
+    receiptButton: "عرض الإيصال",
+    ticketCreatedTranscript: "بدأ سجل التذكرة.",
+    ticketClosedTranscript: "أُغلقت التذكرة.",
+    ticketDeletedTranscript: "حُذفت قناة التذكرة.",
+    dmConfirmedTitle: "✅ تم تأكيد التذكرة",
+    dmConfirmedBody: (id, url) => `تم تأكيد الطلب والبائع بواسطة المشتري. رقم التذكرة: **${id}**\n[فتح التذكرة](${url})`,
     dmOpenedTitle: "🎫 تم فتح تذكرة جديدة",
     dmOpenedBody: (id) => `رقم التذكرة: **${id}**\nاضغط الزر بالأسفل للانتقال للتذكرة.`,
     viewTicket: "عرض التذكرة",
@@ -172,7 +190,7 @@ const T = {
     ticketOwner: "صاحب التذكرة",
     closeTicket: "إغلاق التذكرة",
     ticketClosed: "تم إغلاق التذكرة مع الاحتفاظ بسجل المحادثة.",
-    onlyTicketStaff: "يمكن لصاحب التذكرة أو فريق الدعم إغلاق��ا.",
+    onlyTicketStaff: "يمكن لصاحب التذكرة أو فريق الدعم إغلاقها.",
     ticketAlreadyOpen: "لديك تذكرة مفتوحة من هذا النوع بالفعل.",
   },
   en: {
@@ -195,21 +213,35 @@ const T = {
     noSellers: (quantity, delivery) => `😔 No other seller is currently available for **${quantity}** via **${DELIVERY_LABELS[delivery].en}**.`,
     ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ Your website offer is active: **${name}** — price **${rate} SAR/1,000**, stock **${stock}**, limits **${minimum}–${maximum}**. It is not listed as a seller because this Discord account owns the offer; you cannot buy from yourself. Other buyers will see it when their quantity and delivery type match.`,
     onlyBuyerCanConfirm: "⚠️ Only the buyer can confirm order details or cancel the order.",
-    onlySellerCanConfirm: "⚠️ Only the selected seller can confirm seller details.",
-    alreadyConfirmed: "Both parties have confirmed this order; it can no longer be changed.",
+    onlySellerCanConfirm: "⚠️ Only the buyer can confirm the order and seller details.",
+    alreadyConfirmed: "The order is fully confirmed and can no longer be changed.",
     cancelled: "❌ The buyer cancelled the order. This ticket will close.",
     pickNewSeller: "Choose a new seller:",
     noSellersForChange: "😔 No other seller is available for the same quantity and delivery type.",
-    sellerChanged: "✅ Seller changed. The buyer and new seller must confirm the details.",
+    sellerChanged: "✅ Seller changed. The buyer must confirm the order and seller details again.",
     expired: "⏰ The 30-minute confirmation window expired. This ticket has been closed.",
     orderEmbedTitle: "📦 Order Details",
     sellerEmbedTitle: "🧑‍💼 Seller Info",
     confirmButton: "Confirm",
+    paymentRetryButton: "Retry payment link",
     cancelButton: "❌ Cancel",
     changeSellerButton: "🔄 Change Seller",
     confirmed: "✅ Confirmed",
     pleaseConfirm: "⚠️ Please confirm the info above before sending messages in this ticket.",
-    bothConfirmedNext: "✅ Both parties confirmed the details. Contact support to continue with payment and delivery.",
+    bothConfirmedNext: "✅ The buyer confirmed the order and seller details. Use the payment link below within one hour; the ticket will be cancelled after that.",
+    paymentLinkTitle: "💳 Confirmed order and payment link",
+    paymentLinkDescription: (amount) => `The order details are confirmed. Transfer **${amount} SAR** on the website and submit the receipt within one hour. This buyer-only link can be used once.`,
+    paymentExpired: "⏰ The one-hour payment window expired and the ticket was cancelled.",
+    paymentSubmitted: "✅ The transfer receipt reached the team for review. This ticket will remain open for delivery follow-up.",
+    paymentReceiptTitle: "🧾 Discord order transfer receipt",
+    paymentReceiptDm: "✅ Your transfer receipt was received and sent to the team for review.",
+    paymentReviewButton: "Review order",
+    receiptButton: "View receipt",
+    ticketCreatedTranscript: "Ticket transcript started.",
+    ticketClosedTranscript: "Ticket closed.",
+    ticketDeletedTranscript: "Ticket channel deleted.",
+    dmConfirmedTitle: "✅ Ticket confirmed",
+    dmConfirmedBody: (id, url) => `The buyer confirmed the order and seller details. Ticket: **${id}**\n[Open ticket](${url})`,
     dmOpenedTitle: "🎫 New ticket opened",
     dmOpenedBody: (id) => `Ticket ID: **${id}**\nClick the button below to jump to the ticket.`,
     viewTicket: "View Ticket",
@@ -232,6 +264,26 @@ function generateTicketId() {
 }
 
 const TICKET_TOPIC_MARKER = "swiftrbx-ticket-v1:";
+const CLOSED_TICKET_TOPIC_MARKER = "swiftrbx-closed-v2:";
+
+function encodeClosedTicketTopic(ticket) {
+  return [
+    CLOSED_TICKET_TOPIC_MARKER,
+    ticket.lang,
+    ticket.id,
+    ticket.buyerId,
+    ticket.sellerDiscordId || "",
+    ticket.transcriptThreadId || "",
+    ticket.guildId || "",
+  ].join(":");
+}
+
+function decodeClosedTicketTopic(topic, channelId) {
+  if (!topic?.startsWith(CLOSED_TICKET_TOPIC_MARKER)) return null;
+  const [, lang, id, buyerId, sellerDiscordId, transcriptThreadId, guildId] = topic.split(":");
+  if (!id || !buyerId || !["ar", "en"].includes(lang)) return null;
+  return { id, kind: "closed", lang, buyerId, sellerDiscordId: sellerDiscordId || null, transcriptThreadId: transcriptThreadId || null, guildId, channelId };
+}
 
 function encodeTicketTopic(ticket) {
   const persisted = {
@@ -255,6 +307,12 @@ function encodeTicketTopic(ticket) {
     maxAmount: ticket.maxAmount ?? null,
     orderConfirmed: !!ticket.orderConfirmed,
     sellerConfirmed: !!ticket.sellerConfirmed,
+    paymentToken: ticket.paymentToken || null,
+    paymentExpiresAt: ticket.paymentExpiresAt || null,
+    paymentStatus: ticket.paymentStatus || null,
+    paymentMessageId: ticket.paymentMessageId || null,
+    paymentConfirmDmsSent: !!ticket.paymentConfirmDmsSent,
+    transcriptThreadId: ticket.transcriptThreadId || null,
     createdAt: ticket.createdAt,
   };
   const topic = `${TICKET_TOPIC_MARKER}${Buffer.from(JSON.stringify(persisted)).toString("base64url")}`;
@@ -322,6 +380,65 @@ async function sendTicketOpenedDm(client, discordUserId, ticketId, channelId, gu
   }
 }
 
+async function getTranscriptThread(client, ticket) {
+  if (ticket.transcriptThreadId) {
+    const existing = await client.channels.fetch(ticket.transcriptThreadId).catch(() => null);
+    if (existing?.isThread?.()) return existing;
+  }
+
+  const archive = await client.channels.fetch(TRANSCRIPTS_CHANNEL_ID);
+  if (!archive?.isTextBased?.() || !archive.threads) throw new Error("قناة transcripts غير صالحة أو لا تدعم سلاسل المحادثات.");
+  const thread = await archive.threads.create({
+    name: `ticket-${ticket.id}`.slice(0, 100),
+    autoArchiveDuration: 1440,
+    reason: `Transcript for ticket ${ticket.id}`,
+  });
+  ticket.transcriptThreadId = thread.id;
+  const source = await client.channels.fetch(ticket.channelId).catch(() => null);
+  if (source && "setTopic" in source) await persistTicket(source, ticket);
+  return thread;
+}
+
+async function recordTicketLifecycle(client, ticket, key, description) {
+  try {
+    const thread = await getTranscriptThread(client, ticket);
+    const title = ticket.lang === "ar" ? `سجل التذكرة • ${ticket.id}` : `Ticket transcript • ${ticket.id}`;
+    const embed = new EmbedBuilder()
+      .setColor(key === "created" ? 0x22c55e : key === "deleted" ? 0xed4245 : 0x5865f2)
+      .setTitle(title)
+      .setDescription(description)
+      .addFields(
+        { name: ticket.lang === "ar" ? "المشتري" : "Buyer", value: `<@${ticket.buyerId}>`, inline: true },
+        ...(ticket.sellerDiscordId ? [{ name: ticket.lang === "ar" ? "البائع" : "Seller", value: `<@${ticket.sellerDiscordId}>`, inline: true }] : []),
+        { name: ticket.lang === "ar" ? "القناة" : "Channel", value: `<#${ticket.channelId}>`, inline: true }
+      )
+      .setTimestamp();
+    await thread.send({ embeds: [embed], allowedMentions: { parse: [] } });
+  } catch (error) {
+    console.error("تعذّر حفظ transcript للتذكرة:", ticket.id, error.message);
+  }
+}
+
+async function mirrorTicketMessage(message, ticket) {
+  if (message.author?.bot) return;
+  try {
+    const thread = await getTranscriptThread(message.client, ticket);
+    const parts = [message.content?.trim()].filter(Boolean);
+    for (const attachment of message.attachments.values()) parts.push(`[مرفق: ${attachment.url}]`);
+    for (const embed of message.embeds) {
+      const text = [embed.title, embed.description].filter(Boolean).join("\n");
+      if (text) parts.push(`[Embed]\n${text}`);
+    }
+    const body = parts.join("\n").slice(0, 6000) || "[رسالة بدون نص]";
+    await thread.send({
+      content: `**${message.author.tag}** • <t:${Math.floor(message.createdTimestamp / 1000)}:f>\n${body}`.slice(0, 2000),
+      allowedMentions: { parse: [] },
+    });
+  } catch (error) {
+    console.error("تعذّر نسخ رسالة إلى transcript:", message.id, error.message);
+  }
+}
+
 async function supabaseRequest(path, options = {}) {
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     cache: "no-store",
@@ -335,6 +452,196 @@ async function supabaseRequest(path, options = {}) {
   });
   if (!response.ok) throw new Error(`Supabase request failed with status ${response.status}`);
   return response.json();
+}
+
+function robuxTicketTotal(ticket) {
+  return +((Number(ticket.quantity) / 1000) * Number(ticket.rate)).toFixed(2);
+}
+
+async function sendTicketConfirmationDms(client, channel, ticket) {
+  if (ticket.paymentConfirmDmsSent) return;
+  ticket.paymentConfirmDmsSent = true;
+  await persistTicket(channel, ticket);
+  const url = `https://discord.com/channels/${ticket.guildId}/${ticket.channelId}`;
+  for (const discordId of [ticket.buyerId, ticket.sellerDiscordId].filter(Boolean)) {
+    try {
+      const user = await client.users.fetch(discordId);
+      const embed = new EmbedBuilder()
+        .setColor(0x22c55e)
+        .setTitle(T[ticket.lang].dmConfirmedTitle)
+        .setDescription(T[ticket.lang].dmConfirmedBody(ticket.id, url));
+      await user.send({ embeds: [embed] });
+    } catch (error) {
+      console.log(`تعذّر إرسال تأكيد التذكرة في الخاص لـ ${discordId}: ${error.message}`);
+    }
+  }
+}
+
+async function issueTicketPayment(client, channel, ticket) {
+  if (ticket.paymentStatus === "submitted") return;
+  if (!ticket.paymentToken) ticket.paymentToken = crypto.randomBytes(32).toString("base64url");
+  if (!ticket.paymentExpiresAt) ticket.paymentExpiresAt = Date.now() + PAYMENT_TIMEOUT_MS;
+  ticket.paymentStatus = "issued";
+  await persistTicket(channel, ticket);
+
+  const total = robuxTicketTotal(ticket);
+  const payload = {
+    ticket_id: ticket.id,
+    guild_id: ticket.guildId,
+    channel_id: ticket.channelId,
+    buyer_discord_id: ticket.buyerId,
+    seller_discord_id: ticket.sellerDiscordId,
+    buyer_id: ticket.buyerProfileId,
+    seller_id: ticket.sellerProfileId,
+    offer_id: ticket.offerId,
+    roblox_username: ticket.username,
+    robux_amount: Number(ticket.quantity),
+    delivery_method: ticket.deliveryType,
+    seller_name: ticket.sellerName,
+    unit_rate: Number(ticket.rate),
+    total_sar: total,
+    token_hash: crypto.createHash("sha256").update(ticket.paymentToken).digest("hex"),
+    expires_at: new Date(ticket.paymentExpiresAt).toISOString(),
+    status: "issued",
+  };
+  await supabaseRequest("discord_ticket_payments?on_conflict=ticket_id", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Prefer: "resolution=ignore-duplicates,return=representation" },
+    body: JSON.stringify(payload),
+  });
+
+  const paymentUrl = `${SITE_URL}/checkout?discordTicketPayment=${encodeURIComponent(ticket.paymentToken)}`;
+  let paymentMessage = ticket.paymentMessageId
+    ? await channel.messages.fetch(ticket.paymentMessageId).catch(() => null)
+    : null;
+  if (!paymentMessage) {
+    const recent = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+    paymentMessage = recent?.find((message) => message.embeds[0]?.footer?.text === `SwiftRBX • one-time payment • ${ticket.id}`) || null;
+  }
+
+  if (!paymentMessage) {
+    const embed = new EmbedBuilder()
+      .setColor(0x22c55e)
+      .setTitle(T[ticket.lang].paymentLinkTitle)
+      .setDescription(T[ticket.lang].paymentLinkDescription(total.toFixed(2)))
+      .addFields(
+        { name: ticket.lang === "ar" ? "رقم الطلب" : "Ticket", value: ticket.id, inline: true },
+        { name: ticket.lang === "ar" ? "حساب روبلوكس" : "Roblox username", value: ticket.username, inline: true },
+        { name: ticket.lang === "ar" ? "الكمية" : "Quantity", value: `${Number(ticket.quantity).toLocaleString("en-US")} R$`, inline: true },
+        { name: ticket.lang === "ar" ? "البائع" : "Seller", value: `<@${ticket.sellerDiscordId}> (${ticket.sellerName})`, inline: true },
+        { name: ticket.lang === "ar" ? "نوع التسليم" : "Delivery", value: DELIVERY_LABELS[ticket.deliveryType][ticket.lang], inline: true },
+        { name: ticket.lang === "ar" ? "الإجمالي" : "Total", value: `${total.toFixed(2)} ${ticket.lang === "ar" ? "ريال" : "SAR"}`, inline: true },
+        { name: ticket.lang === "ar" ? "المهلة" : "Payment deadline", value: `<t:${Math.floor(ticket.paymentExpiresAt / 1000)}:R>`, inline: true }
+      )
+      .setFooter({ text: `SwiftRBX • one-time payment • ${ticket.id}` });
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setLabel(ticket.lang === "ar" ? "الدفع في الموقع" : "Pay on website").setStyle(ButtonStyle.Link).setURL(paymentUrl)
+    );
+    paymentMessage = await channel.send({
+      content: `<@${ticket.buyerId}> <@${ticket.sellerDiscordId}>`,
+      embeds: [embed],
+      components: [row],
+      allowedMentions: { users: [ticket.buyerId, ticket.sellerDiscordId] },
+    });
+  }
+
+  ticket.paymentMessageId = paymentMessage.id;
+  await sendTicketConfirmationDms(client, channel, ticket);
+  await persistTicket(channel, ticket);
+  scheduleRobuxTicketTimeout(channel, ticket);
+}
+
+let syncingDiscordPaymentReceipts = false;
+
+async function syncSubmittedDiscordPayments(client) {
+  if (syncingDiscordPaymentReceipts) return;
+  syncingDiscordPaymentReceipts = true;
+  try {
+    const rows = await supabaseRequest(
+      "discord_ticket_payments?status=eq.submitted&discord_notified_at=is.null&select=id,ticket_id,guild_id,channel_id,buyer_discord_id,seller_discord_id,roblox_username,robux_amount,delivery_method,seller_name,total_sar,bank_name,bank_account,bank_iban,bank_holder,receipt_url,sender_name,order_id,discord_message_id&order=created_at.asc&limit=50"
+    );
+    for (const payment of rows) {
+      const archive = await client.channels.fetch(TRANSFER_CONFIRMATIONS_CHANNEL_ID).catch(() => null);
+      if (!archive?.isTextBased?.() || !archive.messages) {
+        console.error("قناة تأكيد التحويلات غير صالحة أو لا تدعم الرسائل.");
+        return;
+      }
+
+      let sentMessage = payment.discord_message_id
+        ? await archive.messages.fetch(payment.discord_message_id).catch(() => null)
+        : null;
+      const marker = `SwiftRBX • receipt • ${payment.id}`;
+      if (!sentMessage) {
+        const recent = await archive.messages.fetch({ limit: 100 }).catch(() => null);
+        sentMessage = recent?.find((message) => message.embeds[0]?.footer?.text === marker) || null;
+      }
+
+      if (!sentMessage) {
+        const embed = new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle(T.ar.paymentReceiptTitle)
+          .setDescription(`طلب Discord **${payment.ticket_id}** • رقم الطلب **${String(payment.order_id || "").slice(0, 8)}**`)
+          .addFields(
+            { name: "المشتري", value: `<@${payment.buyer_discord_id}>`, inline: true },
+            { name: "البائع", value: `<@${payment.seller_discord_id}> (${payment.seller_name})`, inline: true },
+            { name: "حساب روبلوكس", value: payment.roblox_username, inline: true },
+            { name: "الكمية", value: `${Number(payment.robux_amount).toLocaleString("en-US")} R$`, inline: true },
+            { name: "نوع التسليم", value: DELIVERY_LABELS[payment.delivery_method]?.ar || payment.delivery_method, inline: true },
+            { name: "قيمة الحوالة", value: `${Number(payment.total_sar).toFixed(2)} ريال`, inline: true },
+            { name: "البنك المحوّل له", value: payment.bank_name || payment.bank_key || "—", inline: true },
+            { name: "الحساب / IBAN", value: [payment.bank_account, payment.bank_iban].filter(Boolean).join("\n") || "—", inline: true },
+            { name: "اسم المحوّل", value: payment.sender_name || "—", inline: true }
+          )
+          .setFooter({ text: marker })
+          .setTimestamp();
+        const buttons = [];
+        if (payment.receipt_url) buttons.push(new ButtonBuilder().setLabel(T.ar.receiptButton).setStyle(ButtonStyle.Link).setURL(payment.receipt_url));
+        buttons.push(new ButtonBuilder().setLabel(T.ar.paymentReviewButton).setStyle(ButtonStyle.Link).setURL(`${SITE_URL}/dashboard`));
+        sentMessage = await archive.send({
+          content: `<@${payment.buyer_discord_id}> <@${payment.seller_discord_id}>`,
+          embeds: [embed],
+          components: [new ActionRowBuilder().addComponents(buttons)],
+          allowedMentions: { users: [payment.buyer_discord_id, payment.seller_discord_id] },
+        });
+      }
+
+      const ticket = activeTickets.get(payment.channel_id);
+      if (ticket?.id === payment.ticket_id && ticket.paymentStatus !== "submitted") {
+        ticket.paymentStatus = "submitted";
+        ticket.paymentToken = null;
+        if (ticket.timeout) clearTimeout(ticket.timeout);
+        ticket.timeout = null;
+        await persistTicket(await client.channels.fetch(payment.channel_id), ticket).catch(() => {});
+        if (ticket.paymentMessageId) {
+          const paymentMessage = await client.channels.fetch(payment.channel_id)
+            .then((channel) => channel.messages.fetch(ticket.paymentMessageId))
+            .catch(() => null);
+          if (paymentMessage) await paymentMessage.edit({ components: [] }).catch(() => {});
+        }
+        const ticketChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
+        if (ticketChannel?.isTextBased?.()) await ticketChannel.send(T[ticket.lang].paymentSubmitted).catch(() => {});
+        await recordTicketLifecycle(client, ticket, "payment", T[ticket.lang].paymentSubmitted);
+        for (const discordId of [ticket.buyerId, ticket.sellerDiscordId].filter(Boolean)) {
+          try {
+            const user = await client.users.fetch(discordId);
+            await user.send(T[ticket.lang].paymentReceiptDm);
+          } catch (error) {
+            console.log(`تعذّر إرسال تأكيد الإيصال في الخاص لـ ${discordId}: ${error.message}`);
+          }
+        }
+      }
+
+      await supabaseRequest(`discord_ticket_payments?id=eq.${encodeURIComponent(payment.id)}&discord_notified_at=is.null`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+        body: JSON.stringify({ discord_message_id: sentMessage.id, discord_notified_at: new Date().toISOString(), updated_at: new Date().toISOString() }),
+      });
+    }
+  } catch (error) {
+    console.error("تعذّر إرسال إيصال تحويل Discord:", error.message);
+  } finally {
+    syncingDiscordPaymentReceipts = false;
+  }
 }
 
 async function getProfileByDiscordId(discordId) {
@@ -466,12 +773,17 @@ async function refreshRobuxTicketMessages(channel, ticket) {
   if (ticket.orderMessageId) {
     const orderMessage = await channel.messages.fetch(ticket.orderMessageId).catch(() => null);
     if (orderMessage) {
-      const components = ticket.orderConfirmed ? [] : [
-        new ActionRowBuilder().addComponents(
+      let components = [];
+      if (ticket.orderConfirmed && ticket.sellerConfirmed && !ticket.paymentMessageId && ticket.paymentStatus !== "submitted") {
+        components = [new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`confirm:payment:${ticket.id}`).setLabel(T[ticket.lang].paymentRetryButton).setStyle(ButtonStyle.Primary)
+        )];
+      } else if (!ticket.orderConfirmed) {
+        components = [new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId(`confirm:order:${ticket.id}`).setLabel(T[ticket.lang].confirmButton).setStyle(ButtonStyle.Success),
           new ButtonBuilder().setCustomId(`cancel:order:${ticket.id}`).setLabel(T[ticket.lang].cancelButton).setStyle(ButtonStyle.Danger)
-        ),
-      ];
+        )];
+      }
       await orderMessage.edit({ embeds: [orderEmbed], components });
     }
   }
@@ -553,6 +865,7 @@ async function createRobuxTicket(interaction, data) {
     await channel.send(T[lang].pleaseConfirm);
     await persistTicket(channel, ticket);
     activeTickets.set(channel.id, ticket);
+    await recordTicketLifecycle(interaction.client, ticket, "created", T[lang].ticketCreatedTranscript);
     await refreshRobuxTicketMessages(channel, ticket);
     scheduleRobuxTicketTimeout(channel, ticket);
     await sendTicketOpenedDm(interaction.client, buyerId, ticketId, channel.id, guild.id, lang);
@@ -566,16 +879,51 @@ async function createRobuxTicket(interaction, data) {
 }
 
 async function expireRobuxTicket(channel, ticket) {
-  if (activeTickets.get(channel.id) !== ticket || (ticket.orderConfirmed && ticket.sellerConfirmed)) return;
-  await channel.send(T[ticket.lang].expired).catch(() => {});
+  if (activeTickets.get(channel.id) !== ticket) return;
+  if (ticket.orderConfirmed && ticket.sellerConfirmed) {
+    try {
+      const sessions = await supabaseRequest(`discord_ticket_payments?ticket_id=eq.${encodeURIComponent(ticket.id)}&select=id,status`);
+      const payment = sessions[0];
+      if (payment?.status === "submitted") {
+        ticket.paymentStatus = "submitted";
+        ticket.paymentToken = null;
+        await persistTicket(channel, ticket);
+        if (ticket.paymentMessageId) {
+          const message = await channel.messages.fetch(ticket.paymentMessageId).catch(() => null);
+          if (message) await message.edit({ components: [] }).catch(() => {});
+        }
+        return;
+      }
+      if (payment?.status === "issued") {
+        await supabaseRequest(`discord_ticket_payments?id=eq.${encodeURIComponent(payment.id)}&status=eq.issued`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+          body: JSON.stringify({ status: "expired", updated_at: new Date().toISOString() }),
+        });
+      }
+      ticket.paymentStatus = "expired";
+      ticket.paymentToken = null;
+      await persistTicket(channel, ticket);
+      await channel.send(T[ticket.lang].paymentExpired).catch(() => {});
+    } catch (error) {
+      console.error("تعذّر التحقق من حالة الدفع قبل إغلاق التذكرة:", ticket.id, error.message);
+      ticket.timeout = setTimeout(() => void expireRobuxTicket(channel, ticket), 60_000);
+      return;
+    }
+  } else {
+    await channel.send(T[ticket.lang].expired).catch(() => {});
+  }
   await closeTicketChannel(channel, ticket);
 }
 
 function scheduleRobuxTicketTimeout(channel, ticket) {
-  if (ticket.kind !== "robux" || (ticket.orderConfirmed && ticket.sellerConfirmed)) return;
+  if (ticket.kind !== "robux") return;
   if (ticket.timeout) clearTimeout(ticket.timeout);
-  const elapsed = Math.max(0, Date.now() - Number(ticket.createdAt || Date.now()));
-  const remaining = Math.max(0, TICKET_TIMEOUT_MS - elapsed);
+  const paymentStarted = ticket.orderConfirmed && ticket.sellerConfirmed;
+  const deadline = paymentStarted
+    ? Number(ticket.paymentExpiresAt || (Number(ticket.createdAt || Date.now()) + PAYMENT_TIMEOUT_MS))
+    : Number(ticket.createdAt || Date.now()) + TICKET_TIMEOUT_MS;
+  const remaining = Math.max(0, deadline - Date.now());
   if (!remaining) {
     void expireRobuxTicket(channel, ticket);
     return;
@@ -651,6 +999,7 @@ async function createServiceTicket(interaction, data) {
   };
   activeTickets.set(channel.id, ticket);
   await persistTicket(channel, ticket);
+  await recordTicketLifecycle(interaction.client, ticket, "created", T[lang].ticketCreatedTranscript);
 
   const embed = new EmbedBuilder()
     .setColor(0x2b2d31)
@@ -673,11 +1022,19 @@ async function createServiceTicket(interaction, data) {
 
 async function closeTicketChannel(channel, ticket) {
   if (ticket.timeout) clearTimeout(ticket.timeout);
+  if (ticket.kind === "robux" && ticket.paymentStatus === "issued") {
+    await supabaseRequest(`discord_ticket_payments?ticket_id=eq.${encodeURIComponent(ticket.id)}&status=eq.issued`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ status: "cancelled", updated_at: new Date().toISOString() }),
+    }).catch((error) => console.error("تعذّر إلغاء رابط الدفع عند إغلاق التذكرة:", error.message));
+  }
+  await recordTicketLifecycle(client, ticket, "closed", T[ticket.lang].ticketClosedTranscript);
   activeTickets.delete(channel.id);
   confirmationReminderAt.delete(channel.id);
   const closedName = `${ticket.lang === "ar" ? "مغلق" : "closed"}-${ticket.id}`.slice(0, 90);
   await channel.setName(closedName).catch(() => {});
-  await channel.setTopic(`swiftrbx-closed-v1:${ticket.id}`).catch(() => {});
+  await channel.setTopic(encodeClosedTicketTopic(ticket)).catch(() => {});
   for (const userId of [ticket.buyerId, ticket.sellerDiscordId].filter(Boolean)) {
     await channel.permissionOverwrites.edit(userId, { SendMessages: false, AddReactions: false }).catch(() => {});
   }
@@ -1024,11 +1381,11 @@ async function toggleNotificationRole(interaction, roleId) {
     ]);
 
     if (!roleDefinition || !role) {
-      await interaction.editReply("هذه الرتبة غير متاحة حاليًا.");
+      await interaction.editReply("هذه الرتبة غي�� متاحة حاليًا.");
       return;
     }
     if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles) || !role.editable) {
-      await interaction.editReply("تعذّر تعديل الرتبة. يحتاج البوت إلى صلاحية إدارة الرتب وأن تكون الرتبة أسفل أعلى رتبة له.");
+      await interaction.editReply("تعذّر تعديل الرتبة. يحتاج البوت إلى صلاحية إدارة الرتب وأن تكون الرتبة أسفل أعلى رت��ة له.");
       return;
     }
 
@@ -1054,7 +1411,7 @@ async function toggleNotificationRole(interaction, roleId) {
 // ----------------------------------------------------------------------
 // Discord
 // ----------------------------------------------------------------------
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages] });
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`✅ تم تسجيل الدخول باسم: ${c.user.tag}`);
@@ -1062,7 +1419,9 @@ client.once(Events.ClientReady, async (c) => {
   await ensurePanel(c);
   await ensureSelectRolesPanel(c);
   await refreshLiveStock(c);
+  await syncSubmittedDiscordPayments(c);
   setInterval(() => refreshLiveStock(c), LIVE_STOCK_REFRESH_MS);
+  setInterval(() => syncSubmittedDiscordPayments(c), PAYMENT_RECEIPT_POLL_MS);
 });
 
 
@@ -1416,16 +1775,30 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.reply({ content: "هذه التذكرة غير نشطة.", flags: MessageFlags.Ephemeral });
         return;
       }
-      if (ticket.orderConfirmed && ticket.sellerConfirmed) {
-        await interaction.reply({ content: T[ticket.lang].alreadyConfirmed, flags: MessageFlags.Ephemeral });
-        return;
-      }
-      if (part === "order" && interaction.user.id !== ticket.buyerId) {
+      if (interaction.user.id !== ticket.buyerId) {
         await interaction.reply({ content: T[ticket.lang].onlyBuyerCanConfirm, flags: MessageFlags.Ephemeral });
         return;
       }
-      if (part === "seller" && interaction.user.id !== ticket.sellerDiscordId) {
-        await interaction.reply({ content: T[ticket.lang].onlySellerCanConfirm, flags: MessageFlags.Ephemeral });
+
+      if (part === "payment") {
+        if (!ticket.orderConfirmed || !ticket.sellerConfirmed) {
+          await interaction.reply({ content: T[ticket.lang].pleaseConfirm, flags: MessageFlags.Ephemeral });
+          return;
+        }
+        await interaction.deferUpdate();
+        try {
+          await issueTicketPayment(interaction.client, interaction.channel, ticket);
+          await refreshRobuxTicketMessages(interaction.channel, ticket);
+        } catch (error) {
+          console.error("تعذّر تجهيز رابط الدفع:", ticket.id, error.message);
+          await interaction.followUp({ content: "تعذّر تجهيز رابط الدفع. أعد المحاولة من زر إعادة تجهيز رابط الدفع.", flags: MessageFlags.Ephemeral });
+          await refreshRobuxTicketMessages(interaction.channel, ticket);
+        }
+        return;
+      }
+
+      if (ticket.orderConfirmed && ticket.sellerConfirmed) {
+        await interaction.reply({ content: T[ticket.lang].alreadyConfirmed, flags: MessageFlags.Ephemeral });
         return;
       }
       if (part !== "order" && part !== "seller") return;
@@ -1456,14 +1829,20 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (part === "order") ticket.orderConfirmed = true;
       else ticket.sellerConfirmed = true;
       await persistTicket(interaction.channel, ticket);
-      await refreshRobuxTicketMessages(interaction.channel, ticket);
 
       if (ticket.orderConfirmed && ticket.sellerConfirmed) {
         if (ticket.timeout) clearTimeout(ticket.timeout);
         await interaction.channel.setName(`${ticket.lang === "ar" ? "مؤكد" : "confirmed"}-${ticket.id}`.slice(0, 90)).catch(() => {});
         await interaction.channel.send(T[ticket.lang].bothConfirmedNext);
-        await persistTicket(interaction.channel, ticket);
+        try {
+          await issueTicketPayment(interaction.client, interaction.channel, ticket);
+        } catch (error) {
+          console.error("تعذّر تجهيز رابط الدفع:", ticket.id, error.message);
+          await interaction.followUp({ content: "تعذّر تجهيز رابط الدفع. أعد المحاولة من زر إعادة تجهيز رابط الدفع.", flags: MessageFlags.Ephemeral });
+        }
       }
+      await refreshRobuxTicketMessages(interaction.channel, ticket);
+      await persistTicket(interaction.channel, ticket);
       return;
     }
 
@@ -1640,13 +2019,24 @@ client.on(Events.InteractionCreate, async (interaction) => {
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
   const ticket = activeTickets.get(message.channel.id);
-  if (!ticket || ticket.kind !== "robux" || (ticket.orderConfirmed && ticket.sellerConfirmed)) return;
+  if (!ticket) return;
+  await mirrorTicketMessage(message, ticket);
+  if (ticket.kind !== "robux" || (ticket.orderConfirmed && ticket.sellerConfirmed)) return;
   if (message.author.id !== ticket.buyerId && message.author.id !== ticket.sellerDiscordId) return;
 
   const lastReminder = confirmationReminderAt.get(message.channel.id) || 0;
   if (Date.now() - lastReminder < 15_000) return;
   confirmationReminderAt.set(message.channel.id, Date.now());
   await message.reply({ content: T[ticket.lang].pleaseConfirm, allowedMentions: { repliedUser: false } }).catch(() => {});
+});
+
+client.on(Events.ChannelDelete, (channel) => {
+  const ticket = activeTickets.get(channel.id) || decodeClosedTicketTopic(channel.topic, channel.id);
+  if (!ticket) return;
+  if (ticket.timeout) clearTimeout(ticket.timeout);
+  activeTickets.delete(channel.id);
+  confirmationReminderAt.delete(channel.id);
+  void recordTicketLifecycle(client, ticket, "deleted", T[ticket.lang].ticketDeletedTranscript);
 });
 
 process.on("unhandledRejection", (err) => console.error("unhandledRejection:", err));
