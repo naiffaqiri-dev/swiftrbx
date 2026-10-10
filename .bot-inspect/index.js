@@ -149,7 +149,7 @@ const T = {
     sellerUnlinked: "⚠️ البائع المختار لم يربط حساب ديسكورد. اختر بائعاً آخر.",
     noSellers: (quantity, delivery) => `😔 لا يوجد بائع آخر متاح لكمية **${quantity}** بطريقة **${DELIVERY_LABELS[delivery].ar}** حالياً.`,
     ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المطابقين.`,
-    onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل الطلب أو إلغاؤه متاح لصاحب الطلب فقط.",
+    onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل ��لطلب أو إلغاؤه متاح لصاحب الطلب فقط.",
     onlySellerCanConfirm: "⚠️ تأكيد بيانات الطلب والبائع متاح لصاحب الطلب فقط.",
     alreadyConfirmed: "تم تأكيد ��لطلب بالكامل ولا يمكن تعديله.",
     cancelled: "❌ ألغى المشتري الطلب. سيتم إغلاق التذكرة.",
@@ -268,28 +268,36 @@ function generateTicketId() {
 
 const TICKET_TOPIC_MARKER = "swiftrbx-ticket-v2:";
 const LEGACY_TICKET_TOPIC_MARKER = "swiftrbx-ticket-v1:";
-const CLOSED_TICKET_TOPIC_MARKER = "swiftrbx-closed-v3:";
+const CLOSED_TICKET_TOPIC_MARKER = "swiftrbx-closed-v4:";
+const PREVIOUS_CLOSED_TICKET_TOPIC_MARKER = "swiftrbx-closed-v3:";
 const LEGACY_CLOSED_TICKET_TOPIC_MARKER = "swiftrbx-closed-v2:";
+const CLOSED_TICKET_DELETE_DELAY_MS = 30 * 60 * 1000;
 
 function encodeClosedTicketTopic(ticket) {
   return [
-    CLOSED_TICKET_TOPIC_MARKER,
+    CLOSED_TICKET_TOPIC_MARKER.slice(0, -1),
     ticket.lang,
     ticket.id,
     ticket.buyerId,
     ticket.sellerDiscordId || "",
     ticket.guildId || "",
+    ticket.closedAt || "",
   ].join(":");
 }
 
 function decodeClosedTicketTopic(topic, channelId) {
-  if (!topic?.startsWith(CLOSED_TICKET_TOPIC_MARKER) && !topic?.startsWith(LEGACY_CLOSED_TICKET_TOPIC_MARKER)) return null;
-  const parts = topic.split(":");
-  const isLegacyTopic = topic.startsWith(LEGACY_CLOSED_TICKET_TOPIC_MARKER);
-  const [, lang, id, buyerId, sellerDiscordId, legacyThreadId, legacyGuildId] = parts;
+  const marker = [CLOSED_TICKET_TOPIC_MARKER, PREVIOUS_CLOSED_TICKET_TOPIC_MARKER, LEGACY_CLOSED_TICKET_TOPIC_MARKER]
+    .find((candidate) => topic?.startsWith(candidate));
+  if (!marker) return null;
+  const parts = topic.slice(marker.length).replace(/^:/, "").split(":");
+  const isLegacyTopic = marker === LEGACY_CLOSED_TICKET_TOPIC_MARKER;
+  const hasCloseTimestamp = marker === CLOSED_TICKET_TOPIC_MARKER;
+  const [lang, id, buyerId, sellerDiscordId] = parts;
   if (!id || !buyerId || !["ar", "en"].includes(lang)) return null;
-  const guildId = isLegacyTopic ? legacyGuildId : legacyThreadId;
-  return { id, kind: "closed", lang, buyerId, sellerDiscordId: sellerDiscordId || null, guildId: guildId || null, channelId };
+  const guildId = isLegacyTopic ? parts[5] : parts[4];
+  const closedAtValue = hasCloseTimestamp ? parts[5] : null;
+  const closedAt = closedAtValue && Number.isFinite(Number(closedAtValue)) ? Number(closedAtValue) : null;
+  return { id, kind: "closed", lang, buyerId, sellerDiscordId: sellerDiscordId || null, guildId: guildId || null, channelId, closedAt };
 }
 
 function encodeTicketTopic(ticket) {
@@ -353,8 +361,33 @@ const activeTickets = new Map();
 const pendingOrders = new Map();
 const openingTickets = new Set();
 const confirmationReminderAt = new Map();
+const closedTicketDeletionTimers = new Map();
 const MAX_ORDER_QUANTITY = 9_999_999_999;
 const MAX_OPEN_TICKETS_PER_USER = 3;
+
+function scheduleClosedTicketDeletion(client, channel, ticket) {
+  const closedAt = Number(ticket.closedAt);
+  if (!Number.isFinite(closedAt) || closedAt <= 0 || closedAt > Date.now() + 60_000) return;
+
+  const existingTimer = closedTicketDeletionTimers.get(channel.id);
+  if (existingTimer) clearTimeout(existingTimer);
+
+  const delay = Math.max(0, closedAt + CLOSED_TICKET_DELETE_DELAY_MS - Date.now());
+  const timer = setTimeout(async () => {
+    closedTicketDeletionTimers.delete(channel.id);
+    try {
+      const currentChannel = await client.channels.fetch(channel.id).catch(() => null);
+      if (!currentChannel) return;
+      const persistedTicket = decodeClosedTicketTopic(currentChannel.topic, currentChannel.id);
+      if (!persistedTicket || persistedTicket.id !== ticket.id || persistedTicket.closedAt !== closedAt) return;
+      await currentChannel.delete("Ticket closed for 30 minutes");
+    } catch (error) {
+      console.error("تعذّر حذف قناة التذكرة بعد 30 دقيقة:", ticket.id, error.message);
+    }
+  }, delay);
+
+  closedTicketDeletionTimers.set(channel.id, timer);
+}
 
 function isValidRobloxUsername(value) {
   return /^[A-Za-z0-9_]{3,20}$/.test(value);
@@ -520,7 +553,7 @@ async function recordTicketLifecycle(client, ticket, key, description, sourceCha
         const html = buildTicketTranscriptHtml(ticket, sourceChannel, messages);
         files.push(new AttachmentBuilder(Buffer.from(html, "utf8"), { name: `transcript-${ticket.id}.html` }));
       } catch (error) {
-        console.error("تعذّر إنشاء ملف transcript كامل للتذكرة:", ticket.id, error.message);
+        console.error("تعذّر إنشاء م��ف transcript كامل للتذكرة:", ticket.id, error.message);
         embed.addFields({ name: ticket.lang === "ar" ? "حالة السجل" : "Transcript status", value: ticket.lang === "ar" ? "تعذّر جلب كامل سجل الرسائل." : "The complete message history could not be fetched." });
       }
     }
@@ -1057,6 +1090,12 @@ async function restoreTickets(client) {
     if (!channels) continue;
     for (const channel of channels.values()) {
       if (!channel?.isTextBased?.() || !("topic" in channel)) continue;
+      const closedTicket = decodeClosedTicketTopic(channel.topic, channel.id);
+      if (closedTicket) {
+        closedTicket.guildId ||= guild.id;
+        scheduleClosedTicketDeletion(client, channel, closedTicket);
+        continue;
+      }
       const ticket = decodeTicketTopic(channel.topic);
       if (!ticket) continue;
       ticket.channelId = channel.id;
@@ -1142,6 +1181,10 @@ async function createServiceTicket(interaction, data) {
 
 async function closeTicketChannel(channel, ticket) {
   if (ticket.timeout) clearTimeout(ticket.timeout);
+  ticket.closedAt ||= Date.now();
+  await channel.setTopic(encodeClosedTicketTopic(ticket)).catch((error) => {
+    console.error("تعذّر حفظ وقت إغلاق التذكرة:", ticket.id, error.message);
+  });
   if (ticket.kind === "robux" && ticket.paymentStatus === "issued") {
     await supabaseRequest(`discord_ticket_payments?ticket_id=eq.${encodeURIComponent(ticket.id)}&status=eq.issued`, {
       method: "PATCH",
@@ -1162,6 +1205,7 @@ async function closeTicketChannel(channel, ticket) {
   for (const roleId of [...new Set([SUPPORT_ROLE_ID, SALER_ROLE_ID].filter(Boolean))]) {
     await channel.permissionOverwrites.edit(roleId, { SendMessages: false, AddReactions: false }).catch(() => {});
   }
+  scheduleClosedTicketDeletion(client, channel, ticket);
 }
 
 // ----------------------------------------------------------------------
@@ -2150,6 +2194,9 @@ client.on(Events.MessageCreate, async (message) => {
 });
 
 client.on(Events.ChannelDelete, (channel) => {
+  const deletionTimer = closedTicketDeletionTimers.get(channel.id);
+  if (deletionTimer) clearTimeout(deletionTimer);
+  closedTicketDeletionTimers.delete(channel.id);
   const ticket = activeTickets.get(channel.id) || decodeClosedTicketTopic(channel.topic, channel.id);
   if (!ticket) return;
   if (ticket.timeout) clearTimeout(ticket.timeout);
