@@ -149,7 +149,7 @@ const T = {
     sellerUnlinked: "⚠️ البائع المختار لم يربط حساب ديسكورد. اختر بائعاً آخر.",
     noSellers: (quantity, delivery) => `😔 لا يوجد بائع آخر متاح لكمية **${quantity}** بطريقة **${DELIVERY_LABELS[delivery].ar}** حالياً.`,
     ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المطابقين.`,
-    onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل ��لطلب أو إلغاؤه متاح لصاحب الطلب فقط.",
+    onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل ����لطلب أو إلغاؤه متاح لصاحب الطلب فقط.",
     onlySellerCanConfirm: "⚠️ تأكيد بيانات الطلب والبائع متاح لصاحب الطلب فقط.",
     alreadyConfirmed: "تم تأكيد ��لطلب بالكامل ولا يمكن تعديله.",
     cancelled: "❌ ألغى المشتري الطلب. سيتم إغلاق التذكرة.",
@@ -954,7 +954,20 @@ async function refreshRobuxTicketMessages(channel, ticket) {
   }
 }
 
-async function createRobuxTicket(interaction, data) {
+  async function resumeConfirmedRobuxTicket(interaction, ticket) {
+  await interaction.deferUpdate();
+  try {
+  await issueTicketPayment(interaction.client, interaction.channel, ticket);
+  } catch (error) {
+  console.error("تعذّر استكمال الدفع بعد تأكيد الطلب:", ticket.id, error.message);
+  await interaction.followUp({ content: "تعذّر تجهيز بيانات التحويل. أعد المحاولة من زر إعادة تجهيز رابط الدفع.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  }
+  await refreshRobuxTicketMessages(interaction.channel, ticket).catch((error) => {
+  console.error("تعذّر تحديث شارات تأكيد التذكرة:", ticket.id, error.message);
+  });
+  }
+
+  async function createRobuxTicket(interaction, data) {
   const { lang, buyerId, sellerDiscordId, sellerProfileId, sellerName, offerId, username, quantity, deliveryType, rate, available, minAmount, maxAmount } = data;
   const guild = interaction.guild;
   const ticketId = generateTicketId();
@@ -1961,11 +1974,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
 
+      if (part !== "order" && part !== "seller") return;
+
       if (ticket.orderConfirmed && ticket.sellerConfirmed) {
-        await interaction.reply({ content: T[ticket.lang].alreadyConfirmed, flags: MessageFlags.Ephemeral });
+        await resumeConfirmedRobuxTicket(interaction, ticket);
         return;
       }
-      if (part !== "order" && part !== "seller") return;
 
       await interaction.deferUpdate();
       const activeOffers = await getActiveOffers();
