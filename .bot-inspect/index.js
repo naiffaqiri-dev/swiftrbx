@@ -130,7 +130,9 @@ const T = {
   invalidUsername: "❌ اكتب يوزرنيم روبلوكس صحيحاً: من 3 إلى 20 حرفاً إنجليزياً أو رقماً أو _. لا تكتب اسم العرض.",
   invalidQuantity: "❌ اكتب الكمية كرقم صحيح أكبر من صفر، مثل 1000 أو ١٠٠٠.",
     pickSeller: "اختر البائع:",
-    sellerOption: (name, rate, qty) => `${name} — ${rate} ريال/1000 — متوفر: ${qty}`,
+    sellerOption: (rate, qty, minimum, maximum) => `${rate} ريال/1000 • متوفر ${qty} • ${minimum}-${maximum}`,
+    offerUpdated: "تغيّرت بيانات العرض من الموقع. حدّثت السعر والكمية والحدود؛ راجعها ثم أكّد من جديد.",
+    offerNoLongerAvailable: "لم يعد هذا العرض يطابق الكمية أو الحدود الحالية. اطلب من المشتري اختيار بائع آخر.",
     ticketCreated: (channelMention) => `✅ تم فتح تذكرتك: ${channelMention}`,
     linkedAccountRequired: (siteUrl) => `❌ حساب ديسكورد غير مربوط بالموقع. سجّل الدخول إلى ${siteUrl} باستخدام Discord ثم أعد المحاولة.`,
     accountDisabled: "⛔ حسابك بالموقع موقوف. تواصل مع الدعم.",
@@ -177,7 +179,9 @@ const T = {
   invalidUsername: "❌ Enter a valid Roblox username: 3-20 letters, digits, or _. Display names are not accepted.",
   invalidQuantity: "❌ Enter a whole number greater than zero, such as 1000.",
     pickSeller: "Choose a seller:",
-    sellerOption: (name, rate, qty) => `${name} — ${rate} SAR/1000 — available: ${qty}`,
+    sellerOption: (rate, qty, minimum, maximum) => `${rate} SAR/1,000 • stock ${qty} • ${minimum}-${maximum}`,
+    offerUpdated: "This offer changed on the website. Current price, stock, and limits are updated; review and confirm again.",
+    offerNoLongerAvailable: "This offer no longer matches the current quantity or limits. Ask the buyer to choose another seller.",
     ticketCreated: (channelMention) => `✅ Your ticket is open: ${channelMention}`,
     linkedAccountRequired: (siteUrl) => `❌ Your Discord account is not linked. Sign in at ${siteUrl} with Discord, then try again.`,
     accountDisabled: "⛔ Your site account is disabled. Contact support.",
@@ -238,7 +242,10 @@ function encodeTicketTopic(ticket) {
     username: ticket.username || null,
     quantity: ticket.quantity || null,
     deliveryType: ticket.deliveryType || null,
-    rate: ticket.rate || null,
+    rate: ticket.rate ?? null,
+    available: ticket.available ?? null,
+    minAmount: ticket.minAmount ?? null,
+    maxAmount: ticket.maxAmount ?? null,
     orderConfirmed: !!ticket.orderConfirmed,
     sellerConfirmed: !!ticket.sellerConfirmed,
     createdAt: ticket.createdAt,
@@ -310,6 +317,7 @@ async function sendTicketOpenedDm(client, discordUserId, ticketId, channelId, gu
 
 async function supabaseRequest(path, options = {}) {
   const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    cache: "no-store",
     ...options,
     signal: AbortSignal.timeout(10_000),
     headers: {
@@ -340,25 +348,54 @@ async function getDiscordIdByProfileId(profileId) {
   return typeof discordId === "string" && /^\d{17,20}$/.test(discordId) ? discordId : null;
 }
 
-async function searchOffers(deliveryType, quantity, buyerProfileId) {
-  const params = new URLSearchParams({
-    select: "id,seller_id,rate,available,min_amount,max_amount,profiles(username,display_name,active)",
-    or: `(delivery_type.eq.${deliveryType},delivery.cs.{${deliveryType}})`,
-    active: "eq.true",
-    available: `gte.${quantity}`,
-    min_amount: `lte.${quantity}`,
-    max_amount: `gte.${quantity}`,
-    seller_id: `neq.${buyerProfileId}`,
-    order: "rate.asc",
-    limit: "25",
+async function getActiveOffers() {
+  const offers = await supabaseRequest("rpc/active_offers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
   });
-  const offers = await supabaseRequest(`offers?${params.toString()}`);
-  return offers
-    .map((offer) => ({
-      ...offer,
-      profiles: Array.isArray(offer.profiles) ? offer.profiles[0] : offer.profiles,
-    }))
-    .filter((offer) => offer.profiles && offer.profiles.active !== false);
+  return Array.isArray(offers) ? offers : [];
+}
+
+function offerMatchesOrder(offer, deliveryType, quantity, buyerProfileId) {
+  const available = Number(offer.available);
+  const minimum = Number(offer.min_amount);
+  const maximum = Number(offer.max_amount);
+  const rate = Number(offer.rate);
+  return (
+    offer.seller_id !== buyerProfileId &&
+    Array.isArray(offer.delivery) &&
+    offer.delivery.includes(deliveryType) &&
+    Number.isFinite(available) && available >= quantity &&
+    Number.isFinite(minimum) && minimum <= quantity &&
+    Number.isFinite(maximum) && maximum >= quantity &&
+    Number.isFinite(rate) && rate > 0
+  );
+}
+
+async function searchOffers(deliveryType, quantity, buyerProfileId) {
+  return (await getActiveOffers())
+    .filter((offer) => offerMatchesOrder(offer, deliveryType, quantity, buyerProfileId))
+    .sort((left, right) => Number(left.rate) - Number(right.rate) || Number(right.rating) - Number(left.rating))
+    .slice(0, 25);
+}
+
+function hasOfferSnapshotChanged(ticket, offer) {
+  return (
+    Number(ticket.rate) !== Number(offer.rate) ||
+    Number(ticket.available) !== Number(offer.available) ||
+    Number(ticket.minAmount) !== Number(offer.min_amount) ||
+    Number(ticket.maxAmount) !== Number(offer.max_amount) ||
+    ticket.sellerName !== (offer.username || "Seller")
+  );
+}
+
+function updateTicketOfferSnapshot(ticket, offer) {
+  ticket.sellerName = offer.username || "Seller";
+  ticket.rate = Number(offer.rate);
+  ticket.available = Number(offer.available);
+  ticket.minAmount = Number(offer.min_amount);
+  ticket.maxAmount = Number(offer.max_amount);
 }
 
 function buildSellerSelectMenu(offers, lang, customId) {
@@ -366,8 +403,13 @@ function buildSellerSelectMenu(offers, lang, customId) {
     .setCustomId(customId)
     .setPlaceholder(T[lang].pickSeller)
     .addOptions(offers.map((offer) => {
-      const sellerName = offer.profiles?.display_name || offer.profiles?.username || "Seller";
-      const description = T[lang].sellerOption(sellerName, offer.rate, offer.available).slice(0, 100);
+      const sellerName = offer.username || "Seller";
+      const description = T[lang].sellerOption(
+        Number(offer.rate).toLocaleString("en-US"),
+        Number(offer.available).toLocaleString("en-US"),
+        Number(offer.min_amount).toLocaleString("en-US"),
+        Number(offer.max_amount).toLocaleString("en-US")
+      ).slice(0, 100);
       return {
         label: sellerName.slice(0, 100),
         description,
@@ -389,13 +431,25 @@ function buildRobuxTicketEmbeds(ticket) {
     );
   if (ticket.orderConfirmed) orderEmbed.addFields({ name: "\u200b", value: T[lang].confirmed });
 
+  const rate = Number(ticket.rate);
+  const sellerFields = [
+    { name: lang === "ar" ? "البائع" : "Seller", value: `<@${ticket.sellerDiscordId}>`, inline: true },
+    { name: lang === "ar" ? "السعر لكل 1,000" : "Rate per 1,000", value: `${rate.toLocaleString("en-US")} ${lang === "ar" ? "ريال" : "SAR"}`, inline: true },
+    { name: lang === "ar" ? "الإجمالي" : "Order total", value: `${((Number(ticket.quantity) / 1000) * rate).toFixed(2)} ${lang === "ar" ? "ريال" : "SAR"}`, inline: true },
+  ];
+  if (ticket.available != null) {
+    sellerFields.push({ name: lang === "ar" ? "المتاح الآن" : "Current stock", value: Number(ticket.available).toLocaleString("en-US"), inline: true });
+  }
+  if (ticket.minAmount != null) {
+    sellerFields.push({ name: lang === "ar" ? "الحد الأدنى" : "Minimum", value: Number(ticket.minAmount).toLocaleString("en-US"), inline: true });
+  }
+  if (ticket.maxAmount != null) {
+    sellerFields.push({ name: lang === "ar" ? "الحد الأعلى" : "Maximum", value: Number(ticket.maxAmount).toLocaleString("en-US"), inline: true });
+  }
   const sellerEmbed = new EmbedBuilder()
     .setColor(ticket.sellerConfirmed ? 0x22c55e : 0x2b2d31)
     .setTitle(T[lang].sellerEmbedTitle)
-    .addFields(
-      { name: lang === "ar" ? "البائع" : "Seller", value: `<@${ticket.sellerDiscordId}>`, inline: true },
-      { name: lang === "ar" ? "السعر" : "Rate", value: `${ticket.rate} ${lang === "ar" ? "ريال/1000" : "SAR/1000"}`, inline: true }
-    );
+    .addFields(sellerFields);
   if (ticket.sellerConfirmed) sellerEmbed.addFields({ name: "\u200b", value: T[lang].confirmed });
   return { orderEmbed, sellerEmbed };
 }
@@ -429,7 +483,7 @@ async function refreshRobuxTicketMessages(channel, ticket) {
 }
 
 async function createRobuxTicket(interaction, data) {
-  const { lang, buyerId, sellerDiscordId, sellerProfileId, sellerName, offerId, username, quantity, deliveryType, rate } = data;
+  const { lang, buyerId, sellerDiscordId, sellerProfileId, sellerName, offerId, username, quantity, deliveryType, rate, available, minAmount, maxAmount } = data;
   const guild = interaction.guild;
   const ticketId = generateTicketId();
   const participantPermissions = [
@@ -467,6 +521,9 @@ async function createRobuxTicket(interaction, data) {
     quantity,
     deliveryType,
     rate,
+    available,
+    minAmount,
+    maxAmount,
     guildId: guild.id,
     orderConfirmed: false,
     sellerConfirmed: false,
@@ -968,12 +1025,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
           buyerProfileId: state.buyerProfileId,
           sellerDiscordId,
           sellerProfileId: offer.seller_id,
-          sellerName: offer.profiles.display_name || offer.profiles.username || "Seller",
+          sellerName: offer.username || "Seller",
           offerId: offer.id,
           username: state.username,
           quantity: state.quantity,
           deliveryType: state.deliveryType,
-          rate: offer.rate,
+          rate: Number(offer.rate),
+          available: Number(offer.available),
+          minAmount: Number(offer.min_amount),
+          maxAmount: Number(offer.max_amount),
         });
         pendingOrders.delete(interaction.user.id);
         await interaction.editReply({ content: T[lang].ticketCreated(channel.toString()), components: [] });
@@ -1009,6 +1069,28 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (part !== "order" && part !== "seller") return;
 
       await interaction.deferUpdate();
+      const activeOffers = await getActiveOffers();
+      const currentOffer = activeOffers.find((offer) => offer.id === ticket.offerId && offer.seller_id === ticket.sellerProfileId);
+      if (!currentOffer) {
+        await interaction.followUp({ content: T[ticket.lang].offerNoLongerAvailable, flags: MessageFlags.Ephemeral });
+        return;
+      }
+      const snapshotChanged = hasOfferSnapshotChanged(ticket, currentOffer);
+      const stillAvailable = offerMatchesOrder(currentOffer, ticket.deliveryType, ticket.quantity, ticket.buyerProfileId);
+      if (snapshotChanged) {
+        updateTicketOfferSnapshot(ticket, currentOffer);
+        ticket.orderConfirmed = false;
+        ticket.sellerConfirmed = false;
+        await persistTicket(interaction.channel, ticket);
+        await refreshRobuxTicketMessages(interaction.channel, ticket);
+        const message = stillAvailable ? T[ticket.lang].offerUpdated : T[ticket.lang].offerNoLongerAvailable;
+        await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
+        return;
+      }
+      if (!stillAvailable) {
+        await interaction.followUp({ content: T[ticket.lang].offerNoLongerAvailable, flags: MessageFlags.Ephemeral });
+        return;
+      }
       if (part === "order") ticket.orderConfirmed = true;
       else ticket.sellerConfirmed = true;
       await persistTicket(interaction.channel, ticket);
@@ -1120,6 +1202,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         sellerName: ticket.sellerName,
         offerId: ticket.offerId,
         rate: ticket.rate,
+        available: ticket.available,
+        minAmount: ticket.minAmount,
+        maxAmount: ticket.maxAmount,
         sellerConfirmed: ticket.sellerConfirmed,
         createdAt: ticket.createdAt,
       };
@@ -1131,10 +1216,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       });
       ticket.sellerDiscordId = newSellerDiscordId;
       ticket.sellerProfileId = offer.seller_id;
-      ticket.sellerName = offer.profiles.display_name || offer.profiles.username || "Seller";
       ticket.offerId = offer.id;
-      ticket.rate = offer.rate;
+      updateTicketOfferSnapshot(ticket, offer);
       ticket.sellerConfirmed = false;
+
       ticket.createdAt = Date.now();
       try {
         await persistTicket(interaction.channel, ticket);
