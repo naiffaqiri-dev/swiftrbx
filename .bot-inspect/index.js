@@ -52,7 +52,7 @@ const SALER_ROLE_ID = (process.env.SALER_ROLE_ID || process.env.SALES_ROLE_ID ||
 const TICKETS_CATEGORY_ID = (process.env.TICKETS_CATEGORY_ID || "").trim();
 const TRANSCRIPTS_CHANNEL_ID = "1426198826724888577";
 const TRANSFER_CONFIRMATIONS_CHANNEL_ID = "1558441717743751169";
-const TICKET_TIMEOUT_MS = 30 * 60 * 1000;
+const ORDER_CONFIRMATION_TIMEOUT_MS = 15 * 60 * 1000;
 const PAYMENT_TIMEOUT_MS = 60 * 60 * 1000;
 const PAYMENT_RECEIPT_POLL_MS = 15_000;
 const PENDING_ORDER_TIMEOUT_MS = 15 * 60 * 1000;
@@ -149,24 +149,23 @@ const T = {
     sellerUnlinked: "⚠️ البائع المختار لم يربط حساب ديسكورد. اختر بائعاً آخر.",
     noSellers: (quantity, delivery) => `😔 لا يوجد بائع آخر متاح لكمية **${quantity}** بطريقة **${DELIVERY_LABELS[delivery].ar}** حالياً.`,
     ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المطابقين.`,
-    onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل ������لطلب أو إلغاؤه متاح لصاحب الطلب فقط.",
-    onlySellerCanConfirm: "⚠️ تأكيد بيانات البائع متاح للبائع المحدد فقط.",
-    alreadyConfirmed: "تم تأكيد ��لطلب بالكامل ولا يمكن تعديله.",
+    onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل الطلب وبيانات البائع أو إلغاء الطلب متاح للمشتري فقط.",
+    alreadyConfirmed: "تم تأكيد الطلب بالكامل ولا يمكن تعديله.",
     cancelled: "❌ ألغى المشتري الطلب. سيتم إغلاق التذكرة.",
     pickNewSeller: "اختر البائع الجديد:",
     noSellersForChange: "😔 لا يوجد بائع آخر متاح لنفس الكمية وطريقة التسليم.",
     sellerChanged: "✅ تم تغيير البائع. على المشتري تأكيد تفاصيل الطلب وبيانات البائع من جديد.",
-    expired: "⏰ انتهت مهلة التأكيد (30 دقيقة)، وتم إغلاق التذكرة.",
+    expired: "⏰ انتهت مهلة التأكيد (15 دقيقة)، وأُلغيت التذكرة وحُفظ سجلها في transcript.",
     orderEmbedTitle: "📦 تفاصيل الطلب",
     sellerEmbedTitle: "🧑‍💼 بيانات البائع",
     confirmButton: "تأكيد تفاصيل الطلب",
-    confirmSellerButton: "تأكيد بيانات البائع",
+    confirmSellerButton: "تأكيد بيانات البائع (للمشتري)",
     paymentRetryButton: "إعادة تجهيز رابط الدفع",
     cancelButton: "❌ إلغاء",
     changeSellerButton: "🔄 تغيير البائع",
     confirmed: "✅ تم التأكيد",
     pleaseConfirm: "⚠️ يرجى تأكيد البيانات أعلاه قبل إرسال رسائل بالتذكرة.",
-    bothConfirmedNext: "تم تأكيد تفاصيل الطلب من المشتري وبيانات البائع من البائع. استخدم رابط الدفع أدناه خلال ساعة؛ بعدها تُلغى التذكرة تلقائيًا.",
+    bothConfirmedNext: "أكد المشتري تفاصيل الطلب وبيانات البائع. استخدم رابط الدفع أدناه خلال ساعة؛ بعدها تُلغى التذكرة تلقائيًا.",
     paymentLinkTitle: "💳 تأكيد الطلب ورابط الدفع",
     paymentLinkDescription: (amount) => `تم اعتماد بيانات الطلب. حوّل **${amount} ريال** عبر الموقع وأرسل الإيصال خلال ساعة. الرابط مخصص للمشتري ويُستخدم مرة واحدة.`,
     paymentExpired: "⏰ انتهت مهلة الدفع (ساعة)، وأُلغيت التذكرة.",
@@ -186,7 +185,7 @@ const T = {
     ticketClosedTranscript: "أُغلقت التذكرة.",
     ticketDeletedTranscript: "حُذفت قناة التذكرة.",
     dmConfirmedTitle: "✅ تم تأكيد التذكرة",
-    dmConfirmedBody: (id, url) => `أكد المشتري تفاصيل الطلب وأكد البائع بياناته. رقم التذكرة: **${id}**\n[فتح التذكرة](${url})`,
+    dmConfirmedBody: (id, url) => `أكد المشتري تفاصيل الطلب وبيانات البائع. رقم التذكرة: **${id}**\n[فتح التذكرة](${url})`,
     dmOpenedTitle: "🎫 تم فتح تذكرة جديدة",
     dmOpenedBody: (id) => `رقم التذكرة: **${id}**\nاضغط الزر بالأسفل للانتقال للتذكرة.`,
     viewTicket: "عرض التذكرة",
@@ -221,24 +220,23 @@ const T = {
     sellerUnlinked: "⚠️ The selected seller has not linked Discord. Choose another seller.",
     noSellers: (quantity, delivery) => `😔 No other seller is currently available for **${quantity}** via **${DELIVERY_LABELS[delivery].en}**.`,
     ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ Your website offer is active: **${name}** — price **${rate} SAR/1,000**, stock **${stock}**, limits **${minimum}–${maximum}**. It is not listed as a seller because this Discord account owns the offer; you cannot buy from yourself. Other buyers will see it when their quantity and delivery type match.`,
-    onlyBuyerCanConfirm: "⚠️ Only the buyer can confirm order details or cancel the order.",
-    onlySellerCanConfirm: "⚠️ Only the selected seller can confirm the seller details.",
+    onlyBuyerCanConfirm: "⚠️ Only the buyer can confirm the order and seller details or cancel the order.",
     alreadyConfirmed: "The order is fully confirmed and can no longer be changed.",
     cancelled: "❌ The buyer cancelled the order. This ticket will close.",
     pickNewSeller: "Choose a new seller:",
     noSellersForChange: "😔 No other seller is available for the same quantity and delivery type.",
     sellerChanged: "✅ Seller changed. The buyer must confirm the order and seller details again.",
-    expired: "⏰ The 30-minute confirmation window expired. This ticket has been closed.",
+    expired: "⏰ The 15-minute confirmation window expired. The ticket was cancelled and its transcript saved.",
     orderEmbedTitle: "📦 Order Details",
     sellerEmbedTitle: "🧑‍💼 Seller Info",
     confirmButton: "Confirm order details",
-    confirmSellerButton: "Confirm seller details",
+    confirmSellerButton: "Confirm seller info (buyer)",
     paymentRetryButton: "Retry payment link",
     cancelButton: "❌ Cancel",
     changeSellerButton: "🔄 Change Seller",
     confirmed: "✅ Confirmed",
     pleaseConfirm: "⚠️ Please confirm the info above before sending messages in this ticket.",
-    bothConfirmedNext: "The buyer confirmed the order details and the seller confirmed their information. Use the payment link below within one hour; the ticket will be cancelled after that.",
+    bothConfirmedNext: "The buyer confirmed the order details and seller information. Use the payment link below within one hour; the ticket will be cancelled after that.",
     paymentLinkTitle: "💳 Confirmed order and payment link",
     paymentLinkDescription: (amount) => `The order details are confirmed. Transfer **${amount} SAR** on the website and submit the receipt within one hour. This buyer-only link can be used once.`,
     paymentExpired: "⏰ The one-hour payment window expired and the ticket was cancelled.",
@@ -258,7 +256,7 @@ const T = {
     ticketClosedTranscript: "Ticket closed.",
     ticketDeletedTranscript: "Ticket channel deleted.",
     dmConfirmedTitle: "✅ Ticket confirmed",
-    dmConfirmedBody: (id, url) => `The buyer confirmed the order details and the seller confirmed their information. Ticket: **${id}**\n[Open ticket](${url})`,
+    dmConfirmedBody: (id, url) => `The buyer confirmed the order and seller details. Ticket: **${id}**\n[Open ticket](${url})`,
     dmOpenedTitle: "🎫 New ticket opened",
     dmOpenedBody: (id) => `Ticket ID: **${id}**\nClick the button below to jump to the ticket.`,
     viewTicket: "View Ticket",
@@ -573,8 +571,10 @@ async function recordTicketLifecycle(client, ticket, key, description, sourceCha
     }
 
     await archive.send({ embeds: [embed], files, allowedMentions: { parse: [] } });
+    return true;
   } catch (error) {
     console.error("تعذّر حفظ transcript للتذكرة:", ticket.id, error.message);
+    return false;
   }
 }
 
@@ -1167,7 +1167,7 @@ async function expireRobuxTicket(channel, ticket) {
   } else {
     await channel.send(T[ticket.lang].expired).catch(() => {});
   }
-  await closeTicketChannel(channel, ticket);
+  await closeTicketChannel(channel, ticket, { deleteAfterTranscript: true });
 }
 
 function scheduleRobuxTicketTimeout(channel, ticket) {
@@ -1176,7 +1176,7 @@ function scheduleRobuxTicketTimeout(channel, ticket) {
   const paymentStarted = ticket.orderConfirmed && ticket.sellerConfirmed;
   const deadline = paymentStarted
     ? Number(ticket.paymentExpiresAt || (Number(ticket.createdAt || Date.now()) + PAYMENT_TIMEOUT_MS))
-    : Number(ticket.createdAt || Date.now()) + TICKET_TIMEOUT_MS;
+    : Number(ticket.createdAt || Date.now()) + ORDER_CONFIRMATION_TIMEOUT_MS;
   const remaining = Math.max(0, deadline - Date.now());
   if (!remaining) {
     void expireRobuxTicket(channel, ticket);
@@ -1280,7 +1280,7 @@ async function createServiceTicket(interaction, data) {
   return channel;
 }
 
-async function closeTicketChannel(channel, ticket) {
+async function closeTicketChannel(channel, ticket, { deleteAfterTranscript = false } = {}) {
   if (ticket.timeout) clearTimeout(ticket.timeout);
   ticket.closedAt ||= Date.now();
   await channel.setTopic(encodeClosedTicketTopic(ticket)).catch((error) => {
@@ -1294,7 +1294,7 @@ async function closeTicketChannel(channel, ticket) {
     }).catch((error) => console.error("تعذّر إلغاء رابط الدفع عند إغلاق التذكرة:", error.message));
   }
   await channel.send(T[ticket.lang].ticketClosed).catch(() => {});
-  await recordTicketLifecycle(client, ticket, "closed", T[ticket.lang].ticketClosedTranscript, channel);
+  const transcriptSaved = await recordTicketLifecycle(client, ticket, "closed", T[ticket.lang].ticketClosedTranscript, channel);
   activeTickets.delete(channel.id);
   confirmationReminderAt.delete(channel.id);
   const closedName = `${ticket.lang === "ar" ? "مغلق" : "closed"}-${ticket.id}`.slice(0, 90);
@@ -1305,6 +1305,13 @@ async function closeTicketChannel(channel, ticket) {
   }
   for (const roleId of [...new Set([SUPPORT_ROLE_ID, SALER_ROLE_ID].filter(Boolean))]) {
     await channel.permissionOverwrites.edit(roleId, { SendMessages: false, AddReactions: false }).catch(() => {});
+  }
+  if (deleteAfterTranscript) {
+    if (!transcriptSaved) return;
+    await channel.delete("Ticket expired and transcript archived").catch((error) => {
+      console.error("تعذّر حذف قناة التذكرة بعد حفظ transcript:", ticket.id, error.message);
+    });
+    return;
   }
   scheduleClosedTicketDeletion(client, channel, ticket);
 }
@@ -2041,12 +2048,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         return;
       }
       if (!['payment', 'order', 'seller'].includes(part)) return;
-      if ((part === "payment" || part === "order") && interaction.user.id !== ticket.buyerId) {
+      if (interaction.user.id !== ticket.buyerId) {
         await interaction.reply({ content: T[ticket.lang].onlyBuyerCanConfirm, flags: MessageFlags.Ephemeral });
-        return;
-      }
-      if (part === "seller" && interaction.user.id !== ticket.sellerDiscordId) {
-        await interaction.reply({ content: T[ticket.lang].onlySellerCanConfirm, flags: MessageFlags.Ephemeral });
         return;
       }
 
