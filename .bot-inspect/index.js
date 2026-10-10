@@ -8,6 +8,7 @@
 require("dotenv").config();
 
 const path = require("node:path");
+const fs = require("node:fs");
 
 const {
   Client,
@@ -82,8 +83,9 @@ function buildPanel() {
         "⚠️ لازم تكون مسجل بالموقع بحساب ديسكورد عشان نربط طلبك بحسابك.",
       ].join("\n")
     )
-    .setImage(`attachment://${PANEL_BANNER_FILENAME}`)
     .setFooter({ text: PANEL_MARKER });
+
+  if (fs.existsSync(PANEL_BANNER_PATH)) embed.setImage(`attachment://${PANEL_BANNER_FILENAME}`);
 
   const row = new ActionRowBuilder().addComponents(
     Object.entries(TICKET_TYPES).map(([key, type]) =>
@@ -95,9 +97,11 @@ function buildPanel() {
     )
   );
 
-  const banner = new AttachmentBuilder(PANEL_BANNER_PATH, { name: PANEL_BANNER_FILENAME });
+  const files = fs.existsSync(PANEL_BANNER_PATH)
+    ? [new AttachmentBuilder(PANEL_BANNER_PATH, { name: PANEL_BANNER_FILENAME })]
+    : [];
 
-  return { embeds: [embed], components: [row], files: [banner] };
+  return { embeds: [embed], components: [row], files };
 }
 
 // ----------------------------------------------------------------------
@@ -725,7 +729,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // ------------------------------------------------------------------
-    // 8) زر تغيير البائع (المشتري بس) -> قائمة بائعين جدد
+    // 8) زر تغيير البائع (المشتري بس) -> قائمة بائعي�� جدد
     // ------------------------------------------------------------------
     if (interaction.isButton() && interaction.customId.startsWith("changeseller:")) {
       const [, , ticketId] = interaction.customId.split(":");
