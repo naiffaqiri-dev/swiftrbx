@@ -40,6 +40,8 @@ const DISCORD_TOKEN = (process.env.DISCORD_TOKEN || "").trim();
 const SUPABASE_URL = (process.env.SUPABASE_URL || "").trim().replace(/\/+$/, "");
 const SUPABASE_SECRET_KEY = (process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "").trim();
 const PANEL_CHANNEL_ID = (process.env.PANEL_CHANNEL_ID || "").trim();
+const SELECT_ROLES_CHANNEL_ID = "1558413533300006952";
+const SELECT_ROLES_MARKER = "SwiftRBX • select roles • v1";
 const LIVE_STOCK_CHANNEL_ID = (process.env.LIVE_STOCK_CHANNEL_ID || "1481253146209681478").trim();
 const LIVE_STOCK_MARKER = "SwiftRBX • المخزون المباشر";
 const LIVE_STOCK_REFRESH_MS = 30_000;
@@ -170,7 +172,7 @@ const T = {
     ticketOwner: "صاحب التذكرة",
     closeTicket: "إغلاق التذكرة",
     ticketClosed: "تم إغلاق التذكرة مع الاحتفاظ بسجل المحادثة.",
-    onlyTicketStaff: "يمكن لصاحب التذكرة أو فريق الدعم إغلاقها.",
+    onlyTicketStaff: "يمكن لصاحب التذكرة أو فريق الدعم إغلاق��ا.",
     ticketAlreadyOpen: "لديك تذكرة مفتوحة من هذا النوع بالفعل.",
   },
   en: {
@@ -923,6 +925,132 @@ async function refreshLiveStock(client) {
   }
 }
 
+const NOTIFICATION_ROLES = [
+  { id: "1432719590240157818", name: "News", description: "إشعار بالإعلانات." },
+  { id: "1432719653192470648", name: "Giveaways", description: "إشعار بالسحوبات." },
+  { id: "1433104934936514630", name: "Events", description: "إشعار بالفعاليات والمسابقات." },
+  { id: "1437100449353433232", name: "discounts", description: "إشعار بالعروض والخصومات." },
+  { id: "1432719713586249789", name: "Robux Stock alert", description: "إشعار بتوفر كميات روبكس جديدة." },
+  { id: "1558416839170596988", name: "Account Alert", description: "إشعار بإضافة حسابات جديدة." },
+  { id: "1558416938529726464", name: "Limiteds Alert", description: "إشعار بإضافة أغراض ليمتد جديدة." },
+  { id: "1558416980204195870", name: "Games Alert", description: "إشعار بإضافة أغراض مابات جديدة." },
+];
+
+function buildSelectRolesPanel() {
+  const embed = new EmbedBuilder()
+    .setColor(0x22c55e)
+    .setTitle("إعداد إشعارات SwiftRBX")
+    .setDescription(
+      [
+        "اختر الرتب التي تريد استقبال إشعاراتها في قنواتها المخصصة.",
+        "اختر رتبة من القائمة لإضافتها، واخترها مرة أخرى لإزالتها.",
+      ].join("\n")
+    )
+    .addFields(
+      {
+        name: "الأخبار والمجتمع",
+        value: NOTIFICATION_ROLES.slice(0, 4).map(({ name, description }) => `**${name}** — ${description}`).join("\n"),
+      },
+      {
+        name: "تنبيهات المخزون",
+        value: NOTIFICATION_ROLES.slice(4).map(({ name, description }) => `**${name}** — ${description}`).join("\n"),
+      }
+    )
+    .setFooter({ text: SELECT_ROLES_MARKER });
+
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId("notification-role-toggle")
+    .setPlaceholder("اختر رتبة لإضافة الإشعار أو إزالته")
+    .setMinValues(1)
+    .setMaxValues(1)
+    .addOptions(
+      NOTIFICATION_ROLES.map(({ id, name }) => ({
+        label: name,
+        value: id,
+      }))
+    );
+
+  return { embeds: [embed], components: [new ActionRowBuilder().addComponents(menu)] };
+}
+
+async function ensureSelectRolesPanel(client) {
+  try {
+    const channel = await client.channels.fetch(SELECT_ROLES_CHANNEL_ID);
+    if (!channel || !channel.isTextBased() || !channel.messages) {
+      throw new Error("قناة اختيار الرتب غير صالحة أو لا تدعم الرسائل.");
+    }
+
+    const messages = await channel.messages.fetch({ limit: 100 });
+    const panel = messages.find(
+      (message) => message.author.id === client.user.id && message.embeds[0]?.footer?.text === SELECT_ROLES_MARKER
+    );
+    const payload = buildSelectRolesPanel();
+
+    if (panel) {
+      await panel.edit(payload);
+      console.log("تم التحقق من رسالة اختيار الرتب في Discord.");
+    } else {
+      await channel.send(payload);
+      console.log("تم نشر رسالة اختيار الرتب في Discord.");
+    }
+  } catch (error) {
+    console.error("تعذّر تجهيز رسالة اختيار الرتب:", error.message);
+  }
+}
+
+const notificationRoleToggles = new Set();
+
+async function toggleNotificationRole(interaction, roleId) {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "اختر الرتب من داخل السيرفر.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const lockKey = `${interaction.guildId}:${interaction.user.id}:${roleId}`;
+  if (notificationRoleToggles.has(lockKey)) {
+    await interaction.reply({ content: "جارٍ تنفيذ طلبك السابق؛ حاول مجددًا بعد لحظة.", flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  notificationRoleToggles.add(lockKey);
+  try {
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+    const roleDefinition = NOTIFICATION_ROLES.find((role) => role.id === roleId);
+    const [role, member, botMember] = await Promise.all([
+      interaction.guild.roles.fetch(roleId),
+      interaction.guild.members.fetch(interaction.user.id),
+      interaction.guild.members.me || interaction.guild.members.fetch(client.user.id),
+    ]);
+
+    if (!roleDefinition || !role) {
+      await interaction.editReply("هذه الرتبة غير متاحة حاليًا.");
+      return;
+    }
+    if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles) || !role.editable) {
+      await interaction.editReply("تعذّر تعديل الرتبة. يحتاج البوت إلى صلاحية إدارة الرتب وأن تكون الرتبة أسفل أعلى رتبة له.");
+      return;
+    }
+
+    if (member.roles.cache.has(roleId)) {
+      await member.roles.remove(role, "إلغاء الاشتراك في إشعار اختاره المستخدم");
+      await interaction.editReply(`تم إلغاء رتبة **${roleDefinition.name}** وإيقاف إشعاراتها.`);
+    } else {
+      await member.roles.add(role, "اشتراك المستخدم في إشعار اختاره");
+      await interaction.editReply(`تمت إضافة رتبة **${roleDefinition.name}** وستصلك إشعاراتها.`);
+    }
+  } catch (error) {
+    console.error("تعذّر تبديل رتبة الإشعار:", error.message);
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply("تعذّر تحديث الرتبة الآن. تأكد من صلاحيات البوت وحاول مجددًا.").catch(() => {});
+    } else {
+      await interaction.reply({ content: "تعذّر تحديث الرتبة الآن. حاول مجددًا.", flags: MessageFlags.Ephemeral }).catch(() => {});
+    }
+  } finally {
+    notificationRoleToggles.delete(lockKey);
+  }
+}
+
 // ----------------------------------------------------------------------
 // Discord
 // ----------------------------------------------------------------------
@@ -932,6 +1060,7 @@ client.once(Events.ClientReady, async (c) => {
   console.log(`✅ تم تسجيل الدخول باسم: ${c.user.tag}`);
   await restoreTickets(c);
   await ensurePanel(c);
+  await ensureSelectRolesPanel(c);
   await refreshLiveStock(c);
   setInterval(() => refreshLiveStock(c), LIVE_STOCK_REFRESH_MS);
 });
@@ -940,6 +1069,16 @@ client.once(Events.ClientReady, async (c) => {
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
+    if (interaction.isStringSelectMenu() && interaction.customId === "notification-role-toggle") {
+      const roleId = interaction.values[0];
+      if (!NOTIFICATION_ROLES.some((role) => role.id === roleId)) {
+        await interaction.reply({ content: "هذا الخيار غير صالح.", flags: MessageFlags.Ephemeral });
+        return;
+      }
+      await toggleNotificationRole(interaction, roleId);
+      return;
+    }
+
     // ------------------------------------------------------------------
     // 1) نموذج تذاكر الدعم والليميتد والأغراض والحسابات
     // ------------------------------------------------------------------
