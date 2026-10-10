@@ -28,6 +28,7 @@ const {
   OverwriteType,
 } = require("discord.js");
 const crypto = require("node:crypto");
+const { deflateRawSync, inflateRawSync } = require("node:zlib");
 
 // صورة بانر اللوحة - لازم يكون ملف banner.jpg موجود بنفس مجلد index.js
 const PANEL_BANNER_PATH = path.join(__dirname, "banner.jpg");
@@ -158,7 +159,8 @@ const T = {
     expired: "⏰ انتهت مهلة التأكيد (30 دقيقة)، وتم إغلاق التذكرة.",
     orderEmbedTitle: "📦 تفاصيل الطلب",
     sellerEmbedTitle: "🧑‍💼 بيانات البائع",
-    confirmButton: "تأكيد",
+    confirmButton: "تأكيد تفاصيل الطلب",
+    confirmSellerButton: "تأكيد بيانات البائع",
     paymentRetryButton: "إعادة تجهيز رابط الدفع",
     cancelButton: "❌ إلغاء",
     changeSellerButton: "🔄 تغيير البائع",
@@ -222,7 +224,8 @@ const T = {
     expired: "⏰ The 30-minute confirmation window expired. This ticket has been closed.",
     orderEmbedTitle: "📦 Order Details",
     sellerEmbedTitle: "🧑‍💼 Seller Info",
-    confirmButton: "Confirm",
+    confirmButton: "Confirm order details",
+    confirmSellerButton: "Confirm seller details",
     paymentRetryButton: "Retry payment link",
     cancelButton: "❌ Cancel",
     changeSellerButton: "🔄 Change Seller",
@@ -263,7 +266,8 @@ function generateTicketId() {
   return crypto.randomBytes(5).toString("base64url").slice(0, 7);
 }
 
-const TICKET_TOPIC_MARKER = "swiftrbx-ticket-v1:";
+const TICKET_TOPIC_MARKER = "swiftrbx-ticket-v2:";
+const LEGACY_TICKET_TOPIC_MARKER = "swiftrbx-ticket-v1:";
 const CLOSED_TICKET_TOPIC_MARKER = "swiftrbx-closed-v2:";
 
 function encodeClosedTicketTopic(ticket) {
@@ -316,15 +320,20 @@ function encodeTicketTopic(ticket) {
     transcriptThreadId: ticket.transcriptThreadId || null,
     createdAt: ticket.createdAt,
   };
-  const topic = `${TICKET_TOPIC_MARKER}${Buffer.from(JSON.stringify(persisted)).toString("base64url")}`;
-  if (topic.length > 1024) throw new Error("Ticket metadata exceeds Discord topic limit");
+  const compressed = deflateRawSync(Buffer.from(JSON.stringify(persisted)), { level: 9 }).toString("base64url");
+  const topic = `${TICKET_TOPIC_MARKER}${compressed}`;
+  if (topic.length > 1024) throw new Error(`Compressed ticket metadata exceeds Discord topic limit (${topic.length} characters)`);
   return topic;
 }
 
 function decodeTicketTopic(topic) {
-  if (!topic?.startsWith(TICKET_TOPIC_MARKER)) return null;
+  if (!topic?.startsWith(TICKET_TOPIC_MARKER) && !topic?.startsWith(LEGACY_TICKET_TOPIC_MARKER)) return null;
   try {
-    const ticket = JSON.parse(Buffer.from(topic.slice(TICKET_TOPIC_MARKER.length), "base64url").toString("utf8"));
+    const isCompressed = topic.startsWith(TICKET_TOPIC_MARKER);
+    const marker = isCompressed ? TICKET_TOPIC_MARKER : LEGACY_TICKET_TOPIC_MARKER;
+    const payload = Buffer.from(topic.slice(marker.length), "base64url");
+    const json = isCompressed ? inflateRawSync(payload).toString("utf8") : payload.toString("utf8");
+    const ticket = JSON.parse(json);
     if (!ticket.id || !ticket.buyerId || !Number.isFinite(Number(ticket.createdAt)) || !["ar", "en"].includes(ticket.lang) || !["robux", "limiteds", "items", "accounts", "support"].includes(ticket.kind)) return null;
     if (ticket.kind === "robux" && (!ticket.quantity || !DELIVERY_LABELS[ticket.deliveryType])) return null;
     return ticket;
@@ -824,11 +833,11 @@ async function refreshRobuxTicketMessages(channel, ticket) {
     if (sellerMessage) {
       const components = ticket.sellerConfirmed ? [] : [
         new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`confirm:seller:${ticket.id}`).setLabel(T[ticket.lang].confirmButton).setStyle(ButtonStyle.Success),
+          new ButtonBuilder().setCustomId(`confirm:seller:${ticket.id}`).setLabel(T[ticket.lang].confirmSellerButton).setStyle(ButtonStyle.Success),
           new ButtonBuilder().setCustomId(`changeseller:seller:${ticket.id}`).setLabel(T[ticket.lang].changeSellerButton).setStyle(ButtonStyle.Secondary)
         ),
       ];
-      await sellerMessage.edit({ content: `<@${ticket.sellerDiscordId}>`, embeds: [sellerEmbed], components });
+      await sellerMessage.edit({ content: `<@${ticket.buyerId}>`, embeds: [sellerEmbed], components });
     }
   }
 }
@@ -891,7 +900,7 @@ async function createRobuxTicket(interaction, data) {
     ticket.channelId = channel.id;
     const { orderEmbed, sellerEmbed } = buildRobuxTicketEmbeds(ticket);
     const orderMessage = await channel.send({ content: `<@${buyerId}>`, embeds: [orderEmbed], allowedMentions: { users: [buyerId] } });
-    const sellerMessage = await channel.send({ content: `<@${sellerDiscordId}>`, embeds: [sellerEmbed], allowedMentions: { users: [sellerDiscordId] } });
+    const sellerMessage = await channel.send({ content: `<@${buyerId}>`, embeds: [sellerEmbed], allowedMentions: { users: [buyerId] } });
     ticket.orderMessageId = orderMessage.id;
     ticket.sellerMessageId = sellerMessage.id;
     await channel.send(T[lang].pleaseConfirm);
