@@ -160,7 +160,7 @@ const T = {
     sellerEmbedTitle: "🧑‍💼 بيانات البائع",
     confirmButton: "تأكيد تفاصيل الطلب",
     confirmSellerButton: "تأكيد بيانات البائع (للمشتري)",
-    paymentRetryButton: "إعادة تجهيز رابط الدفع",
+    paymentRetryButton: "إعادة إرسال رابط الدفع للمشتري",
     cancelButton: "❌ إلغاء",
     changeSellerButton: "🔄 تغيير البائع",
     confirmed: "✅ تم التأكيد",
@@ -168,6 +168,7 @@ const T = {
     bothConfirmedNext: "أكد المشتري تفاصيل الطلب وبيانات البائع. استخدم رابط الدفع أدناه خلال ساعة؛ بعدها تُلغى التذكرة تلقائيًا.",
     paymentLinkTitle: "💳 تأكيد الطلب ورابط الدفع",
     paymentLinkDescription: (amount) => `تم اعتماد بيانات الطلب. حوّل **${amount} ريال** عبر الموقع وأرسل الإيصال خلال ساعة. الرابط مخصص للمشتري ويُستخدم مرة واحدة.`,
+    paymentDmDescription: (ticketId, amount) => `تم تأكيد طلبك رقم **${ticketId}**. أكمل الدفع بمبلغ **${amount} ريال** خلال ساعة عبر الزر أدناه. هذا الرابط مخصص لك ويُستخدم مرة واحدة.`,
     paymentExpired: "⏰ انتهت مهلة الدفع (ساعة)، وأُلغيت التذكرة.",
     paymentSubmitted: "✅ وصل إيصال التحويل إلى الإدارة للمراجعة. ستبقى التذكرة مفتوحة حتى متابعة التسليم.",
     paymentReceiptTitle: "حوالة جديدة بانتظار تأكيد الإدارة العليا",
@@ -231,7 +232,7 @@ const T = {
     sellerEmbedTitle: "🧑‍💼 Seller Info",
     confirmButton: "Confirm order details",
     confirmSellerButton: "Confirm seller info (buyer)",
-    paymentRetryButton: "Retry payment link",
+    paymentRetryButton: "Resend payment link to buyer",
     cancelButton: "❌ Cancel",
     changeSellerButton: "🔄 Change Seller",
     confirmed: "✅ Confirmed",
@@ -239,6 +240,7 @@ const T = {
     bothConfirmedNext: "The buyer confirmed the order details and seller information. Use the payment link below within one hour; the ticket will be cancelled after that.",
     paymentLinkTitle: "💳 Confirmed order and payment link",
     paymentLinkDescription: (amount) => `The order details are confirmed. Transfer **${amount} SAR** on the website and submit the receipt within one hour. This buyer-only link can be used once.`,
+    paymentDmDescription: (ticketId, amount) => `Your order **${ticketId}** is confirmed. Complete the **${amount} SAR** payment within one hour using the button below. This link is for you and can only be used once.`,
     paymentExpired: "⏰ The one-hour payment window expired and the ticket was cancelled.",
     paymentSubmitted: "✅ The transfer receipt reached the team for review. This ticket will remain open for delivery follow-up.",
     paymentReceiptTitle: "New transfer awaiting senior admin review",
@@ -338,6 +340,7 @@ function encodeTicketTopic(ticket) {
     paymentExpiresAt: ticket.paymentExpiresAt || null,
     paymentStatus: ticket.paymentStatus || null,
     paymentMessageId: ticket.paymentMessageId || null,
+    paymentLinkDmSent: !!ticket.paymentLinkDmSent,
     paymentConfirmDmsSent: !!ticket.paymentConfirmDmsSent,
     paymentConfirmDmsSentTo: Array.isArray(ticket.paymentConfirmDmsSentTo) ? ticket.paymentConfirmDmsSentTo : [],
     createdAt: ticket.createdAt,
@@ -713,6 +716,26 @@ async function issueTicketPaymentOnce(client, channel, ticket) {
   }
 
   ticket.paymentMessageId = paymentMessage.id;
+  if (!ticket.paymentLinkDmSent) {
+    try {
+      const buyer = await client.users.fetch(ticket.buyerId);
+      const dmEmbed = new EmbedBuilder()
+        .setColor(0x22c55e)
+        .setTitle(T[ticket.lang].paymentLinkTitle)
+        .setDescription(T[ticket.lang].paymentDmDescription(ticket.id, total.toFixed(2)));
+      const dmRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setLabel(ticket.lang === "ar" ? "إكمال الدفع" : "Complete payment")
+          .setStyle(ButtonStyle.Link)
+          .setURL(paymentUrl)
+      );
+      await buyer.send({ embeds: [dmEmbed], components: [dmRow] });
+      ticket.paymentLinkDmSent = true;
+    } catch (error) {
+      ticket.paymentLinkDmSent = false;
+      console.error("تعذّر إرسال رابط الدفع في الخاص للمشتري:", ticket.id, error.message);
+    }
+  }
   await sendTicketConfirmationDms(client, channel, ticket);
   await persistTicket(channel, ticket);
   scheduleRobuxTicketTimeout(channel, ticket);
@@ -1015,7 +1038,7 @@ async function refreshRobuxTicketMessages(channel, ticket) {
     const orderMessage = await channel.messages.fetch(ticket.orderMessageId).catch(() => null);
     if (orderMessage) {
       let components = [];
-      if (ticket.orderConfirmed && ticket.sellerConfirmed && !ticket.paymentMessageId && ticket.paymentStatus !== "submitted") {
+      if (ticket.orderConfirmed && ticket.sellerConfirmed && (!ticket.paymentMessageId || !ticket.paymentLinkDmSent) && ticket.paymentStatus !== "submitted") {
         components = [new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId(`confirm:payment:${ticket.id}`).setLabel(T[ticket.lang].paymentRetryButton).setStyle(ButtonStyle.Primary)
         )];
