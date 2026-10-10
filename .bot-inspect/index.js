@@ -151,7 +151,7 @@ const T = {
     ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المطابقين.`,
     onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل الطلب أو إلغاؤه متاح لصاحب الطلب فقط.",
     onlySellerCanConfirm: "⚠️ تأكيد بيانات الطلب والبائع متاح لصاحب الطلب فقط.",
-    alreadyConfirmed: "تم تأكيد الطلب بالكامل ولا يمكن تعديله.",
+    alreadyConfirmed: "تم تأكيد ��لطلب بالكامل ولا يمكن تعديله.",
     cancelled: "❌ ألغى المشتري الطلب. سيتم إغلاق التذكرة.",
     pickNewSeller: "اختر البائع الجديد:",
     noSellersForChange: "😔 لا يوجد بائع آخر متاح لنفس الكمية وطريقة التسليم.",
@@ -268,7 +268,8 @@ function generateTicketId() {
 
 const TICKET_TOPIC_MARKER = "swiftrbx-ticket-v2:";
 const LEGACY_TICKET_TOPIC_MARKER = "swiftrbx-ticket-v1:";
-const CLOSED_TICKET_TOPIC_MARKER = "swiftrbx-closed-v2:";
+const CLOSED_TICKET_TOPIC_MARKER = "swiftrbx-closed-v3:";
+const LEGACY_CLOSED_TICKET_TOPIC_MARKER = "swiftrbx-closed-v2:";
 
 function encodeClosedTicketTopic(ticket) {
   return [
@@ -277,16 +278,18 @@ function encodeClosedTicketTopic(ticket) {
     ticket.id,
     ticket.buyerId,
     ticket.sellerDiscordId || "",
-    ticket.transcriptThreadId || "",
     ticket.guildId || "",
   ].join(":");
 }
 
 function decodeClosedTicketTopic(topic, channelId) {
-  if (!topic?.startsWith(CLOSED_TICKET_TOPIC_MARKER)) return null;
-  const [, lang, id, buyerId, sellerDiscordId, transcriptThreadId, guildId] = topic.split(":");
+  if (!topic?.startsWith(CLOSED_TICKET_TOPIC_MARKER) && !topic?.startsWith(LEGACY_CLOSED_TICKET_TOPIC_MARKER)) return null;
+  const parts = topic.split(":");
+  const isLegacyTopic = topic.startsWith(LEGACY_CLOSED_TICKET_TOPIC_MARKER);
+  const [, lang, id, buyerId, sellerDiscordId, legacyThreadId, legacyGuildId] = parts;
   if (!id || !buyerId || !["ar", "en"].includes(lang)) return null;
-  return { id, kind: "closed", lang, buyerId, sellerDiscordId: sellerDiscordId || null, transcriptThreadId: transcriptThreadId || null, guildId, channelId };
+  const guildId = isLegacyTopic ? legacyGuildId : legacyThreadId;
+  return { id, kind: "closed", lang, buyerId, sellerDiscordId: sellerDiscordId || null, guildId: guildId || null, channelId };
 }
 
 function encodeTicketTopic(ticket) {
@@ -317,7 +320,6 @@ function encodeTicketTopic(ticket) {
     paymentMessageId: ticket.paymentMessageId || null,
     paymentConfirmDmsSent: !!ticket.paymentConfirmDmsSent,
     paymentConfirmDmsSentTo: Array.isArray(ticket.paymentConfirmDmsSentTo) ? ticket.paymentConfirmDmsSentTo : [],
-    transcriptThreadId: ticket.transcriptThreadId || null,
     createdAt: ticket.createdAt,
   };
   const compressed = deflateRawSync(Buffer.from(JSON.stringify(persisted)), { level: 9 }).toString("base64url");
@@ -390,31 +392,115 @@ async function sendTicketOpenedDm(client, discordUserId, ticketId, channelId, gu
   }
 }
 
-async function getTranscriptThread(client, ticket) {
-  if (ticket.transcriptThreadId) {
-    const existing = await client.channels.fetch(ticket.transcriptThreadId).catch(() => null);
-    if (existing?.isThread?.()) {
-      if (existing.archived) await existing.setArchived(false).catch(() => {});
-      return existing;
-    }
-  }
-
-  const archive = await client.channels.fetch(TRANSCRIPTS_CHANNEL_ID);
-  if (!archive?.isTextBased?.() || !archive.threads) throw new Error("قناة transcripts غير صالحة أو لا تدعم سلاسل المحادثات.");
-  const thread = await archive.threads.create({
-    name: `ticket-${ticket.id}`.slice(0, 100),
-    autoArchiveDuration: 1440,
-    reason: `Transcript for ticket ${ticket.id}`,
-  });
-  ticket.transcriptThreadId = thread.id;
-  const source = await client.channels.fetch(ticket.channelId).catch(() => null);
-  if (source && "setTopic" in source) await persistTicket(source, ticket);
-  return thread;
+function escapeTranscriptHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;",
+  })[character]);
 }
 
-async function recordTicketLifecycle(client, ticket, key, description) {
+function safeTranscriptUrl(value) {
   try {
-    const thread = await getTranscriptThread(client, ticket);
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function renderTranscriptEmbed(embed) {
+  const sections = [];
+  if (embed.author?.name) sections.push(`<strong>${escapeTranscriptHtml(embed.author.name)}</strong>`);
+  if (embed.title) {
+    const url = safeTranscriptUrl(embed.url);
+    const title = escapeTranscriptHtml(embed.title);
+    sections.push(url ? `<a href="${escapeTranscriptHtml(url)}" rel="noreferrer">${title}</a>` : `<strong>${title}</strong>`);
+  }
+  if (embed.description) sections.push(`<p>${escapeTranscriptHtml(embed.description)}</p>`);
+  if (embed.fields?.length) {
+    sections.push(`<dl>${embed.fields.map((field) => `<dt>${escapeTranscriptHtml(field.name)}</dt><dd>${escapeTranscriptHtml(field.value)}</dd>`).join("")}</dl>`);
+  }
+  if (embed.image?.url) {
+    const imageUrl = safeTranscriptUrl(embed.image.url);
+    if (imageUrl) sections.push(`<a href="${escapeTranscriptHtml(imageUrl)}" rel="noreferrer">View embed image</a>`);
+  }
+  return sections.length ? `<section class="embed">${sections.join("")}</section>` : "";
+}
+
+function renderTranscriptMessage(message, index, lang) {
+  const authorName = message.member?.displayName || message.author?.globalName || message.author?.username || "Unknown user";
+  const timestamp = new Date(message.createdTimestamp || message.createdAt).toLocaleString(lang === "ar" ? "ar-SA" : "en-US", { dateStyle: "medium", timeStyle: "short" });
+  const content = message.content?.trim()
+    ? `<div class="content">${escapeTranscriptHtml(message.content)}</div>`
+    : "";
+  const attachments = [...(message.attachments?.values?.() || [])].map((attachment) => {
+    const url = safeTranscriptUrl(attachment.url);
+    if (!url) return "";
+    const name = escapeTranscriptHtml(attachment.name || "attachment");
+    const size = Number.isFinite(attachment.size) ? ` · ${(attachment.size / 1024).toFixed(1)} KB` : "";
+    const image = attachment.contentType?.startsWith("image/")
+      ? `<img src="${escapeTranscriptHtml(url)}" alt="${name}" loading="lazy">`
+      : "";
+    return `<div class="attachment"><a href="${escapeTranscriptHtml(url)}" rel="noreferrer">${name}</a>${escapeTranscriptHtml(size)}${image}</div>`;
+  }).join("");
+  const embeds = [...(message.embeds || [])].map(renderTranscriptEmbed).join("");
+  const stickers = [...(message.stickers?.values?.() || [])]
+    .map((sticker) => `<div class="attachment">Sticker: ${escapeTranscriptHtml(sticker.name)}</div>`)
+    .join("");
+  const system = message.system ? `<span class="badge">System message</span>` : "";
+
+  return `<article class="message"><header><strong>${escapeTranscriptHtml(authorName)}</strong> <span class="user-id">${escapeTranscriptHtml(message.author?.tag || message.author?.id || "")}</span><time datetime="${new Date(message.createdTimestamp || message.createdAt).toISOString()}">${escapeTranscriptHtml(timestamp)}</time><span class="index">#${index + 1}</span>${system}</header>${content}${attachments}${embeds}${stickers}</article>`;
+}
+
+async function fetchTicketConversation(channel) {
+  if (!channel?.messages?.fetch) throw new Error("Ticket channel message history is unavailable.");
+  const messages = new Map();
+  let before;
+
+  while (true) {
+    const page = await channel.messages.fetch({ limit: 100, ...(before ? { before } : {}) });
+    if (!page.size) break;
+    for (const message of page.values()) messages.set(message.id, message);
+    const oldestMessage = [...page.values()].at(-1);
+    if (!oldestMessage || oldestMessage.id === before || page.size < 100) break;
+    before = oldestMessage.id;
+  }
+
+  return [...messages.values()].sort((left, right) => left.createdTimestamp - right.createdTimestamp);
+}
+
+function buildTicketTranscriptHtml(ticket, channel, messages) {
+  const lang = ticket.lang === "ar" ? "ar" : "en";
+  const title = lang === "ar" ? `سجل محادثة التذكرة ${ticket.id}` : `Ticket conversation transcript ${ticket.id}`;
+  const generatedAt = new Date().toLocaleString(lang === "ar" ? "ar-SA" : "en-US", { dateStyle: "full", timeStyle: "short" });
+  const conversation = messages.map((message, index) => renderTranscriptMessage(message, index, lang)).join("\n");
+  const ticketLabel = lang === "ar" ? "التذكرة" : "Ticket";
+  const channelLabel = lang === "ar" ? "القناة" : "Channel";
+  const buyerLabel = lang === "ar" ? "المشتري" : "Buyer";
+  const sellerLabel = lang === "ar" ? "البائع" : "Seller";
+  const createdLabel = lang === "ar" ? "تاريخ الإنشاء" : "Created";
+  const countLabel = lang === "ar" ? "عدد الرسائل" : "Messages";
+
+  return `<!doctype html>
+<html lang="${lang}" dir="${lang === "ar" ? "rtl" : "ltr"}">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeTranscriptHtml(title)}</title>
+<style>
+:root{color-scheme:dark;background:#0b0d10;color:#e4e7ec;font:15px/1.6 system-ui,-apple-system,"Segoe UI",sans-serif}*{box-sizing:border-box}body{margin:0;background:#0b0d10}.page{max-width:1000px;margin:0 auto;padding:32px 20px 64px}.summary{padding:22px 24px;margin-bottom:22px;background:#15181d;border:1px solid #2a2f36;border-radius:10px}.summary h1{margin:0 0 14px;font-size:22px}.meta{display:flex;flex-wrap:wrap;gap:8px 22px;color:#aeb5bf}.messages{display:grid;gap:10px}.message{padding:14px 16px;background:#111419;border:1px solid #292e36;border-radius:8px;overflow-wrap:anywhere}.message header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 10px;margin-bottom:6px}.message header strong{color:#f0f2f5}.user-id,time,.index{color:#939ba6;font-size:12px}.index{margin-inline-start:auto}.content{white-space:pre-wrap;overflow-wrap:anywhere}.attachment,.embed{margin-top:9px;padding:10px 12px;background:#191d23;border-inline-start:3px solid #65758b;border-radius:4px}.attachment a,.embed a{color:#8cbcff}.attachment img{display:block;max-width:min(100%,560px);max-height:420px;margin-top:8px;border-radius:5px}.embed p{white-space:pre-wrap}.embed dl{display:grid;grid-template-columns:1fr;gap:4px}.embed dt{font-weight:650}.embed dd{margin:0 0 6px;white-space:pre-wrap}.badge{padding:1px 6px;background:#252a32;border-radius:4px;color:#bbc2cc;font-size:11px}
+</style>
+</head>
+<body><main class="page"><section class="summary"><h1>${escapeTranscriptHtml(title)}</h1><div class="meta"><span>${escapeTranscriptHtml(ticketLabel)}: ${escapeTranscriptHtml(ticket.id)}</span><span>${escapeTranscriptHtml(channelLabel)}: ${escapeTranscriptHtml(channel.name || ticket.channelId)}</span><span>${escapeTranscriptHtml(buyerLabel)}: ${escapeTranscriptHtml(ticket.buyerId)}</span>${ticket.sellerDiscordId ? `<span>${escapeTranscriptHtml(sellerLabel)}: ${escapeTranscriptHtml(ticket.sellerDiscordId)}</span>` : ""}<span>${escapeTranscriptHtml(createdLabel)}: ${escapeTranscriptHtml(new Date(ticket.createdAt).toLocaleString(lang === "ar" ? "ar-SA" : "en-US"))}</span><span>${escapeTranscriptHtml(countLabel)}: ${messages.length}</span></div><p>${escapeTranscriptHtml(generatedAt)}</p></section><section class="messages">${conversation}</section></main></body></html>`;
+}
+
+async function recordTicketLifecycle(client, ticket, key, description, sourceChannel = null) {
+  try {
+    const archive = await client.channels.fetch(TRANSCRIPTS_CHANNEL_ID);
+    if (!archive?.isTextBased?.() || !archive.send) throw new Error("قناة transcripts غير صالحة أو لا تدعم الرسائل.");
+
     const title = ticket.lang === "ar" ? `سجل التذكرة • ${ticket.id}` : `Ticket transcript • ${ticket.id}`;
     const embed = new EmbedBuilder()
       .setColor(key === "created" ? 0x22c55e : key === "deleted" ? 0xed4245 : 0x5865f2)
@@ -426,29 +512,22 @@ async function recordTicketLifecycle(client, ticket, key, description) {
         { name: ticket.lang === "ar" ? "القناة" : "Channel", value: `<#${ticket.channelId}>`, inline: true }
       )
       .setTimestamp();
-    await thread.send({ embeds: [embed], allowedMentions: { parse: [] } });
+    const files = [];
+
+    if (key === "closed" && sourceChannel) {
+      try {
+        const messages = await fetchTicketConversation(sourceChannel);
+        const html = buildTicketTranscriptHtml(ticket, sourceChannel, messages);
+        files.push(new AttachmentBuilder(Buffer.from(html, "utf8"), { name: `transcript-${ticket.id}.html` }));
+      } catch (error) {
+        console.error("تعذّر إنشاء ملف transcript كامل للتذكرة:", ticket.id, error.message);
+        embed.addFields({ name: ticket.lang === "ar" ? "حالة السجل" : "Transcript status", value: ticket.lang === "ar" ? "تعذّر جلب كامل سجل الرسائل." : "The complete message history could not be fetched." });
+      }
+    }
+
+    await archive.send({ embeds: [embed], files, allowedMentions: { parse: [] } });
   } catch (error) {
     console.error("تعذّر حفظ transcript للتذكرة:", ticket.id, error.message);
-  }
-}
-
-async function mirrorTicketMessage(message, ticket) {
-  if (message.author?.bot) return;
-  try {
-    const thread = await getTranscriptThread(message.client, ticket);
-    const parts = [message.content?.trim()].filter(Boolean);
-    for (const attachment of message.attachments.values()) parts.push(`[مرفق: ${attachment.url}]`);
-    for (const embed of message.embeds) {
-      const text = [embed.title, embed.description].filter(Boolean).join("\n");
-      if (text) parts.push(`[Embed]\n${text}`);
-    }
-    const body = parts.join("\n").slice(0, 6000) || "[رسالة بدون نص]";
-    await thread.send({
-      content: `**${message.author.tag}** • <t:${Math.floor(message.createdTimestamp / 1000)}:f>\n${body}`.slice(0, 2000),
-      allowedMentions: { parse: [] },
-    });
-  } catch (error) {
-    console.error("تعذّر نسخ رسالة إلى transcript:", message.id, error.message);
   }
 }
 
@@ -1070,7 +1149,8 @@ async function closeTicketChannel(channel, ticket) {
       body: JSON.stringify({ status: "cancelled", updated_at: new Date().toISOString() }),
     }).catch((error) => console.error("تعذّر إلغاء رابط الدفع عند إغلاق التذكرة:", error.message));
   }
-  await recordTicketLifecycle(client, ticket, "closed", T[ticket.lang].ticketClosedTranscript);
+  await channel.send(T[ticket.lang].ticketClosed).catch(() => {});
+  await recordTicketLifecycle(client, ticket, "closed", T[ticket.lang].ticketClosedTranscript, channel);
   activeTickets.delete(channel.id);
   confirmationReminderAt.delete(channel.id);
   const closedName = `${ticket.lang === "ar" ? "مغلق" : "closed"}-${ticket.id}`.slice(0, 90);
@@ -1082,7 +1162,6 @@ async function closeTicketChannel(channel, ticket) {
   for (const roleId of [...new Set([SUPPORT_ROLE_ID, SALER_ROLE_ID].filter(Boolean))]) {
     await channel.permissionOverwrites.edit(roleId, { SendMessages: false, AddReactions: false }).catch(() => {});
   }
-  await channel.send(T[ticket.lang].ticketClosed).catch(() => {});
 }
 
 // ----------------------------------------------------------------------
@@ -2061,7 +2140,6 @@ client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot) return;
   const ticket = activeTickets.get(message.channel.id);
   if (!ticket) return;
-  await mirrorTicketMessage(message, ticket);
   if (ticket.kind !== "robux" || (ticket.orderConfirmed && ticket.sellerConfirmed)) return;
   if (message.author.id !== ticket.buyerId && message.author.id !== ticket.sellerDiscordId) return;
 
@@ -2077,7 +2155,7 @@ client.on(Events.ChannelDelete, (channel) => {
   if (ticket.timeout) clearTimeout(ticket.timeout);
   activeTickets.delete(channel.id);
   confirmationReminderAt.delete(channel.id);
-  void recordTicketLifecycle(client, ticket, "deleted", T[ticket.lang].ticketDeletedTranscript);
+  void recordTicketLifecycle(client, ticket, "deleted", T[ticket.lang].ticketDeletedTranscript, channel);
 });
 
 process.on("unhandledRejection", (err) => console.error("unhandledRejection:", err));
