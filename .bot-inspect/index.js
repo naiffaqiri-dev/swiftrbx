@@ -312,6 +312,7 @@ function encodeTicketTopic(ticket) {
     paymentStatus: ticket.paymentStatus || null,
     paymentMessageId: ticket.paymentMessageId || null,
     paymentConfirmDmsSent: !!ticket.paymentConfirmDmsSent,
+    paymentConfirmDmsSentTo: Array.isArray(ticket.paymentConfirmDmsSentTo) ? ticket.paymentConfirmDmsSentTo : [],
     transcriptThreadId: ticket.transcriptThreadId || null,
     createdAt: ticket.createdAt,
   };
@@ -383,7 +384,10 @@ async function sendTicketOpenedDm(client, discordUserId, ticketId, channelId, gu
 async function getTranscriptThread(client, ticket) {
   if (ticket.transcriptThreadId) {
     const existing = await client.channels.fetch(ticket.transcriptThreadId).catch(() => null);
-    if (existing?.isThread?.()) return existing;
+    if (existing?.isThread?.()) {
+      if (existing.archived) await existing.setArchived(false).catch(() => {});
+      return existing;
+    }
   }
 
   const archive = await client.channels.fetch(TRANSCRIPTS_CHANNEL_ID);
@@ -459,11 +463,17 @@ function robuxTicketTotal(ticket) {
 }
 
 async function sendTicketConfirmationDms(client, channel, ticket) {
-  if (ticket.paymentConfirmDmsSent) return;
-  ticket.paymentConfirmDmsSent = true;
-  await persistTicket(channel, ticket);
+  const recipients = [ticket.buyerId, ticket.sellerDiscordId].filter(Boolean);
+  const sentTo = new Set(
+    Array.isArray(ticket.paymentConfirmDmsSentTo)
+      ? ticket.paymentConfirmDmsSentTo.length || !ticket.paymentConfirmDmsSent
+        ? ticket.paymentConfirmDmsSentTo
+        : recipients
+      : ticket.paymentConfirmDmsSent ? recipients : []
+  );
   const url = `https://discord.com/channels/${ticket.guildId}/${ticket.channelId}`;
-  for (const discordId of [ticket.buyerId, ticket.sellerDiscordId].filter(Boolean)) {
+  for (const discordId of recipients) {
+    if (sentTo.has(discordId)) continue;
     try {
       const user = await client.users.fetch(discordId);
       const embed = new EmbedBuilder()
@@ -471,18 +481,40 @@ async function sendTicketConfirmationDms(client, channel, ticket) {
         .setTitle(T[ticket.lang].dmConfirmedTitle)
         .setDescription(T[ticket.lang].dmConfirmedBody(ticket.id, url));
       await user.send({ embeds: [embed] });
+      sentTo.add(discordId);
+      ticket.paymentConfirmDmsSentTo = [...sentTo];
+      await persistTicket(channel, ticket);
     } catch (error) {
       console.log(`تعذّر إرسال تأكيد التذكرة في الخاص لـ ${discordId}: ${error.message}`);
     }
   }
+  ticket.paymentConfirmDmsSent = recipients.every((discordId) => sentTo.has(discordId));
+  ticket.paymentConfirmDmsSentTo = [...sentTo];
+  await persistTicket(channel, ticket);
 }
 
+const paymentIssuancePromises = new Map();
+
 async function issueTicketPayment(client, channel, ticket) {
+  const pendingIssuance = paymentIssuancePromises.get(ticket.id);
+  if (pendingIssuance) return pendingIssuance;
+
+  const issuance = issueTicketPaymentOnce(client, channel, ticket);
+  paymentIssuancePromises.set(ticket.id, issuance);
+  try {
+    return await issuance;
+  } finally {
+    if (paymentIssuancePromises.get(ticket.id) === issuance) paymentIssuancePromises.delete(ticket.id);
+  }
+}
+
+async function issueTicketPaymentOnce(client, channel, ticket) {
   if (ticket.paymentStatus === "submitted") return;
   if (!ticket.paymentToken) ticket.paymentToken = crypto.randomBytes(32).toString("base64url");
   if (!ticket.paymentExpiresAt) ticket.paymentExpiresAt = Date.now() + PAYMENT_TIMEOUT_MS;
   ticket.paymentStatus = "issued";
   await persistTicket(channel, ticket);
+  scheduleRobuxTicketTimeout(channel, ticket);
 
   const total = robuxTicketTotal(ticket);
   const payload = {
@@ -1381,11 +1413,11 @@ async function toggleNotificationRole(interaction, roleId) {
     ]);
 
     if (!roleDefinition || !role) {
-      await interaction.editReply("هذه الرتبة غي�� متاحة حاليًا.");
+      await interaction.editReply("هذه الرتبة غير متاحة حاليًا.");
       return;
     }
     if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles) || !role.editable) {
-      await interaction.editReply("تعذّر تعديل الرتبة. يحتاج البوت إلى صلاحية إدارة الرتب وأن تكون الرتبة أسفل أعلى رت��ة له.");
+      await interaction.editReply("تعذّر تعديل الرتبة. يحتاج البوت إلى صلاحية إدارة الرتب وأن تكون الرتبة أسفل أعلى رتبة له.");
       return;
     }
 
