@@ -1,0 +1,13 @@
+{
+  "name": "swiftrbx-system-bot",
+  "version": "1.0.0",
+  "description": "البوت الأساسي لمتجر SwiftRBX - لوحة التذاكر وربط الحسابات",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.27.0",
+    "dotenv": "^16.6.1"
+  }
+}
