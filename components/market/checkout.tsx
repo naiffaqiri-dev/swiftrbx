@@ -31,6 +31,7 @@ type PayMethod = 'balance' | 'bank_transfer'
 type AppliedCoupon = { code: string; discount: number; subtotal: number }
 type DiscordPayment = {
   ticketId: string
+  discordReturnUrl: string | null
   sellerName: string
   offerId: string
   robloxUsername: string
@@ -85,7 +86,7 @@ export function Checkout({ initialDiscordTicketPaymentToken = '' }: { initialDis
 
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
-  const [result, setResult] = useState<{ orderId: string; ticketId: string | null; status: string } | null>(null)
+  const [result, setResult] = useState<{ orderId: string; ticketId: string | null; status: string; discordReturnUrl: string | null } | null>(null)
 
   const balance = user?.balance ?? 0
 
@@ -193,7 +194,11 @@ export function Checkout({ initialDiscordTicketPaymentToken = '' }: { initialDis
       const json = await res.json()
       if (!res.ok) throw new Error(json.error ?? 'تعذّر إنشاء الطلب')
       await refresh?.()
-      setResult({ orderId: json.orderId, ticketId: json.ticketId ?? null, status: json.status })
+      const discordReturnUrl = isDiscordTicketPayment ? discordPayment?.discordReturnUrl ?? null : null
+      setResult({ orderId: json.orderId, ticketId: json.ticketId ?? null, status: json.status, discordReturnUrl })
+      if (discordReturnUrl) {
+        window.setTimeout(() => window.location.assign(discordReturnUrl), 1800)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'حدث خطأ')
     } finally {
@@ -264,7 +269,17 @@ export function Checkout({ initialDiscordTicketPaymentToken = '' }: { initialDis
               : 'استلمنا إيصالك، وستراجعه الإدارة وتؤكد المبلغ قريباً. تتبّع الحالة من تذكرة الطلب.'}
         </p>
         <p className="mt-2 text-xs text-muted-foreground">رقم الطلب: {result.orderId.slice(0, 8)}</p>
+        {result.discordReturnUrl && (
+          <p role="status" className="mt-3 text-sm text-muted-foreground">
+            ستتم إعادتك إلى تذكرة Discord خلال لحظات.
+          </p>
+        )}
         <div className="mt-6 flex flex-col gap-2">
+          {result.discordReturnUrl && (
+            <Button variant="outline" onClick={() => window.location.assign(result.discordReturnUrl!)}>
+              العودة الآن إلى تذكرة Discord
+            </Button>
+          )}
           <Button onClick={() => router.push('/dashboard')} className="gap-2">
             <Ticket className="h-4 w-4" />
             متابعة الطلب من لوحتي

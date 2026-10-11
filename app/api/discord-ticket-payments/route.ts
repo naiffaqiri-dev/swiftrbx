@@ -41,7 +41,7 @@ export async function GET(request: Request) {
   const admin = createAdminClient()
   const { data: session, error } = await admin
     .from('discord_ticket_payments')
-    .select('id, ticket_id, buyer_id, seller_name, offer_id, roblox_username, robux_amount, delivery_method, total_sar, bank_key, bank_name, bank_account, bank_iban, bank_holder, status, expires_at')
+    .select('id, ticket_id, guild_id, channel_id, buyer_id, seller_name, offer_id, roblox_username, robux_amount, delivery_method, total_sar, bank_key, bank_name, bank_account, bank_iban, bank_holder, status, expires_at')
     .eq('token_hash', hashToken(token))
     .eq('buyer_id', user.id)
     .maybeSingle()
@@ -90,6 +90,9 @@ export async function GET(request: Request) {
   return NextResponse.json({
     payment: {
       ticketId: session.ticket_id,
+      discordReturnUrl: /^\d{17,20}$/.test(session.guild_id) && /^\d{17,20}$/.test(session.channel_id)
+        ? `https://discord.com/channels/${session.guild_id}/${session.channel_id}`
+        : null,
       sellerName: session.seller_name,
       offerId: session.offer_id,
       robloxUsername: session.roblox_username,
@@ -184,16 +187,17 @@ export async function POST(request: Request) {
 
   const { data: offer } = await admin
     .from('offers')
-    .select('id, seller_id, active, available, min_amount, max_amount, delivery')
+    .select('id, seller_id, active, available, min_amount, max_amount, delivery, rate')
     .eq('id', session.offer_id)
     .eq('seller_id', session.seller_id)
     .eq('active', true)
     .maybeSingle()
   if (!offer || Number(offer.available) < Number(session.robux_amount) ||
       Number(offer.min_amount) > Number(session.robux_amount) || Number(offer.max_amount) < Number(session.robux_amount) ||
+      Number(offer.rate) !== Number(session.unit_rate) ||
       !Array.isArray(offer.delivery) || !offer.delivery.includes(session.delivery_method)) {
     await resetSession()
-    return NextResponse.json({ error: 'لم يعد المخزون متاحًا لهذه الكمية. لا تحوّل المبلغ وتواصل مع الدعم.' }, { status: 409 })
+    return NextResponse.json({ error: 'تغيّر السعر أو لم يعد المخزون متاحًا لهذه الكمية. لا تحوّل المبلغ وتواصل مع الدعم.' }, { status: 409 })
   }
 
   const { data: order, error: orderError } = await admin
