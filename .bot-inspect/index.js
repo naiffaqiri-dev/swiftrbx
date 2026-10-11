@@ -52,6 +52,7 @@ const SALER_ROLE_ID = (process.env.SALER_ROLE_ID || process.env.SALES_ROLE_ID ||
 const TICKETS_CATEGORY_ID = (process.env.TICKETS_CATEGORY_ID || "").trim();
 const TRANSCRIPTS_CHANNEL_ID = "1426198826724888577";
 const TRANSFER_CONFIRMATIONS_CHANNEL_ID = "1558441717743751169";
+const PAYMENT_REVIEWER_ROLE_ID = "1426122928348594197";
   const ORDER_CONFIRMATION_TIMEOUT_MS = 10 * 60 * 1000;
 const PAYMENT_TIMEOUT_MS = 60 * 60 * 1000;
 const PAYMENT_RECEIPT_POLL_MS = 15_000;
@@ -178,13 +179,22 @@ const T = {
     paymentLinkDescription: (amount) => `تم اعتماد بيانات الطلب. حوّل **${amount} ريال** عبر الموقع وأرسل الإيصال خلال ساعة. الرابط مخصص للمشتري ويُستخدم مرة واحدة.`,
     paymentDmDescription: (ticketId, amount) => `تم تأكيد طلبك رقم **${ticketId}**. أكمل الدفع بمبلغ **${amount} ريال** خلال ساعة عبر الزر أدناه. هذا الرابط مخصص لك ويُستخدم مرة واحدة.`,
     paymentExpired: "⏰ انتهت مهلة الدفع (ساعة)، وأُلغيت التذكرة.",
-    paymentSubmitted: "✅ وصل إيصال التحويل إلى الإدارة للمراجعة. ستبقى التذكرة مفتوحة حتى متابعة التسليم.",
+    paymentSubmitted: "✅ في انتظار تأكيد التحويل من الإدارة العليا. ستُحدَّث التذكرة فور صدور القرار.",
     paymentReceiptTitle: "حوالة جديدة بانتظار تأكيد الإدارة العليا",
     paymentApprovedTitle: "تم تأكيد الحوالة وفتح التذكرة",
     paymentRejectedTitle: "تم رفض الحوالة",
+    paymentApproveButton: "قبول الحوالة",
+    paymentRejectButton: "رفض الحوالة",
+    paymentReviewForbidden: "هذا الزر مخصص للإدارة العليا فقط.",
+    paymentReviewAlreadyHandled: "تمت مراجعة هذه الحوالة مسبقًا.",
+    paymentReviewFailed: "تعذّر تسجيل القرار الآن. حاول مرة أخرى.",
+    paymentApprovedByReviewer: "تم قبول الحوالة، وستُحدَّث التذكرة خلال لحظات.",
+    paymentRejectedByReviewer: "تم رفض الحوالة، وسيُبلَّغ المشتري وتُغلق التذكرة عند انتهاء المهلة المتبقية.",
+    paymentAwaitingConfirmationTitle: "في انتظار تأكيد التحويل",
+    paymentAwaitingConfirmationDescription: "استلمنا إيصال التحويل وأُرسل للإدارة العليا للمراجعة. ستُحدَّث التذكرة فور صدور القرار.",
     paymentReceiptDm: "استلمنا إيصال التحويل وأرسلناه إلى الإدارة العليا للمراجعة.",
     paymentApprovedMessage: (ticketId, url) => `تم تأكيد الحوالة من الإدارة العليا. أصبحت تذكرة الطلب ${ticketId} مفتوحة؛ تواصل مع البائع لإكمال التسليم: ${url}`,
-    paymentRejectedMessage: (ticketId) => `لم تؤكد الإدارة الحوالة للطلب ${ticketId}. راجع لوحة الطلبات أو تواصل مع الدعم.`,
+    paymentRejectedMessage: (ticketId) => `لم تُقبل الحوالة للطلب ${ticketId} لأنها غير مطابقة للمتطلبات. راجع لوحة الطلبات أو تواصل مع الدعم، وستُغلق التذكرة عند انتهاء المهلة المتبقية.`,
     paymentApprovedDm: (ticketId, url) => `تم تأكيد حوالة الطلب ${ticketId} وفتح تذكرة التسليم. تابع الطلب وتواصل مع الطرف الآخر هنا: ${url}`,
     paymentRejectedDm: (ticketId) => `لم تؤكد الإدارة الحوالة للطلب ${ticketId}. راجع الطلب في الموقع أو تواصل مع الدعم.`,
     paymentReviewButton: "مراجعة الطلب",
@@ -258,13 +268,15 @@ const T = {
     paymentLinkDescription: (amount) => `The order details are confirmed. Transfer **${amount} SAR** on the website and submit the receipt within one hour. This buyer-only link can be used once.`,
     paymentDmDescription: (ticketId, amount) => `Your order **${ticketId}** is confirmed. Complete the **${amount} SAR** payment within one hour using the button below. This link is for you and can only be used once.`,
     paymentExpired: "⏰ The one-hour payment window expired and the ticket was cancelled.",
-    paymentSubmitted: "✅ The transfer receipt reached the team for review. This ticket will remain open for delivery follow-up.",
+    paymentSubmitted: "✅ Waiting for transfer confirmation from senior management. The ticket will be updated as soon as a decision is made.",
     paymentReceiptTitle: "New transfer awaiting senior admin review",
     paymentApprovedTitle: "Transfer approved and delivery ticket opened",
     paymentRejectedTitle: "Transfer rejected",
     paymentReceiptDm: "Your transfer receipt was received and sent to the senior team for review.",
     paymentApprovedMessage: (ticketId, url) => `The transfer for order ${ticketId} was approved. Its delivery ticket is now open; contact the seller to complete delivery: ${url}`,
-    paymentRejectedMessage: (ticketId) => `The transfer for order ${ticketId} was not approved. Review your order or contact support.`,
+    paymentRejectedMessage: (ticketId) => `The transfer for order ${ticketId} was not approved because it does not match the requirements. Review your order or contact support; the ticket will close when the remaining time expires.`,
+    paymentAwaitingConfirmationTitle: "Waiting for transfer confirmation",
+    paymentAwaitingConfirmationDescription: "We received your transfer receipt and sent it to senior management for review. The ticket will be updated as soon as a decision is made.",
     paymentApprovedDm: (ticketId, url) => `The transfer for order ${ticketId} was approved and the delivery ticket is open. Continue the order and contact the other party here: ${url}`,
     paymentRejectedDm: (ticketId) => `The transfer for order ${ticketId} was not approved. Review the order on the site or contact support.`,
     paymentReviewButton: "Review order",
@@ -944,7 +956,7 @@ async function syncSubmittedDiscordPayments(client) {
             isApproved
               ? "أكدت الإدارة العليا الحوالة وأصبحت تذكرة التسليم مفتوحة."
               : isRejected
-                ? "رفضت الإدارة العليا الحوالة؛ تواصل مع الدعم عند الحاجة."
+                ? "رفضت الإدارة العليا الحوالة لأنها غير مطابقة للمتطلبات؛ ستُغلق التذكرة عند انتهاء المهلة المتبقية."
                 : "أُرسل إيصال المشتري. الحوالة بانتظار تأكيد الإدارة العليا قبل بدء التسليم.",
           ].join("\n\n"))
           .addFields(
@@ -962,6 +974,10 @@ async function syncSubmittedDiscordPayments(client) {
           .setTimestamp();
         const buttons = [];
         if (payment.receipt_url) buttons.push(new ButtonBuilder().setLabel(T.ar.receiptButton).setStyle(ButtonStyle.Link).setURL(payment.receipt_url));
+        if (!isReviewed) {
+          buttons.push(new ButtonBuilder().setCustomId(`payment:review:approve:${payment.id}`).setLabel(T.ar.paymentApproveButton).setStyle(ButtonStyle.Success));
+          buttons.push(new ButtonBuilder().setCustomId(`payment:review:reject:${payment.id}`).setLabel(T.ar.paymentRejectButton).setStyle(ButtonStyle.Danger));
+        }
         buttons.push(new ButtonBuilder()
           .setLabel(isReviewed && siteTicket ? T.ar.viewOrderTicket : T.ar.paymentReviewButton)
           .setStyle(ButtonStyle.Link)
@@ -983,12 +999,14 @@ async function syncSubmittedDiscordPayments(client) {
       const ticket = activeTickets.get(payment.channel_id);
       if (isReviewed) {
         if (ticket?.id === payment.ticket_id && ticket.paymentStatus !== (isApproved ? "approved" : "rejected")) {
+          const reviewedChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
           ticket.paymentStatus = isApproved ? "approved" : "rejected";
           ticket.paymentToken = null;
           if (ticket.timeout) clearTimeout(ticket.timeout);
           ticket.timeout = null;
           ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
-          await persistTicket(await client.channels.fetch(payment.channel_id), ticket).catch(() => {});
+          if (isRejected && reviewedChannel) scheduleRejectedTicketClose(reviewedChannel, ticket);
+          if (reviewedChannel) await persistTicket(reviewedChannel, ticket).catch(() => {});
         }
 
         if (hasPendingReview || shouldNotifyReceipt) {
@@ -1022,7 +1040,13 @@ async function syncSubmittedDiscordPayments(client) {
           const paymentMessage = await client.channels.fetch(payment.channel_id)
             .then((channel) => channel.messages.fetch(ticket.paymentMessageId))
             .catch(() => null);
-          if (paymentMessage) await paymentMessage.edit({ components: [] }).catch(() => {});
+          if (paymentMessage) {
+            const awaitingEmbed = EmbedBuilder.from(paymentMessage.embeds[0] ?? {})
+              .setColor(0xf59e0b)
+              .setTitle(T[ticket.lang].paymentAwaitingConfirmationTitle)
+              .setDescription(T[ticket.lang].paymentAwaitingConfirmationDescription);
+            await paymentMessage.edit({ embeds: [awaitingEmbed], components: [] }).catch(() => {});
+          }
         }
         const ticketChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
         if (ticketChannel?.isTextBased?.()) await ticketChannel.send(T[ticket.lang].paymentSubmitted).catch(() => {});
@@ -1436,6 +1460,58 @@ async function expireRobuxTicket(channel, ticket, timeout) {
   await closeTicketChannel(channel, ticket, { deleteAfterTranscript: true });
 }
 
+function scheduleRejectedTicketClose(channel, ticket) {
+  if (ticket.timeout) clearTimeout(ticket.timeout);
+  ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
+  const deadline = Number(ticket.paymentExpiresAt) || Date.now();
+  ticket.timeout = setTimeout(() => {
+    ticket.timeout = null;
+    void closeTicketChannel(channel, ticket, { deleteAfterTranscript: true }).catch((error) => {
+      console.error("تعذّر إغلاق التذكرة بعد رفض الحوالة:", ticket.id, error.message);
+    });
+  }, Math.max(0, deadline - Date.now()));
+}
+
+async function handlePaymentReviewDecision(interaction) {
+  const [, , decision, paymentId] = interaction.customId.split(":");
+  if (!["approve", "reject"].includes(decision) || !paymentId) return;
+  if (!interaction.member?.roles?.cache?.has(PAYMENT_REVIEWER_ROLE_ID)) {
+    await interaction.reply({ content: T.ar.paymentReviewForbidden, flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  try {
+    const [payment] = await supabaseRequest(`discord_ticket_payments?id=eq.${encodeURIComponent(paymentId)}&select=id,status,order_id,discord_reviewed_at&limit=1`);
+    const [order] = payment?.order_id
+      ? await supabaseRequest(`orders?id=eq.${encodeURIComponent(payment.order_id)}&select=id,status&limit=1`)
+      : [];
+    const alreadyReviewed = !payment || !order || payment.status !== "submitted" || Boolean(payment.discord_reviewed_at)
+      || order.status === "processing" || order.status === "rejected";
+    if (alreadyReviewed) {
+      await interaction.editReply({ content: T.ar.paymentReviewAlreadyHandled });
+      return;
+    }
+
+    const reviewedAt = new Date().toISOString();
+    const approved = decision === "approve";
+    await supabaseRequest(`orders?id=eq.${encodeURIComponent(order.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ status: approved ? "processing" : "rejected" }),
+    });
+    await supabaseRequest(`discord_ticket_payments?id=eq.${encodeURIComponent(payment.id)}&status=eq.submitted`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+      body: JSON.stringify({ discord_reviewed_at: reviewedAt, updated_at: reviewedAt }),
+    });
+    await interaction.editReply({ content: approved ? T.ar.paymentApprovedByReviewer : T.ar.paymentRejectedByReviewer });
+  } catch (error) {
+    console.error("تعذّر تسجيل قرار مراجعة الحوالة:", paymentId, error.message);
+    await interaction.editReply({ content: T.ar.paymentReviewFailed }).catch(() => {});
+  }
+}
+
 function scheduleRobuxTicketTimeout(channel, ticket) {
   if (ticket.kind !== "robux") return;
   if (ticket.timeout) clearTimeout(ticket.timeout);
@@ -1477,6 +1553,7 @@ async function restoreTickets(client) {
           ticket.sellerMessageId ||= messages.find((message) => message.embeds[0]?.title === T[ticket.lang].sellerEmbedTitle)?.id;
         }
         scheduleRobuxTicketTimeout(channel, ticket);
+        if (ticket.paymentStatus === "rejected") scheduleRejectedTicketClose(channel, ticket);
         if (ticket.orderConfirmed && ticket.sellerConfirmed && ticket.paymentStatus !== "submitted" && ticket.paymentStatus !== "expired") {
           void completeConfirmedRobuxTicket(client, channel, ticket).catch((error) => {
             console.error("تعذّر استكمال مرحلة الدفع بعد إعادة تشغيل البوت:", ticket.id, error.message);
@@ -2318,6 +2395,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
+
+    if (interaction.isButton() && interaction.customId.startsWith("payment:review:")) {
+      await handlePaymentReviewDecision(interaction);
+      return;
+    }
 
     if (interaction.isButton() && interaction.customId.startsWith("confirm:")) {
       const [, part, ticketId] = interaction.customId.split(":");
