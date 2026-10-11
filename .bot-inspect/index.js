@@ -149,7 +149,7 @@ const T = {
     accountDisabled: "⛔ حسابك بالموقع موقوف. تواصل مع الدعم.",
     sellerUnlinked: "⚠️ البائع المختار لم يربط حساب ديسكورد. اختر بائعاً آخر.",
     noSellers: (quantity, delivery) => `😔 لا يوجد بائع آخر متاح لكمية **${quantity}** بطريقة **${DELIVERY_LABELS[delivery].ar}** حالياً.`,
-    ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المطابقين.`,
+    ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المط��بقين.`,
     onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل الطلب وبيانات البائع أو إلغاء الطلب متاح للمشتري فقط.",
     alreadyConfirmed: "تم تأكيد الطلب بالكامل ولا يمكن تعديله.",
     cancelled: "❌ ألغى المشتري الطلب. سيتم إغلاق التذكرة.",
@@ -1037,15 +1037,19 @@ async function syncSubmittedDiscordPayments(client) {
         ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
         await persistTicket(await client.channels.fetch(payment.channel_id), ticket).catch(() => {});
         if (ticket.paymentMessageId) {
-          const paymentMessage = await client.channels.fetch(payment.channel_id)
-            .then((channel) => channel.messages.fetch(ticket.paymentMessageId))
-            .catch(() => null);
-          if (paymentMessage) {
-            const awaitingEmbed = EmbedBuilder.from(paymentMessage.embeds[0] ?? {})
-              .setColor(0xf59e0b)
-              .setTitle(T[ticket.lang].paymentAwaitingConfirmationTitle)
-              .setDescription(T[ticket.lang].paymentAwaitingConfirmationDescription);
-            await paymentMessage.edit({ embeds: [awaitingEmbed], components: [] }).catch(() => {});
+          const ticketChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
+          const oldPaymentMessage = await ticketChannel?.messages.fetch(ticket.paymentMessageId).catch(() => null);
+          await oldPaymentMessage?.delete().catch(() => {});
+          ticket.paymentMessageId = null;
+          if (ticketChannel?.isTextBased?.()) {
+            const awaitingMessage = await ticketChannel.send({
+              embeds: [new EmbedBuilder()
+                .setColor(0xf59e0b)
+                .setTitle(T[ticket.lang].paymentAwaitingConfirmationTitle)
+                .setDescription(T[ticket.lang].paymentAwaitingConfirmationDescription)],
+            }).catch(() => null);
+            ticket.paymentMessageId = awaitingMessage?.id ?? null;
+            await persistTicket(ticketChannel, ticket).catch(() => {});
           }
         }
         const ticketChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
@@ -1790,7 +1794,7 @@ function stockFieldValue(lines) {
   }
 
   const remaining = lines.length - visible.length;
-  if (remaining > 0) visible.push(`و${remaining} بائعين آخرين`);
+  if (remaining > 0) visible.push(`و${remaining} ب��ئعين آخرين`);
   return visible.join("\n");
 }
 
@@ -1976,7 +1980,7 @@ async function ensureSelectRolesPanel(client) {
       console.log("تم التحقق من رسالة اختيار الرتب في Discord.");
     } else {
       await channel.send(payload);
-      console.log("تم نشر رسالة اختيار الرتب في Discord.");
+      console.log("تم نشر رس��لة اختيار الرتب في Discord.");
     }
   } catch (error) {
     console.error("تعذّر تجهيز رسالة اختيار الرتب:", error.message);
@@ -2151,7 +2155,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // ------------------------------------------------------------------
-    // 2) اختيار اللغة -> عرض نوع التسليم
+    // 2) اختيار اللغ�� -> عرض نوع التسليم
     // ------------------------------------------------------------------
     if (interaction.isButton() && interaction.customId.startsWith("order:lang:")) {
       const lang = interaction.customId.split(":")[2] === "en" ? "en" : "ar";
