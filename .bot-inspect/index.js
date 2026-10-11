@@ -166,6 +166,10 @@ const T = {
     confirmed: "✅ تم التأكيد",
     pleaseConfirm: "⚠️ يرجى تأكيد البيانات أعلاه قبل إرسال رسائل بالتذكرة.",
     confirmationDeadline: (unix) => `⏳ تنتهي مهلة التأكيد <t:${unix}:R>. أكّد تفاصيل الطلب وبيانات البائع قبل انتهاء الوقت.`,
+    confirmationComplete: "✅ تم تأكيد تفاصيل الطلب وبيانات البائع. أُلغيت مهلة الانتظار وبدأت مهلة الدفع لمدة ساعة.",
+    paymentLinkResent: "✅ أُعيد إرسال رابط الدفع إلى الخاص بالمشتري.",
+    paymentLinkResendFailed: "تعذّر إرسال الرابط إلى الخاص. تأكد أن رسائل الخاص مفتوحة ثم حاول مجددًا.",
+    paymentAlreadySubmitted: "تم إرسال الإيصال بالفعل؛ لا حاجة لإعادة رابط الدفع.",
     bothConfirmedNext: "أكد المشتري تفاصيل الطلب وبيانات البائع. استخدم رابط الدفع أدناه خلال ساعة؛ بعدها تُلغى التذكرة تلقائيًا.",
     paymentLinkTitle: "💳 تأكيد الطلب ورابط الدفع",
     paymentLinkDescription: (amount) => `تم اعتماد بيانات الطلب. حوّل **${amount} ريال** عبر الموقع وأرسل الإيصال خلال ساعة. الرابط مخصص للمشتري ويُستخدم مرة واحدة.`,
@@ -239,6 +243,10 @@ const T = {
     confirmed: "✅ Confirmed",
     pleaseConfirm: "⚠️ Please confirm the info above before sending messages in this ticket.",
     confirmationDeadline: (unix) => `⏳ Confirmation expires <t:${unix}:R>. Confirm the order and seller details before then.`,
+    confirmationComplete: "✅ The order and seller details are confirmed. The confirmation timer is cancelled and the one-hour payment window has started.",
+    paymentLinkResent: "✅ The payment link was resent to the buyer’s DMs.",
+    paymentLinkResendFailed: "Could not send the link to the buyer’s DMs. Ask them to enable direct messages, then try again.",
+    paymentAlreadySubmitted: "The receipt has already been submitted; the payment link does not need to be resent.",
     bothConfirmedNext: "The buyer confirmed the order details and seller information. Use the payment link below within one hour; the ticket will be cancelled after that.",
     paymentLinkTitle: "💳 Confirmed order and payment link",
     paymentLinkDescription: (amount) => `The order details are confirmed. Transfer **${amount} SAR** on the website and submit the receipt within one hour. This buyer-only link can be used once.`,
@@ -329,6 +337,7 @@ function encodeTicketTopic(ticket) {
     sellerName: ticket.sellerName || null,
     orderMessageId: ticket.orderMessageId || null,
     sellerMessageId: ticket.sellerMessageId || null,
+    confirmationMessageId: ticket.confirmationMessageId || null,
     username: ticket.username || null,
     quantity: ticket.quantity || null,
     deliveryType: ticket.deliveryType || null,
@@ -646,11 +655,11 @@ function serializeTicketConfirmation(ticketId, callback) {
 
 const paymentIssuancePromises = new Map();
 
-async function issueTicketPayment(client, channel, ticket) {
+async function issueTicketPayment(client, channel, ticket, { resendToBuyer = false } = {}) {
   const pendingIssuance = paymentIssuancePromises.get(ticket.id);
   if (pendingIssuance) return pendingIssuance;
 
-  const issuance = issueTicketPaymentOnce(client, channel, ticket);
+  const issuance = issueTicketPaymentOnce(client, channel, ticket, { resendToBuyer });
   paymentIssuancePromises.set(ticket.id, issuance);
   try {
     return await issuance;
@@ -659,8 +668,10 @@ async function issueTicketPayment(client, channel, ticket) {
   }
 }
 
-async function issueTicketPaymentOnce(client, channel, ticket) {
+async function issueTicketPaymentOnce(client, channel, ticket, { resendToBuyer = false } = {}) {
   if (ticket.paymentStatus === "submitted") return;
+  if (!ticket.orderConfirmed || !ticket.sellerConfirmed) throw new Error("Both order and seller details must be confirmed before payment.");
+  if (ticket.paymentExpiresAt && Number(ticket.paymentExpiresAt) <= Date.now()) throw new Error("The payment link has expired.");
   if (!ticket.paymentToken) ticket.paymentToken = crypto.randomBytes(32).toString("base64url");
   if (!ticket.paymentExpiresAt) ticket.paymentExpiresAt = Date.now() + PAYMENT_TIMEOUT_MS;
   ticket.paymentStatus = "issued";
@@ -668,32 +679,47 @@ async function issueTicketPaymentOnce(client, channel, ticket) {
   scheduleRobuxTicketTimeout(channel, ticket);
 
   const total = robuxTicketTotal(ticket);
-  const payload = {
-    ticket_id: ticket.id,
-    guild_id: ticket.guildId,
-    channel_id: ticket.channelId,
-    buyer_discord_id: ticket.buyerId,
-    seller_discord_id: ticket.sellerDiscordId,
-    buyer_id: ticket.buyerProfileId,
-    seller_id: ticket.sellerProfileId,
-    offer_id: ticket.offerId,
-    roblox_username: ticket.username,
-    robux_amount: Number(ticket.quantity),
-    delivery_method: ticket.deliveryType,
-    seller_name: ticket.sellerName,
-    unit_rate: Number(ticket.rate),
-    total_sar: total,
-    token_hash: crypto.createHash("sha256").update(ticket.paymentToken).digest("hex"),
-    expires_at: new Date(ticket.paymentExpiresAt).toISOString(),
-    status: "issued",
-  };
-  await supabaseRequest("discord_ticket_payments?on_conflict=ticket_id", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=representation" },
-    body: JSON.stringify(payload),
-  });
+  const tokenHash = crypto.createHash("sha256").update(ticket.paymentToken).digest("hex");
+  const existingPayments = await supabaseRequest(`discord_ticket_payments?ticket_id=eq.${encodeURIComponent(ticket.id)}&select=status,token_hash`);
+  const existingPayment = existingPayments[0];
+  if (existingPayment?.status === "submitted") {
+    ticket.paymentStatus = "submitted";
+    ticket.paymentToken = null;
+    if (ticket.timeout) clearTimeout(ticket.timeout);
+    ticket.timeout = null;
+    ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
+    await persistTicket(channel, ticket);
+    return;
+  }
+  if (existingPayment?.status !== "issued" || existingPayment.token_hash !== tokenHash) {
+    const payload = {
+      ticket_id: ticket.id,
+      guild_id: ticket.guildId,
+      channel_id: ticket.channelId,
+      buyer_discord_id: ticket.buyerId,
+      seller_discord_id: ticket.sellerDiscordId,
+      buyer_id: ticket.buyerProfileId,
+      seller_id: ticket.sellerProfileId,
+      offer_id: ticket.offerId,
+      roblox_username: ticket.username,
+      robux_amount: Number(ticket.quantity),
+      delivery_method: ticket.deliveryType,
+      seller_name: ticket.sellerName,
+      unit_rate: Number(ticket.rate),
+      total_sar: total,
+      token_hash: tokenHash,
+      expires_at: new Date(ticket.paymentExpiresAt).toISOString(),
+      status: "issued",
+    };
+    await supabaseRequest("discord_ticket_payments?on_conflict=ticket_id", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Prefer: "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify(payload),
+    });
+  }
 
   const paymentUrl = `${SITE_URL}/checkout?discordTicketPayment=${encodeURIComponent(ticket.paymentToken)}`;
+  let paymentDmError = null;
   let paymentMessage = ticket.paymentMessageId
     ? await channel.messages.fetch(ticket.paymentMessageId).catch(() => null)
     : null;
@@ -730,13 +756,22 @@ async function issueTicketPaymentOnce(client, channel, ticket) {
   }
 
   ticket.paymentMessageId = paymentMessage.id;
-  if (!ticket.paymentLinkDmSent) {
+  if (!ticket.paymentLinkDmSent || resendToBuyer) {
     try {
       const buyer = await client.users.fetch(ticket.buyerId);
       const dmEmbed = new EmbedBuilder()
         .setColor(0x22c55e)
         .setTitle(T[ticket.lang].paymentLinkTitle)
-        .setDescription(T[ticket.lang].paymentDmDescription(ticket.id, total.toFixed(2)));
+        .setDescription(T[ticket.lang].paymentDmDescription(ticket.id, total.toFixed(2)))
+        .addFields(
+          { name: ticket.lang === "ar" ? "حساب روبلوكس" : "Roblox username", value: ticket.username, inline: true },
+          { name: ticket.lang === "ar" ? "الكمية" : "Quantity", value: `${Number(ticket.quantity).toLocaleString("en-US")} R$`, inline: true },
+          { name: ticket.lang === "ar" ? "البائع" : "Seller", value: ticket.sellerName, inline: true },
+          { name: ticket.lang === "ar" ? "نوع التسليم" : "Delivery", value: DELIVERY_LABELS[ticket.deliveryType][ticket.lang], inline: true },
+          { name: ticket.lang === "ar" ? "السعر لكل 1,000" : "Rate per 1,000", value: `${Number(ticket.rate).toFixed(2)} ${ticket.lang === "ar" ? "ريال" : "SAR"}`, inline: true },
+          { name: ticket.lang === "ar" ? "الإجمالي" : "Total", value: `${total.toFixed(2)} ${ticket.lang === "ar" ? "ريال" : "SAR"}`, inline: true },
+          { name: ticket.lang === "ar" ? "مهلة الدفع" : "Payment deadline", value: `<t:${Math.floor(ticket.paymentExpiresAt / 1000)}:R>`, inline: true }
+        );
       const dmRow = new ActionRowBuilder().addComponents(
         new ButtonBuilder()
           .setLabel(ticket.lang === "ar" ? "إكمال الدفع" : "Complete payment")
@@ -747,12 +782,14 @@ async function issueTicketPaymentOnce(client, channel, ticket) {
       ticket.paymentLinkDmSent = true;
     } catch (error) {
       ticket.paymentLinkDmSent = false;
+      paymentDmError = error;
       console.error("تعذّر إرسال رابط الدفع في الخاص للمشتري:", ticket.id, error.message);
     }
   }
   await sendTicketConfirmationDms(client, channel, ticket);
   await persistTicket(channel, ticket);
   scheduleRobuxTicketTimeout(channel, ticket);
+  if (resendToBuyer && paymentDmError) throw paymentDmError;
 }
 
 let syncingDiscordPaymentReceipts = false;
@@ -858,6 +895,7 @@ async function syncSubmittedDiscordPayments(client) {
           ticket.paymentToken = null;
           if (ticket.timeout) clearTimeout(ticket.timeout);
           ticket.timeout = null;
+          ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
           await persistTicket(await client.channels.fetch(payment.channel_id), ticket).catch(() => {});
         }
 
@@ -885,6 +923,7 @@ async function syncSubmittedDiscordPayments(client) {
         ticket.paymentToken = null;
         if (ticket.timeout) clearTimeout(ticket.timeout);
         ticket.timeout = null;
+        ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
         await persistTicket(await client.channels.fetch(payment.channel_id), ticket).catch(() => {});
         if (ticket.paymentMessageId) {
           const paymentMessage = await client.channels.fetch(payment.channel_id)
@@ -1052,7 +1091,7 @@ async function refreshRobuxTicketMessages(channel, ticket) {
     const orderMessage = await channel.messages.fetch(ticket.orderMessageId).catch(() => null);
     if (orderMessage) {
       let components = [];
-      if (ticket.orderConfirmed && ticket.sellerConfirmed && (!ticket.paymentMessageId || !ticket.paymentLinkDmSent) && ticket.paymentStatus !== "submitted") {
+      if (ticket.orderConfirmed && ticket.sellerConfirmed && ticket.paymentStatus !== "submitted" && ticket.paymentStatus !== "expired") {
         components = [new ActionRowBuilder().addComponents(
           new ButtonBuilder().setCustomId(`confirm:payment:${ticket.id}`).setLabel(T[ticket.lang].paymentRetryButton).setStyle(ButtonStyle.Primary)
         )];
@@ -1154,7 +1193,8 @@ async function refreshRobuxTicketMessages(channel, ticket) {
     ticket.orderMessageId = orderMessage.id;
     ticket.sellerMessageId = sellerMessage.id;
     const confirmationDeadline = Math.floor((ticket.createdAt + ORDER_CONFIRMATION_TIMEOUT_MS) / 1000);
-    await channel.send(`${T[lang].pleaseConfirm}\n${T[lang].confirmationDeadline(confirmationDeadline)}`);
+    const confirmationMessage = await channel.send(`${T[lang].pleaseConfirm}\n${T[lang].confirmationDeadline(confirmationDeadline)}`);
+    ticket.confirmationMessageId = confirmationMessage.id;
     await persistTicket(channel, ticket);
     activeTickets.set(channel.id, ticket);
     await recordTicketLifecycle(interaction.client, ticket, "created", T[lang].ticketCreatedTranscript);
@@ -1170,15 +1210,29 @@ async function refreshRobuxTicketMessages(channel, ticket) {
   }
 }
 
-async function expireRobuxTicket(channel, ticket) {
-  if (activeTickets.get(channel.id) !== ticket) return;
-  if (ticket.orderConfirmed && ticket.sellerConfirmed) {
+function isCurrentRobuxTicketTimeout(channel, ticket, timeout) {
+  if (activeTickets.get(channel.id) !== ticket || ticket.timeoutGeneration !== timeout.generation || ticket.closing) return false;
+  const paymentStarted = ticket.orderConfirmed && ticket.sellerConfirmed;
+  if (paymentStarted !== timeout.paymentStarted) {
+    scheduleRobuxTicketTimeout(channel, ticket);
+    return false;
+  }
+  return Date.now() >= timeout.deadline;
+}
+
+async function expireRobuxTicket(channel, ticket, timeout) {
+  if (!isCurrentRobuxTicketTimeout(channel, ticket, timeout)) return;
+  if (timeout.paymentStarted) {
+    let payment;
     try {
       const sessions = await supabaseRequest(`discord_ticket_payments?ticket_id=eq.${encodeURIComponent(ticket.id)}&select=id,status`);
-      const payment = sessions[0];
+      if (!isCurrentRobuxTicketTimeout(channel, ticket, timeout)) return;
+      payment = sessions[0];
       if (payment?.status === "submitted") {
         ticket.paymentStatus = "submitted";
         ticket.paymentToken = null;
+        ticket.timeout = null;
+        ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
         await persistTicket(channel, ticket);
         if (ticket.paymentMessageId) {
           const message = await channel.messages.fetch(ticket.paymentMessageId).catch(() => null);
@@ -1193,34 +1247,39 @@ async function expireRobuxTicket(channel, ticket) {
           body: JSON.stringify({ status: "expired", updated_at: new Date().toISOString() }),
         });
       }
-      ticket.paymentStatus = "expired";
-      ticket.paymentToken = null;
-      await persistTicket(channel, ticket);
-      await channel.send(T[ticket.lang].paymentExpired).catch(() => {});
     } catch (error) {
+      if (!isCurrentRobuxTicketTimeout(channel, ticket, timeout)) return;
       console.error("تعذّر التحقق من حالة الدفع قبل إغلاق التذكرة:", ticket.id, error.message);
-      ticket.timeout = setTimeout(() => void expireRobuxTicket(channel, ticket), 60_000);
+      ticket.timeout = setTimeout(() => void expireRobuxTicket(channel, ticket, timeout), 60_000);
       return;
     }
+    if (!isCurrentRobuxTicketTimeout(channel, ticket, timeout)) return;
+    ticket.paymentStatus = "expired";
+    ticket.paymentToken = null;
+    await persistTicket(channel, ticket);
+    await channel.send(T[ticket.lang].paymentExpired).catch(() => {});
   } else {
-    await channel.send(T[ticket.lang].expired).catch(() => {});
+    const expiredMessage = await channel.send(T[ticket.lang].expired).catch(() => null);
+    if (!isCurrentRobuxTicketTimeout(channel, ticket, timeout)) {
+      await expiredMessage?.delete().catch(() => {});
+      return;
+    }
   }
+  if (!isCurrentRobuxTicketTimeout(channel, ticket, timeout)) return;
   await closeTicketChannel(channel, ticket, { deleteAfterTranscript: true });
 }
 
 function scheduleRobuxTicketTimeout(channel, ticket) {
   if (ticket.kind !== "robux") return;
   if (ticket.timeout) clearTimeout(ticket.timeout);
+  ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
   const paymentStarted = ticket.orderConfirmed && ticket.sellerConfirmed;
   const deadline = paymentStarted
     ? Number(ticket.paymentExpiresAt || (Number(ticket.createdAt || Date.now()) + PAYMENT_TIMEOUT_MS))
     : Number(ticket.createdAt || Date.now()) + ORDER_CONFIRMATION_TIMEOUT_MS;
+  const timeout = { generation: ticket.timeoutGeneration, paymentStarted, deadline };
   const remaining = Math.max(0, deadline - Date.now());
-  if (!remaining) {
-    void expireRobuxTicket(channel, ticket);
-    return;
-  }
-  ticket.timeout = setTimeout(() => void expireRobuxTicket(channel, ticket), remaining);
+  ticket.timeout = setTimeout(() => void expireRobuxTicket(channel, ticket, timeout), remaining);
 }
 
 async function restoreTickets(client) {
@@ -1319,7 +1378,11 @@ async function createServiceTicket(interaction, data) {
 }
 
 async function closeTicketChannel(channel, ticket, { deleteAfterTranscript = false } = {}) {
+  if (ticket.closing) return;
+  ticket.closing = true;
   if (ticket.timeout) clearTimeout(ticket.timeout);
+  ticket.timeout = null;
+  ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
   ticket.closedAt ||= Date.now();
   await channel.setTopic(encodeClosedTicketTopic(ticket)).catch((error) => {
     console.error("تعذّر حفظ وقت إغلاق التذكرة:", ticket.id, error.message);
@@ -2081,7 +2144,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isButton() && interaction.customId.startsWith("confirm:")) {
       const [, part, ticketId] = interaction.customId.split(":");
       const ticket = activeTickets.get(interaction.channelId);
-      if (!ticket || ticket.kind !== "robux" || ticket.id !== ticketId || !ticket.sellerDiscordId) {
+      if (!ticket || ticket.closing || ticket.kind !== "robux" || ticket.id !== ticketId || !ticket.sellerDiscordId) {
         await interaction.reply({ content: "هذه التذكرة غير نشطة.", flags: MessageFlags.Ephemeral });
         return;
       }
@@ -2098,11 +2161,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
         await interaction.deferUpdate();
         try {
-          await issueTicketPayment(interaction.client, interaction.channel, ticket);
+          await issueTicketPayment(interaction.client, interaction.channel, ticket, { resendToBuyer: true });
           await refreshRobuxTicketMessages(interaction.channel, ticket);
+          const response = ticket.paymentStatus === "submitted"
+            ? T[ticket.lang].paymentAlreadySubmitted
+            : ticket.paymentLinkDmSent
+              ? T[ticket.lang].paymentLinkResent
+              : T[ticket.lang].paymentLinkResendFailed;
+          await interaction.followUp({ content: response, flags: MessageFlags.Ephemeral });
         } catch (error) {
-          console.error("تعذّر تجهيز رابط الدفع:", ticket.id, error.message);
-          await interaction.followUp({ content: "تعذّر تجهيز رابط الدفع. أعد المحاولة من زر إعادة تجهيز رابط الدفع.", flags: MessageFlags.Ephemeral });
+          console.error("تعذّر إعادة إرسال رابط الدفع:", ticket.id, error.message);
+          await interaction.followUp({ content: T[ticket.lang].paymentLinkResendFailed, flags: MessageFlags.Ephemeral });
           await refreshRobuxTicketMessages(interaction.channel, ticket);
         }
         return;
@@ -2123,7 +2192,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       await interaction.deferUpdate();
       try {
         await serializeTicketConfirmation(ticket.id, async () => {
-          if (activeTickets.get(interaction.channelId) !== ticket) return;
+          if (activeTickets.get(interaction.channelId) !== ticket || ticket.closing) return;
 
           if (ticket.orderConfirmed && ticket.sellerConfirmed) {
             if (ticket.paymentStatus !== "submitted" && (!ticket.paymentMessageId || !ticket.paymentLinkDmSent)) {
@@ -2165,6 +2234,17 @@ client.on(Events.InteractionCreate, async (interaction) => {
             ticket.timeout = null;
             ticket.paymentExpiresAt ||= Date.now() + PAYMENT_TIMEOUT_MS;
             scheduleRobuxTicketTimeout(interaction.channel, ticket);
+            let confirmationMessage = ticket.confirmationMessageId
+              ? await interaction.channel.messages.fetch(ticket.confirmationMessageId).catch(() => null)
+              : null;
+            if (!confirmationMessage) {
+              const recentMessages = await interaction.channel.messages.fetch({ limit: 50 }).catch(() => null);
+              confirmationMessage = recentMessages?.find((message) =>
+                message.content.includes("مهلة التأكيد") || message.content.includes("Confirmation expires")
+              ) || null;
+            }
+            if (confirmationMessage) await confirmationMessage.edit(T[ticket.lang].confirmationComplete).catch(() => {});
+            ticket.confirmationMessageId = null;
           }
           await persistTicket(interaction.channel, ticket);
 
