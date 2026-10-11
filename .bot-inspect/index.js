@@ -161,6 +161,7 @@ const T = {
     confirmButton: "تأكيد تفاصيل الطلب",
     confirmSellerButton: "تأكيد بيانات البائع (للمشتري)",
     paymentRetryButton: "إعادة إرسال رابط الدفع للمشتري",
+    paymentPreparationRetryButton: "إعادة تجهيز رابط الدفع",
     cancelButton: "❌ إلغاء",
     changeSellerButton: "🔄 تغيير البائع",
     confirmed: "✅ تم التأكيد",
@@ -168,8 +169,8 @@ const T = {
     confirmationDeadline: (unix) => `⏳ تنتهي مهلة التأكيد <t:${unix}:R>. أكّد تفاصيل الطلب وبيانات البائع قبل انتهاء الوقت.`,
     paymentPreparing: "✅ تم تأكيد التفاصيل. يجري تجهيز رابط الدفع الآن؛ ستبدأ مهلة الساعة بعد إصدار الرابط.",
     confirmationComplete: "✅ تم تأكيد تفاصيل الطلب وبيانات البائع وإرسال رابط الدفع. تنتهي المهلة بعد ساعة من إصدار الرابط.",
-    paymentRetryPending: "تأخر تجهيز رابط الدفع؛ سيعيد البوت المحاولة تلقائيًا خلال لحظات. استخدم زر إعادة إرسال رابط الدفع إذا لم يظهر.",
-    paymentPreparationFailed: "تعذّر تجهيز رابط الدفع بعد عدة محاولات تلقائية. استخدم زر إعادة إرسال رابط الدفع للمشتري للمحاولة مجددًا.",
+    paymentRetryPending: "تأخر تجهيز رابط الدفع؛ سيعيد البوت المحاولة تلقائيًا خلال لحظات.",
+    paymentPreparationFailed: "تعذّر تجهيز رابط الدفع بعد عدة محاولات تلقائية. استخدم زر إعادة تجهيز رابط الدفع للمحاولة مجددًا.",
     paymentLinkResent: "✅ أُعيد إرسال رابط الدفع إلى الخاص بالمشتري.",
     paymentLinkResendFailed: "تعذّر إرسال الرابط إلى الخاص. تأكد أن رسائل الخاص مفتوحة ثم حاول مجددًا.",
     paymentAlreadySubmitted: "تم إرسال الإيصال بالفعل؛ لا حاجة لإعادة رابط الدفع.",
@@ -240,6 +241,7 @@ const T = {
     confirmButton: "Confirm order details",
     confirmSellerButton: "Confirm seller info (buyer)",
     paymentRetryButton: "Resend payment link to buyer",
+    paymentPreparationRetryButton: "Retry payment link preparation",
     cancelButton: "❌ Cancel",
     changeSellerButton: "🔄 Change Seller",
     confirmed: "✅ Confirmed",
@@ -247,8 +249,8 @@ const T = {
     confirmationDeadline: (unix) => `⏳ Confirmation expires <t:${unix}:R>. Confirm the order and seller details before then.`,
     paymentPreparing: "✅ The details are confirmed. The payment link is being prepared; the one-hour window starts when the link is issued.",
     confirmationComplete: "✅ The order and seller details are confirmed and the payment link was sent. The link expires one hour after it is issued.",
-    paymentRetryPending: "The payment link is taking longer than expected. The bot will retry automatically; use the resend-payment-link button if it does not appear.",
-    paymentPreparationFailed: "The payment link could not be prepared after several automatic retries. Use the resend-payment-link button to try again.",
+    paymentRetryPending: "The payment link is taking longer than expected. The bot will retry automatically.",
+    paymentPreparationFailed: "The payment link could not be prepared after several automatic retries. Use the retry-payment-preparation button to try again.",
     paymentLinkResent: "✅ The payment link was resent to the buyer’s DMs.",
     paymentLinkResendFailed: "Could not send the link to the buyer’s DMs. Ask them to enable direct messages, then try again.",
     paymentAlreadySubmitted: "The receipt has already been submitted; the payment link does not need to be resent.",
@@ -696,6 +698,11 @@ function scheduleConfirmedPaymentRecovery(client, channel, ticket) {
 
   const attempt = Number(ticket.paymentRecoveryAttempts) || 0;
   if (attempt >= 4) {
+    ticket.paymentStatus = ticket.paymentMessageId ? "issued" : "failed";
+    void Promise.all([
+      persistTicket(channel, ticket),
+      refreshRobuxTicketMessages(channel, ticket),
+    ]).catch((error) => console.error("تعذّر تحديث حالة فشل تجهيز رابط الدفع:", ticket.id, error.message));
     void channel.send(T[ticket.lang].paymentPreparationFailed).catch(() => {});
     return;
   }
@@ -733,6 +740,8 @@ async function issueTicketPaymentOnce(client, channel, ticket, { resendToBuyer =
   if (ticket.paymentStatus === "submitted") return;
   if (!ticket.orderConfirmed || !ticket.sellerConfirmed) throw new Error("Both order and seller details must be confirmed before payment.");
   if (!ticket.paymentToken) ticket.paymentToken = crypto.randomBytes(32).toString("base64url");
+  ticket.paymentStatus = "preparing";
+  await persistTicket(channel, ticket);
 
   const total = robuxTicketTotal(ticket);
   const tokenHash = crypto.createHash("sha256").update(ticket.paymentToken).digest("hex");
@@ -784,8 +793,6 @@ async function issueTicketPaymentOnce(client, channel, ticket, { resendToBuyer =
   }
 
   ticket.paymentExpiresAt = paymentExpiresAt;
-  ticket.paymentStatus = "issued";
-  scheduleRobuxTicketTimeout(channel, ticket);
 
   const paymentUrl = `${SITE_URL}/checkout?discordTicketPayment=${encodeURIComponent(ticket.paymentToken)}`;
   let paymentDmError = null;
@@ -797,34 +804,39 @@ async function issueTicketPaymentOnce(client, channel, ticket, { resendToBuyer =
     paymentMessage = recent?.find((message) => message.embeds[0]?.footer?.text === `SwiftRBX • one-time payment • ${ticket.id}`) || null;
   }
 
-  if (!paymentMessage) {
-    const embed = new EmbedBuilder()
-      .setColor(0x22c55e)
-      .setTitle(T[ticket.lang].paymentLinkTitle)
-      .setDescription(T[ticket.lang].paymentLinkDescription(total.toFixed(2)))
-      .addFields(
-        { name: ticket.lang === "ar" ? "رقم الطلب" : "Ticket", value: ticket.id, inline: true },
-        { name: ticket.lang === "ar" ? "المشتري" : "Buyer", value: `<@${ticket.buyerId}>`, inline: true },
-        { name: ticket.lang === "ar" ? "حساب روبلوكس" : "Roblox username", value: ticket.username, inline: true },
-        { name: ticket.lang === "ar" ? "الكمية" : "Quantity", value: `${Number(ticket.quantity).toLocaleString("en-US")} R$`, inline: true },
-        { name: ticket.lang === "ar" ? "البائع" : "Seller", value: `<@${ticket.sellerDiscordId}> (${ticket.sellerName})`, inline: true },
-        { name: ticket.lang === "ar" ? "نوع التسليم" : "Delivery", value: DELIVERY_LABELS[ticket.deliveryType][ticket.lang], inline: true },
-        { name: ticket.lang === "ar" ? "الإجمالي" : "Total", value: `${total.toFixed(2)} ${ticket.lang === "ar" ? "ريال" : "SAR"}`, inline: true },
-        { name: ticket.lang === "ar" ? "المهلة" : "Payment deadline", value: `<t:${Math.floor(ticket.paymentExpiresAt / 1000)}:R>`, inline: true }
-      )
-      .setFooter({ text: `SwiftRBX • one-time payment • ${ticket.id}` });
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setLabel(ticket.lang === "ar" ? "الدفع في الموقع" : "Pay on website").setStyle(ButtonStyle.Link).setURL(paymentUrl)
-    );
-    paymentMessage = await channel.send({
-      content: `<@${ticket.buyerId}> <@${ticket.sellerDiscordId}>`,
-      embeds: [embed],
-      components: [row],
-      allowedMentions: { users: [ticket.buyerId, ticket.sellerDiscordId] },
-    });
+  const paymentEmbed = new EmbedBuilder()
+    .setColor(0x22c55e)
+    .setTitle(T[ticket.lang].paymentLinkTitle)
+    .setDescription(T[ticket.lang].paymentLinkDescription(total.toFixed(2)))
+    .addFields(
+      { name: ticket.lang === "ar" ? "رقم الطلب" : "Ticket", value: ticket.id, inline: true },
+      { name: ticket.lang === "ar" ? "المشتري" : "Buyer", value: `<@${ticket.buyerId}>`, inline: true },
+      { name: ticket.lang === "ar" ? "حساب روبلوكس" : "Roblox username", value: ticket.username, inline: true },
+      { name: ticket.lang === "ar" ? "الكمية" : "Quantity", value: `${Number(ticket.quantity).toLocaleString("en-US")} R$`, inline: true },
+      { name: ticket.lang === "ar" ? "البائع" : "Seller", value: `<@${ticket.sellerDiscordId}> (${ticket.sellerName})`, inline: true },
+      { name: ticket.lang === "ar" ? "نوع التسليم" : "Delivery", value: DELIVERY_LABELS[ticket.deliveryType][ticket.lang], inline: true },
+      { name: ticket.lang === "ar" ? "الإجمالي" : "Total", value: `${total.toFixed(2)} ${ticket.lang === "ar" ? "ريال" : "SAR"}`, inline: true },
+      { name: ticket.lang === "ar" ? "المهلة" : "Payment deadline", value: `<t:${Math.floor(ticket.paymentExpiresAt / 1000)}:R>`, inline: true }
+    )
+    .setFooter({ text: `SwiftRBX • one-time payment • ${ticket.id}` });
+  const paymentComponents = [new ActionRowBuilder().addComponents(
+    new ButtonBuilder().setLabel(ticket.lang === "ar" ? "الدفع في الموقع" : "Pay on website").setStyle(ButtonStyle.Link).setURL(paymentUrl)
+  )];
+  const paymentMessageData = {
+    content: `<@${ticket.buyerId}> <@${ticket.sellerDiscordId}>`,
+    embeds: [paymentEmbed],
+    components: paymentComponents,
+    allowedMentions: { users: [ticket.buyerId, ticket.sellerDiscordId] },
+  };
+  if (paymentMessage) {
+    await paymentMessage.edit(paymentMessageData);
+  } else {
+    paymentMessage = await channel.send(paymentMessageData);
   }
 
   ticket.paymentMessageId = paymentMessage.id;
+  ticket.paymentStatus = "issued";
+  scheduleRobuxTicketTimeout(channel, ticket);
   if (ticket.confirmationMessageId) {
     const confirmationMessage = await channel.messages.fetch(ticket.confirmationMessageId).catch(() => null);
     if (confirmationMessage) {
@@ -837,7 +849,7 @@ async function issueTicketPaymentOnce(client, channel, ticket, { resendToBuyer =
   await refreshRobuxTicketMessages(channel, ticket).catch((error) => {
     console.error("تعذّر تحديث بطاقات التذكرة بعد نشر رابط الدفع:", ticket.id, error.message);
   });
-  void persistTicket(channel, ticket).catch((error) => {
+  await persistTicket(channel, ticket).catch((error) => {
     console.error("تعذّر حفظ حالة الدفع بعد نشر الرابط:", ticket.id, error.message);
   });
 
@@ -1177,9 +1189,16 @@ async function refreshRobuxTicketMessages(channel, ticket) {
     const orderMessage = await channel.messages.fetch(ticket.orderMessageId).catch(() => null);
     if (orderMessage) {
       let components = [];
-      if (ticket.orderConfirmed && ticket.sellerConfirmed && ticket.paymentStatus !== "submitted" && ticket.paymentStatus !== "expired") {
+      if (
+        ticket.orderConfirmed &&
+        ticket.sellerConfirmed &&
+        (ticket.paymentStatus === "failed" || (ticket.paymentStatus === "issued" && ticket.paymentMessageId))
+      ) {
+        const retryLabel = ticket.paymentStatus === "failed"
+          ? T[ticket.lang].paymentPreparationRetryButton
+          : T[ticket.lang].paymentRetryButton;
         components = [new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId(`confirm:payment:${ticket.id}`).setLabel(T[ticket.lang].paymentRetryButton).setStyle(ButtonStyle.Primary)
+          new ButtonBuilder().setCustomId(`confirm:payment:${ticket.id}`).setLabel(retryLabel).setStyle(ButtonStyle.Primary)
         )];
       } else if (!ticket.orderConfirmed) {
         components = [new ActionRowBuilder().addComponents(
@@ -1206,6 +1225,8 @@ async function refreshRobuxTicketMessages(channel, ticket) {
 
   async function resumeConfirmedRobuxTicket(interaction, ticket) {
   await interaction.deferUpdate();
+  clearPaymentRecovery(ticket.id);
+  ticket.paymentRecoveryAttempts = 0;
   try {
   await completeConfirmedRobuxTicket(interaction.client, interaction.channel, ticket);
   } catch (error) {
@@ -2256,6 +2277,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           return;
         }
         await interaction.deferUpdate();
+        clearPaymentRecovery(ticket.id);
+        ticket.paymentRecoveryAttempts = 0;
         try {
           await completeConfirmedRobuxTicket(interaction.client, interaction.channel, ticket, { resendToBuyer: true });
           const response = ticket.paymentStatus === "submitted"
@@ -2276,16 +2299,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (part !== "order" && part !== "seller") return;
 
       if (ticket.orderConfirmed && ticket.sellerConfirmed) {
-        if (part === "seller") {
-          await interaction.deferUpdate();
-          await refreshRobuxTicketMessages(interaction.channel, ticket);
-          return;
-        }
         await resumeConfirmedRobuxTicket(interaction, ticket);
         return;
       }
 
       await interaction.deferUpdate();
+      await interaction.message.edit({
+        components: interaction.message.components.map((row) => new ActionRowBuilder().addComponents(
+          ...row.components.map((component) => ButtonBuilder.from(component).setDisabled(true))
+        )),
+      }).catch((error) => console.error("تعذّر تعطيل زر التأكيد أثناء التحقق:", ticket.id, error.message));
       try {
         await serializeTicketConfirmation(ticket.id, async () => {
           if (activeTickets.get(interaction.channelId) !== ticket || ticket.closing) return;
@@ -2362,9 +2385,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
           }
           await persistTicket(interaction.channel, ticket);
         });
+        await refreshRobuxTicketMessages(interaction.channel, ticket).catch((error) => {
+          console.error("تعذّر تحديث أزرار التأكيد بعد المعالجة:", ticket.id, error.message);
+        });
       } catch (error) {
         console.error("تعذّر حفظ تأكيد بيانات التذكرة:", ticket.id, error.message);
         await interaction.followUp({ content: "تعذّر حفظ التأكيد. حاول مرة أخرى.", flags: MessageFlags.Ephemeral }).catch(() => {});
+        await refreshRobuxTicketMessages(interaction.channel, ticket).catch(() => {});
       }
       return;
     }
