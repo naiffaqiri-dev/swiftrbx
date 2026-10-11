@@ -785,7 +785,6 @@ async function issueTicketPaymentOnce(client, channel, ticket, { resendToBuyer =
 
   ticket.paymentExpiresAt = paymentExpiresAt;
   ticket.paymentStatus = "issued";
-  await persistTicket(channel, ticket);
   scheduleRobuxTicketTimeout(channel, ticket);
 
   const paymentUrl = `${SITE_URL}/checkout?discordTicketPayment=${encodeURIComponent(ticket.paymentToken)}`;
@@ -826,6 +825,22 @@ async function issueTicketPaymentOnce(client, channel, ticket, { resendToBuyer =
   }
 
   ticket.paymentMessageId = paymentMessage.id;
+  if (ticket.confirmationMessageId) {
+    const confirmationMessage = await channel.messages.fetch(ticket.confirmationMessageId).catch(() => null);
+    if (confirmationMessage) {
+      await confirmationMessage.edit(T[ticket.lang].confirmationComplete).catch((error) => {
+        console.error("تعذّر تحديث رسالة تأكيد الطلب بعد نشر رابط الدفع:", ticket.id, error.message);
+      });
+    }
+    ticket.confirmationMessageId = null;
+  }
+  await refreshRobuxTicketMessages(channel, ticket).catch((error) => {
+    console.error("تعذّر تحديث بطاقات التذكرة بعد نشر رابط الدفع:", ticket.id, error.message);
+  });
+  void persistTicket(channel, ticket).catch((error) => {
+    console.error("تعذّر حفظ حالة الدفع بعد نشر الرابط:", ticket.id, error.message);
+  });
+
   if (!ticket.paymentLinkDmSent || resendToBuyer) {
     try {
       const buyer = await client.users.fetch(ticket.buyerId);
