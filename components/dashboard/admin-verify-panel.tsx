@@ -222,6 +222,7 @@ function VerifyCard({
           <span>المبلغ: {amount}</span>
           {detail && <span>{detail}</span>}
           <span>البنك: {bank?.nameAr ?? '—'}</span>
+          <span dir="ltr">الحساب: {bank?.account ?? '—'}</span>
           <span>المحوّل: {sender ?? '—'}</span>
         </div>
         {receipt && (
