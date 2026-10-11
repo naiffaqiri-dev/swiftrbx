@@ -1,4 +1,5 @@
 import { createHash } from 'crypto'
+import { randomBank } from '@/lib/banks'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const PAYMENT_COLUMNS =
@@ -58,5 +59,36 @@ export async function lookupDiscordTicketPayment(token: string, buyerId: string)
     return { kind: 'expired' }
   }
 
-  return { kind: 'ok', payment }
+  return { kind: 'ok', payment: await ensureBankAssigned(payment) }
+}
+
+// Picks a random bank once per payment row. The guarded update never overwrites an existing choice,
+// and the row is re-read so every open of the link shows the same bank that was stored.
+async function ensureBankAssigned(payment: DiscordTicketPayment): Promise<DiscordTicketPayment> {
+  if (payment.bank_key) return payment
+
+  const bank = randomBank()
+  const admin = createAdminClient()
+  const now = new Date().toISOString()
+  const { error: assignError } = await admin
+    .from('discord_ticket_payments')
+    .update({
+      bank_key: bank.key,
+      bank_name: bank.name,
+      bank_account: bank.account,
+      bank_iban: bank.iban,
+      bank_holder: bank.holder,
+      updated_at: now,
+    })
+    .eq('id', payment.id)
+    .is('bank_key', null)
+  if (assignError) throw assignError
+
+  const { data, error } = await admin
+    .from('discord_ticket_payments')
+    .select(PAYMENT_COLUMNS)
+    .eq('id', payment.id)
+    .single()
+  if (error) throw error
+  return data as unknown as DiscordTicketPayment
 }

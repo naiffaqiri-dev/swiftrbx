@@ -69,6 +69,7 @@ export async function POST(request: Request) {
       order_id: orderId,
       receipt_url: receiptPath,
       sender_name: senderName,
+      discord_notified_at: null,
       updated_at: now,
     })
     .eq('token_hash', hashDiscordTicketToken(token))
