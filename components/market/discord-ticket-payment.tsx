@@ -173,6 +173,10 @@ export function DiscordTicketPayment({ token }: { token: string }) {
             <dt className="text-muted-foreground">اسم الحساب</dt>
             <dd className="font-semibold">{payment.bank.holder}</dd>
           </div>
+          <div className="flex justify-between gap-4">
+            <dt className="text-muted-foreground">سبب التحويل</dt>
+            <dd className="font-semibold">{'تحويل شخصي personal transfer'}</dd>
+          </div>
         </dl>
 
         <div className="mt-6 grid gap-4">
