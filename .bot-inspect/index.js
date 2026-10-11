@@ -166,11 +166,13 @@ const T = {
     confirmed: "✅ تم التأكيد",
     pleaseConfirm: "⚠️ يرجى تأكيد البيانات أعلاه قبل إرسال رسائل بالتذكرة.",
     confirmationDeadline: (unix) => `⏳ تنتهي مهلة التأكيد <t:${unix}:R>. أكّد تفاصيل الطلب وبيانات البائع قبل انتهاء الوقت.`,
-    confirmationComplete: "✅ تم تأكيد تفاصيل الطلب وبيانات البائع. أُلغيت مهلة الانتظار وبدأت مهلة الدفع لمدة ساعة.",
+    paymentPreparing: "✅ تم تأكيد التفاصيل. يجري تجهيز رابط الدفع الآن؛ ستبدأ مهلة الساعة بعد إصدار الرابط.",
+    confirmationComplete: "✅ تم تأكيد تفاصيل الطلب وبيانات البائع وإرسال رابط الدفع. تنتهي المهلة بعد ساعة من إصدار الرابط.",
+    paymentRetryPending: "تأخر تجهيز رابط الدفع؛ سيعيد البوت المحاولة تلقائيًا خلال لحظات. استخدم زر إعادة إرسال رابط الدفع إذا لم يظهر.",
+    paymentPreparationFailed: "تعذّر تجهيز رابط الدفع بعد عدة محاولات تلقائية. استخدم زر إعادة إرسال رابط الدفع للمشتري للمحاولة مجددًا.",
     paymentLinkResent: "✅ أُعيد إرسال رابط الدفع إلى الخاص بالمشتري.",
     paymentLinkResendFailed: "تعذّر إرسال الرابط إلى الخاص. تأكد أن رسائل الخاص مفتوحة ثم حاول مجددًا.",
     paymentAlreadySubmitted: "تم إرسال الإيصال بالفعل؛ لا حاجة لإعادة رابط الدفع.",
-    bothConfirmedNext: "أكد المشتري تفاصيل الطلب وبيانات البائع. استخدم رابط الدفع أدناه خلال ساعة؛ بعدها تُلغى التذكرة تلقائيًا.",
     paymentLinkTitle: "💳 تأكيد الطلب ورابط الدفع",
     paymentLinkDescription: (amount) => `تم اعتماد بيانات الطلب. حوّل **${amount} ريال** عبر الموقع وأرسل الإيصال خلال ساعة. الرابط مخصص للمشتري ويُستخدم مرة واحدة.`,
     paymentDmDescription: (ticketId, amount) => `تم تأكيد طلبك رقم **${ticketId}**. أكمل الدفع بمبلغ **${amount} ريال** خلال ساعة عبر الزر أدناه. هذا الرابط مخصص لك ويُستخدم مرة واحدة.`,
@@ -243,11 +245,13 @@ const T = {
     confirmed: "✅ Confirmed",
     pleaseConfirm: "⚠️ Please confirm the info above before sending messages in this ticket.",
     confirmationDeadline: (unix) => `⏳ Confirmation expires <t:${unix}:R>. Confirm the order and seller details before then.`,
-    confirmationComplete: "✅ The order and seller details are confirmed. The confirmation timer is cancelled and the one-hour payment window has started.",
+    paymentPreparing: "✅ The details are confirmed. The payment link is being prepared; the one-hour window starts when the link is issued.",
+    confirmationComplete: "✅ The order and seller details are confirmed and the payment link was sent. The link expires one hour after it is issued.",
+    paymentRetryPending: "The payment link is taking longer than expected. The bot will retry automatically; use the resend-payment-link button if it does not appear.",
+    paymentPreparationFailed: "The payment link could not be prepared after several automatic retries. Use the resend-payment-link button to try again.",
     paymentLinkResent: "✅ The payment link was resent to the buyer’s DMs.",
     paymentLinkResendFailed: "Could not send the link to the buyer’s DMs. Ask them to enable direct messages, then try again.",
     paymentAlreadySubmitted: "The receipt has already been submitted; the payment link does not need to be resent.",
-    bothConfirmedNext: "The buyer confirmed the order details and seller information. Use the payment link below within one hour; the ticket will be cancelled after that.",
     paymentLinkTitle: "💳 Confirmed order and payment link",
     paymentLinkDescription: (amount) => `The order details are confirmed. Transfer **${amount} SAR** on the website and submit the receipt within one hour. This buyer-only link can be used once.`,
     paymentDmDescription: (ticketId, amount) => `Your order **${ticketId}** is confirmed. Complete the **${amount} SAR** payment within one hour using the button below. This link is for you and can only be used once.`,
@@ -654,6 +658,63 @@ function serializeTicketConfirmation(ticketId, callback) {
 }
 
 const paymentIssuancePromises = new Map();
+const paymentRecoveryTimers = new Map();
+
+function clearPaymentRecovery(ticketId) {
+  const timer = paymentRecoveryTimers.get(ticketId);
+  if (timer) clearTimeout(timer);
+  paymentRecoveryTimers.delete(ticketId);
+}
+
+async function completeConfirmedRobuxTicket(client, channel, ticket, { resendToBuyer = false } = {}) {
+  await issueTicketPayment(client, channel, ticket, { resendToBuyer });
+  clearPaymentRecovery(ticket.id);
+  ticket.paymentRecoveryAttempts = 0;
+
+  if (ticket.paymentStatus === "submitted") {
+    if (ticket.confirmationMessageId) {
+      const confirmationMessage = await channel.messages.fetch(ticket.confirmationMessageId).catch(() => null);
+      if (confirmationMessage) await confirmationMessage.edit(T[ticket.lang].paymentAlreadySubmitted);
+      ticket.confirmationMessageId = null;
+      await persistTicket(channel, ticket);
+    }
+    return;
+  }
+
+  if (ticket.confirmationMessageId) {
+    const confirmationMessage = await channel.messages.fetch(ticket.confirmationMessageId).catch(() => null);
+    if (confirmationMessage) await confirmationMessage.edit(T[ticket.lang].confirmationComplete);
+    ticket.confirmationMessageId = null;
+    await persistTicket(channel, ticket);
+  }
+
+  await refreshRobuxTicketMessages(channel, ticket);
+}
+
+function scheduleConfirmedPaymentRecovery(client, channel, ticket) {
+  if (paymentRecoveryTimers.has(ticket.id) || ticket.closing || !ticket.orderConfirmed || !ticket.sellerConfirmed || ticket.paymentStatus === "submitted" || ticket.paymentStatus === "expired") return;
+
+  const attempt = Number(ticket.paymentRecoveryAttempts) || 0;
+  if (attempt >= 4) {
+    void channel.send(T[ticket.lang].paymentPreparationFailed).catch(() => {});
+    return;
+  }
+
+  ticket.paymentRecoveryAttempts = attempt + 1;
+  const timer = setTimeout(async () => {
+    paymentRecoveryTimers.delete(ticket.id);
+    if (activeTickets.get(channel.id) !== ticket || ticket.closing || ticket.paymentStatus === "submitted" || ticket.paymentStatus === "expired") return;
+
+    try {
+      await completeConfirmedRobuxTicket(client, channel, ticket);
+    } catch (error) {
+      console.error("تعذّرت إعادة محاولة تجهيز رابط الدفع:", ticket.id, error.message);
+      scheduleConfirmedPaymentRecovery(client, channel, ticket);
+    }
+  }, 2_000 * (2 ** attempt));
+  timer.unref?.();
+  paymentRecoveryTimers.set(ticket.id, timer);
+}
 
 async function issueTicketPayment(client, channel, ticket, { resendToBuyer = false } = {}) {
   const pendingIssuance = paymentIssuancePromises.get(ticket.id);
@@ -671,26 +732,30 @@ async function issueTicketPayment(client, channel, ticket, { resendToBuyer = fal
 async function issueTicketPaymentOnce(client, channel, ticket, { resendToBuyer = false } = {}) {
   if (ticket.paymentStatus === "submitted") return;
   if (!ticket.orderConfirmed || !ticket.sellerConfirmed) throw new Error("Both order and seller details must be confirmed before payment.");
-  if (ticket.paymentExpiresAt && Number(ticket.paymentExpiresAt) <= Date.now()) throw new Error("The payment link has expired.");
   if (!ticket.paymentToken) ticket.paymentToken = crypto.randomBytes(32).toString("base64url");
-  if (!ticket.paymentExpiresAt) ticket.paymentExpiresAt = Date.now() + PAYMENT_TIMEOUT_MS;
-  ticket.paymentStatus = "issued";
-  await persistTicket(channel, ticket);
-  scheduleRobuxTicketTimeout(channel, ticket);
 
   const total = robuxTicketTotal(ticket);
   const tokenHash = crypto.createHash("sha256").update(ticket.paymentToken).digest("hex");
-  const existingPayments = await supabaseRequest(`discord_ticket_payments?ticket_id=eq.${encodeURIComponent(ticket.id)}&select=status,token_hash`);
+  const existingPayments = await supabaseRequest(`discord_ticket_payments?ticket_id=eq.${encodeURIComponent(ticket.id)}&select=status,token_hash,expires_at`);
   const existingPayment = existingPayments[0];
   if (existingPayment?.status === "submitted") {
     ticket.paymentStatus = "submitted";
     ticket.paymentToken = null;
+    clearPaymentRecovery(ticket.id);
     if (ticket.timeout) clearTimeout(ticket.timeout);
     ticket.timeout = null;
     ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
     await persistTicket(channel, ticket);
     return;
   }
+
+  let paymentExpiresAt = Number(ticket.paymentExpiresAt) || Date.now() + PAYMENT_TIMEOUT_MS;
+  if (existingPayment?.status === "issued" && existingPayment.token_hash === tokenHash) {
+    const persistedExpiry = Date.parse(existingPayment.expires_at);
+    if (Number.isFinite(persistedExpiry)) paymentExpiresAt = persistedExpiry;
+  }
+  if (paymentExpiresAt <= Date.now()) throw new Error("The payment link has expired.");
+
   if (existingPayment?.status !== "issued" || existingPayment.token_hash !== tokenHash) {
     const payload = {
       ticket_id: ticket.id,
@@ -708,7 +773,7 @@ async function issueTicketPaymentOnce(client, channel, ticket, { resendToBuyer =
       unit_rate: Number(ticket.rate),
       total_sar: total,
       token_hash: tokenHash,
-      expires_at: new Date(ticket.paymentExpiresAt).toISOString(),
+      expires_at: new Date(paymentExpiresAt).toISOString(),
       status: "issued",
     };
     await supabaseRequest("discord_ticket_payments?on_conflict=ticket_id", {
@@ -717,6 +782,11 @@ async function issueTicketPaymentOnce(client, channel, ticket, { resendToBuyer =
       body: JSON.stringify(payload),
     });
   }
+
+  ticket.paymentExpiresAt = paymentExpiresAt;
+  ticket.paymentStatus = "issued";
+  await persistTicket(channel, ticket);
+  scheduleRobuxTicketTimeout(channel, ticket);
 
   const paymentUrl = `${SITE_URL}/checkout?discordTicketPayment=${encodeURIComponent(ticket.paymentToken)}`;
   let paymentDmError = null;
@@ -919,6 +989,7 @@ async function syncSubmittedDiscordPayments(client) {
           }
         }
       } else if (ticket?.id === payment.ticket_id && ticket.paymentStatus !== "submitted") {
+        clearPaymentRecovery(ticket.id);
         ticket.paymentStatus = "submitted";
         ticket.paymentToken = null;
         if (ticket.timeout) clearTimeout(ticket.timeout);
@@ -1121,14 +1192,13 @@ async function refreshRobuxTicketMessages(channel, ticket) {
   async function resumeConfirmedRobuxTicket(interaction, ticket) {
   await interaction.deferUpdate();
   try {
-  await issueTicketPayment(interaction.client, interaction.channel, ticket);
+  await completeConfirmedRobuxTicket(interaction.client, interaction.channel, ticket);
   } catch (error) {
   console.error("تعذّر استكمال الدفع بعد تأكيد الطلب:", ticket.id, error.message);
-  await interaction.followUp({ content: "تعذّر تجهيز بيانات التحويل. أعد المحاولة من زر إعادة تجهيز رابط الدفع.", flags: MessageFlags.Ephemeral }).catch(() => {});
+  scheduleConfirmedPaymentRecovery(interaction.client, interaction.channel, ticket);
+  await interaction.followUp({ content: T[ticket.lang].paymentRetryPending, flags: MessageFlags.Ephemeral }).catch(() => {});
+  await refreshRobuxTicketMessages(interaction.channel, ticket).catch(() => {});
   }
-  await refreshRobuxTicketMessages(interaction.channel, ticket).catch((error) => {
-  console.error("تعذّر تحديث شارات تأكيد التذكرة:", ticket.id, error.message);
-  });
   }
 
   async function createRobuxTicket(interaction, data) {
@@ -1274,8 +1344,12 @@ function scheduleRobuxTicketTimeout(channel, ticket) {
   if (ticket.timeout) clearTimeout(ticket.timeout);
   ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
   const paymentStarted = ticket.orderConfirmed && ticket.sellerConfirmed;
+  if (paymentStarted && (!Number.isFinite(Number(ticket.paymentExpiresAt)) || Number(ticket.paymentExpiresAt) <= 0)) {
+    ticket.timeout = null;
+    return;
+  }
   const deadline = paymentStarted
-    ? Number(ticket.paymentExpiresAt || (Number(ticket.createdAt || Date.now()) + PAYMENT_TIMEOUT_MS))
+    ? Number(ticket.paymentExpiresAt)
     : Number(ticket.createdAt || Date.now()) + ORDER_CONFIRMATION_TIMEOUT_MS;
   const timeout = { generation: ticket.timeoutGeneration, paymentStarted, deadline };
   const remaining = Math.max(0, deadline - Date.now());
@@ -1306,6 +1380,12 @@ async function restoreTickets(client) {
           ticket.sellerMessageId ||= messages.find((message) => message.embeds[0]?.title === T[ticket.lang].sellerEmbedTitle)?.id;
         }
         scheduleRobuxTicketTimeout(channel, ticket);
+        if (ticket.orderConfirmed && ticket.sellerConfirmed && ticket.paymentStatus !== "submitted" && ticket.paymentStatus !== "expired") {
+          void completeConfirmedRobuxTicket(client, channel, ticket).catch((error) => {
+            console.error("تعذّر استكمال مرحلة الدفع بعد إعادة تشغيل البوت:", ticket.id, error.message);
+            scheduleConfirmedPaymentRecovery(client, channel, ticket);
+          });
+        }
       }
     }
   }
@@ -1380,6 +1460,7 @@ async function createServiceTicket(interaction, data) {
 async function closeTicketChannel(channel, ticket, { deleteAfterTranscript = false } = {}) {
   if (ticket.closing) return;
   ticket.closing = true;
+  clearPaymentRecovery(ticket.id);
   if (ticket.timeout) clearTimeout(ticket.timeout);
   ticket.timeout = null;
   ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
@@ -2161,8 +2242,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         }
         await interaction.deferUpdate();
         try {
-          await issueTicketPayment(interaction.client, interaction.channel, ticket, { resendToBuyer: true });
-          await refreshRobuxTicketMessages(interaction.channel, ticket);
+          await completeConfirmedRobuxTicket(interaction.client, interaction.channel, ticket, { resendToBuyer: true });
           const response = ticket.paymentStatus === "submitted"
             ? T[ticket.lang].paymentAlreadySubmitted
             : ticket.paymentLinkDmSent
@@ -2171,8 +2251,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
           await interaction.followUp({ content: response, flags: MessageFlags.Ephemeral });
         } catch (error) {
           console.error("تعذّر إعادة إرسال رابط الدفع:", ticket.id, error.message);
-          await interaction.followUp({ content: T[ticket.lang].paymentLinkResendFailed, flags: MessageFlags.Ephemeral });
-          await refreshRobuxTicketMessages(interaction.channel, ticket);
+          scheduleConfirmedPaymentRecovery(interaction.client, interaction.channel, ticket);
+          await interaction.followUp({ content: T[ticket.lang].paymentRetryPending, flags: MessageFlags.Ephemeral }).catch(() => {});
+          await refreshRobuxTicketMessages(interaction.channel, ticket).catch(() => {});
         }
         return;
       }
@@ -2195,10 +2276,14 @@ client.on(Events.InteractionCreate, async (interaction) => {
           if (activeTickets.get(interaction.channelId) !== ticket || ticket.closing) return;
 
           if (ticket.orderConfirmed && ticket.sellerConfirmed) {
-            if (ticket.paymentStatus !== "submitted" && (!ticket.paymentMessageId || !ticket.paymentLinkDmSent)) {
-              await issueTicketPayment(interaction.client, interaction.channel, ticket);
+            try {
+              await completeConfirmedRobuxTicket(interaction.client, interaction.channel, ticket);
+            } catch (error) {
+              console.error("تعذّر استكمال الدفع بعد تأكيد الطلب:", ticket.id, error.message);
+              scheduleConfirmedPaymentRecovery(interaction.client, interaction.channel, ticket);
+              await interaction.followUp({ content: T[ticket.lang].paymentRetryPending, flags: MessageFlags.Ephemeral }).catch(() => {});
+              await refreshRobuxTicketMessages(interaction.channel, ticket).catch(() => {});
             }
-            await refreshRobuxTicketMessages(interaction.channel, ticket);
             return;
           }
 
@@ -2232,8 +2317,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
           if (bothConfirmed) {
             if (ticket.timeout) clearTimeout(ticket.timeout);
             ticket.timeout = null;
-            ticket.paymentExpiresAt ||= Date.now() + PAYMENT_TIMEOUT_MS;
-            scheduleRobuxTicketTimeout(interaction.channel, ticket);
+            ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
             let confirmationMessage = ticket.confirmationMessageId
               ? await interaction.channel.messages.fetch(ticket.confirmationMessageId).catch(() => null)
               : null;
@@ -2242,23 +2326,25 @@ client.on(Events.InteractionCreate, async (interaction) => {
               confirmationMessage = recentMessages?.find((message) =>
                 message.content.includes("مهلة التأكيد") || message.content.includes("Confirmation expires")
               ) || null;
+              if (confirmationMessage) ticket.confirmationMessageId = confirmationMessage.id;
             }
-            if (confirmationMessage) await confirmationMessage.edit(T[ticket.lang].confirmationComplete).catch(() => {});
-            ticket.confirmationMessageId = null;
+            if (confirmationMessage) await confirmationMessage.edit(T[ticket.lang].paymentPreparing).catch(() => {});
           }
           await persistTicket(interaction.channel, ticket);
 
           if (bothConfirmed) {
             await interaction.channel.setName(`${ticket.lang === "ar" ? "مؤكد" : "confirmed"}-${ticket.id}`.slice(0, 90)).catch(() => {});
-            await interaction.channel.send(T[ticket.lang].bothConfirmedNext);
             try {
-              await issueTicketPayment(interaction.client, interaction.channel, ticket);
+              await completeConfirmedRobuxTicket(interaction.client, interaction.channel, ticket);
             } catch (error) {
               console.error("تعذّر تجهيز رابط الدفع:", ticket.id, error.message);
-              await interaction.followUp({ content: "تعذّر تجهيز رابط الدفع. أعد المحاولة من زر إعادة تجهيز رابط الدفع.", flags: MessageFlags.Ephemeral });
+              scheduleConfirmedPaymentRecovery(interaction.client, interaction.channel, ticket);
+              await interaction.followUp({ content: T[ticket.lang].paymentRetryPending, flags: MessageFlags.Ephemeral }).catch(() => {});
+              await refreshRobuxTicketMessages(interaction.channel, ticket).catch(() => {});
             }
+          } else {
+            await refreshRobuxTicketMessages(interaction.channel, ticket);
           }
-          await refreshRobuxTicketMessages(interaction.channel, ticket);
           await persistTicket(interaction.channel, ticket);
         });
       } catch (error) {
@@ -2457,6 +2543,7 @@ client.on(Events.ChannelDelete, (channel) => {
   closedTicketDeletionTimers.delete(channel.id);
   const ticket = activeTickets.get(channel.id) || decodeClosedTicketTopic(channel.topic, channel.id);
   if (!ticket) return;
+  clearPaymentRecovery(ticket.id);
   if (ticket.timeout) clearTimeout(ticket.timeout);
   activeTickets.delete(channel.id);
   confirmationReminderAt.delete(channel.id);
