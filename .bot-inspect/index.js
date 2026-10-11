@@ -741,7 +741,6 @@ async function issueTicketPaymentOnce(client, channel, ticket, { resendToBuyer =
   if (!ticket.orderConfirmed || !ticket.sellerConfirmed) throw new Error("Both order and seller details must be confirmed before payment.");
   if (!ticket.paymentToken) ticket.paymentToken = crypto.randomBytes(32).toString("base64url");
   ticket.paymentStatus = "preparing";
-  await persistTicket(channel, ticket);
 
   const total = robuxTicketTotal(ticket);
   const tokenHash = crypto.createHash("sha256").update(ticket.paymentToken).digest("hex");
@@ -849,10 +848,6 @@ async function issueTicketPaymentOnce(client, channel, ticket, { resendToBuyer =
   await refreshRobuxTicketMessages(channel, ticket).catch((error) => {
     console.error("تعذّر تحديث بطاقات التذكرة بعد نشر رابط الدفع:", ticket.id, error.message);
   });
-  await persistTicket(channel, ticket).catch((error) => {
-    console.error("تعذّر حفظ حالة الدفع بعد نشر الرابط:", ticket.id, error.message);
-  });
-
   if (!ticket.paymentLinkDmSent || resendToBuyer) {
     try {
       const buyer = await client.users.fetch(ticket.buyerId);
@@ -1223,19 +1218,85 @@ async function refreshRobuxTicketMessages(channel, ticket) {
   }
 }
 
-  async function resumeConfirmedRobuxTicket(interaction, ticket) {
-  await interaction.deferUpdate();
-  clearPaymentRecovery(ticket.id);
-  ticket.paymentRecoveryAttempts = 0;
+async function publishTicketState(channel, ticket, { persist = true } = {}) {
+  await refreshRobuxTicketMessages(channel, ticket).catch((error) => {
+    console.error("تعذّر تحديث بطاقات التذكرة:", ticket.id, error.message);
+  });
+  if (persist) await persistTicket(channel, ticket);
+}
+
+async function completeConfirmedRobuxTicketFromClick(interaction, ticket) {
   try {
-  await completeConfirmedRobuxTicket(interaction.client, interaction.channel, ticket);
+    await completeConfirmedRobuxTicket(interaction.client, interaction.channel, ticket);
   } catch (error) {
-  console.error("تعذّر استكمال الدفع بعد تأكيد الطلب:", ticket.id, error.message);
-  scheduleConfirmedPaymentRecovery(interaction.client, interaction.channel, ticket);
-  await interaction.followUp({ content: T[ticket.lang].paymentRetryPending, flags: MessageFlags.Ephemeral }).catch(() => {});
-  await refreshRobuxTicketMessages(interaction.channel, ticket).catch(() => {});
+    console.error("تعذّر تجهيز رابط الدفع:", ticket.id, error.message);
+    scheduleConfirmedPaymentRecovery(interaction.client, interaction.channel, ticket);
+    await persistTicket(interaction.channel, ticket).catch(() => {});
+    await interaction.followUp({ content: T[ticket.lang].paymentRetryPending, flags: MessageFlags.Ephemeral }).catch(() => {});
+    await refreshRobuxTicketMessages(interaction.channel, ticket).catch(() => {});
   }
+}
+
+async function confirmTicketPart(interaction, ticket, part) {
+  if (activeTickets.get(interaction.channelId) !== ticket || ticket.closing) return;
+
+  if (ticket.orderConfirmed && ticket.sellerConfirmed) {
+    clearPaymentRecovery(ticket.id);
+    ticket.paymentRecoveryAttempts = 0;
+    await completeConfirmedRobuxTicketFromClick(interaction, ticket);
+    return;
   }
+
+  const activeOffers = await getActiveOffers();
+  const currentOffer = activeOffers.find((offer) => offer.id === ticket.offerId && offer.seller_id === ticket.sellerProfileId);
+  if (!currentOffer) {
+    await interaction.followUp({ content: T[ticket.lang].offerNoLongerAvailable, flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  if (hasOfferSnapshotChanged(ticket, currentOffer)) {
+    const stillAvailable = offerMatchesOrder(currentOffer, ticket.deliveryType, ticket.quantity, ticket.buyerProfileId);
+    updateTicketOfferSnapshot(ticket, currentOffer);
+    ticket.orderConfirmed = false;
+    ticket.sellerConfirmed = false;
+    await publishTicketState(interaction.channel, ticket);
+    const message = stillAvailable ? T[ticket.lang].offerUpdated : T[ticket.lang].offerNoLongerAvailable;
+    await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  if (!offerMatchesOrder(currentOffer, ticket.deliveryType, ticket.quantity, ticket.buyerProfileId)) {
+    await interaction.followUp({ content: T[ticket.lang].offerNoLongerAvailable, flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  if (part === "order") ticket.orderConfirmed = true;
+  else ticket.sellerConfirmed = true;
+
+  if (!(ticket.orderConfirmed && ticket.sellerConfirmed)) {
+    await publishTicketState(interaction.channel, ticket);
+    return;
+  }
+
+  if (ticket.timeout) clearTimeout(ticket.timeout);
+  ticket.timeout = null;
+  ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
+  let confirmationMessage = ticket.confirmationMessageId
+    ? await interaction.channel.messages.fetch(ticket.confirmationMessageId).catch(() => null)
+    : null;
+  if (!confirmationMessage) {
+    const recentMessages = await interaction.channel.messages.fetch({ limit: 50 }).catch(() => null);
+    confirmationMessage = recentMessages?.find((message) =>
+      message.content.includes("مهلة التأكيد") || message.content.includes("Confirmation expires")
+    ) || null;
+    if (confirmationMessage) ticket.confirmationMessageId = confirmationMessage.id;
+  }
+  if (confirmationMessage) await confirmationMessage.edit(T[ticket.lang].paymentPreparing).catch(() => {});
+  void interaction.channel.setName(`${ticket.lang === "ar" ? "مؤكد" : "confirmed"}-${ticket.id}`.slice(0, 90)).catch(() => {});
+
+  await publishTicketState(interaction.channel, ticket, { persist: false });
+  await completeConfirmedRobuxTicketFromClick(interaction, ticket);
+}
 
   async function createRobuxTicket(interaction, data) {
   const { lang, buyerId, sellerDiscordId, sellerProfileId, sellerName, offerId, username, quantity, deliveryType, rate, available, minAmount, maxAmount } = data;
@@ -1780,7 +1841,7 @@ const NOTIFICATION_ROLES = [
   { id: "1432719713586249789", name: "Robux Stock alert", description: "إشعار بتوفر كميات روبكس جديدة." },
   { id: "1558416839170596988", name: "Account Alert", description: "إشعار بإضافة حسابات جديدة." },
   { id: "1558416938529726464", name: "Limiteds Alert", description: "إشعار بإضافة أغراض ليمتد جديدة." },
-  { id: "1558416980204195870", name: "Games Alert", description: "إشعار بإضافة أغراض مابات جديدة." },
+  { id: "1558416980204195870", name: "Games Alert", description: "إشعار بإضا��ة أغراض مابات جديدة." },
 ];
 
 function buildSelectRolesPanel() {
@@ -2298,96 +2359,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (part !== "order" && part !== "seller") return;
 
-      if (ticket.orderConfirmed && ticket.sellerConfirmed) {
-        await resumeConfirmedRobuxTicket(interaction, ticket);
-        return;
-      }
-
       await interaction.deferUpdate();
-      await interaction.message.edit({
-        components: interaction.message.components.map((row) => new ActionRowBuilder().addComponents(
-          ...row.components.map((component) => ButtonBuilder.from(component).setDisabled(true))
-        )),
-      }).catch((error) => console.error("تعذّر تعطيل زر التأكيد أثناء التحقق:", ticket.id, error.message));
       try {
-        await serializeTicketConfirmation(ticket.id, async () => {
-          if (activeTickets.get(interaction.channelId) !== ticket || ticket.closing) return;
-
-          if (ticket.orderConfirmed && ticket.sellerConfirmed) {
-            try {
-              await completeConfirmedRobuxTicket(interaction.client, interaction.channel, ticket);
-            } catch (error) {
-              console.error("تعذّر استكمال الدفع بعد تأكيد الطلب:", ticket.id, error.message);
-              scheduleConfirmedPaymentRecovery(interaction.client, interaction.channel, ticket);
-              await interaction.followUp({ content: T[ticket.lang].paymentRetryPending, flags: MessageFlags.Ephemeral }).catch(() => {});
-              await refreshRobuxTicketMessages(interaction.channel, ticket).catch(() => {});
-            }
-            return;
-          }
-
-          const activeOffers = await getActiveOffers();
-          const currentOffer = activeOffers.find((offer) => offer.id === ticket.offerId && offer.seller_id === ticket.sellerProfileId);
-          if (!currentOffer) {
-            await interaction.followUp({ content: T[ticket.lang].offerNoLongerAvailable, flags: MessageFlags.Ephemeral });
-            return;
-          }
-          const snapshotChanged = hasOfferSnapshotChanged(ticket, currentOffer);
-          const stillAvailable = offerMatchesOrder(currentOffer, ticket.deliveryType, ticket.quantity, ticket.buyerProfileId);
-          if (snapshotChanged) {
-            updateTicketOfferSnapshot(ticket, currentOffer);
-            ticket.orderConfirmed = false;
-            ticket.sellerConfirmed = false;
-            await persistTicket(interaction.channel, ticket);
-            await refreshRobuxTicketMessages(interaction.channel, ticket);
-            const message = stillAvailable ? T[ticket.lang].offerUpdated : T[ticket.lang].offerNoLongerAvailable;
-            await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
-            return;
-          }
-          if (!stillAvailable) {
-            await interaction.followUp({ content: T[ticket.lang].offerNoLongerAvailable, flags: MessageFlags.Ephemeral });
-            return;
-          }
-
-          if (part === "order") ticket.orderConfirmed = true;
-          else ticket.sellerConfirmed = true;
-
-          const bothConfirmed = ticket.orderConfirmed && ticket.sellerConfirmed;
-          if (bothConfirmed) {
-            if (ticket.timeout) clearTimeout(ticket.timeout);
-            ticket.timeout = null;
-            ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
-            let confirmationMessage = ticket.confirmationMessageId
-              ? await interaction.channel.messages.fetch(ticket.confirmationMessageId).catch(() => null)
-              : null;
-            if (!confirmationMessage) {
-              const recentMessages = await interaction.channel.messages.fetch({ limit: 50 }).catch(() => null);
-              confirmationMessage = recentMessages?.find((message) =>
-                message.content.includes("مهلة التأكيد") || message.content.includes("Confirmation expires")
-              ) || null;
-              if (confirmationMessage) ticket.confirmationMessageId = confirmationMessage.id;
-            }
-            if (confirmationMessage) await confirmationMessage.edit(T[ticket.lang].paymentPreparing).catch(() => {});
-          }
-          await persistTicket(interaction.channel, ticket);
-
-          if (bothConfirmed) {
-            await interaction.channel.setName(`${ticket.lang === "ar" ? "مؤكد" : "confirmed"}-${ticket.id}`.slice(0, 90)).catch(() => {});
-            try {
-              await completeConfirmedRobuxTicket(interaction.client, interaction.channel, ticket);
-            } catch (error) {
-              console.error("تعذّر تجهيز رابط الدفع:", ticket.id, error.message);
-              scheduleConfirmedPaymentRecovery(interaction.client, interaction.channel, ticket);
-              await interaction.followUp({ content: T[ticket.lang].paymentRetryPending, flags: MessageFlags.Ephemeral }).catch(() => {});
-              await refreshRobuxTicketMessages(interaction.channel, ticket).catch(() => {});
-            }
-          } else {
-            await refreshRobuxTicketMessages(interaction.channel, ticket);
-          }
-          await persistTicket(interaction.channel, ticket);
-        });
-        await refreshRobuxTicketMessages(interaction.channel, ticket).catch((error) => {
-          console.error("تعذّر تحديث أزرار التأكيد بعد المعالجة:", ticket.id, error.message);
-        });
+        await serializeTicketConfirmation(ticket.id, () => confirmTicketPart(interaction, ticket, part));
       } catch (error) {
         console.error("تعذّر حفظ تأكيد بيانات التذكرة:", ticket.id, error.message);
         await interaction.followUp({ content: "تعذّر حفظ التأكيد. حاول مرة أخرى.", flags: MessageFlags.Ephemeral }).catch(() => {});
