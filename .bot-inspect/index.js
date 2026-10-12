@@ -150,7 +150,7 @@ const T = {
     sellerUnlinked: "⚠️ البائع المختار لم يربط حساب ديسكورد. اختر بائعاً آخر.",
     noSellers: (quantity, delivery) => `😔 لا يوجد بائع آخر متاح لكمية **${quantity}** بطريقة **${DELIVERY_LABELS[delivery].ar}** حالياً.`,
     ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المط��بقين.`,
-    onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل الطلب وبيانات البائع أو إلغاء الطلب متاح للمشتري فقط.",
+    onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل الطلب وبيانات البائع أو ��لغاء الطلب متاح للمشتري فقط.",
     alreadyConfirmed: "تم تأكيد الطلب بالكامل ولا يمكن تعديله.",
     cancelled: "❌ ألغى المشتري الطلب. سيتم إغلاق التذكرة.",
     pickNewSeller: "اختر البائع الجديد:",
@@ -166,7 +166,7 @@ const T = {
     cancelButton: "❌ إلغاء",
     changeSellerButton: "🔄 تغيير البائع",
     confirmed: "✅ تم التأكيد",
-    pleaseConfirm: "⚠️ يرجى تأكيد البيانات أعلاه قبل إرسال رسائل بالتذكرة.",
+    pleaseConfirm: "⚠️ يرجى تأكيد البيانات أعلاه ��بل إرسال رسائل بالتذكرة.",
     confirmationDeadline: (unix) => `⏳ تنتهي مهلة التأكيد <t:${unix}:R>. أكّد تفاصيل الطلب وبيانات البائع قبل انتهاء الوقت.`,
     paymentPreparing: "✅ تم تأكيد التفاصيل. يجري تجهيز رابط الدفع الآن؛ ستبدأ مهلة الساعة بعد إصدار الرابط.",
     confirmationComplete: "✅ تم تأكيد تفاصيل الطلب وبيانات البائع وإرسال رابط الدفع. تنتهي المهلة بعد ساعة من إصدار الرابط.",
@@ -193,6 +193,8 @@ const T = {
     paymentAwaitingConfirmationTitle: "في انتظار تأكيد التحويل",
     paymentAwaitingConfirmationDescription: "استلمنا إيصال التحويل وأُرسل للإدارة العليا للمراجعة. ستُحدَّث التذكرة فور صدور القرار.",
     paymentReceiptDm: "استلمنا إيصال التحويل وأرسلناه إلى الإدارة العليا للمراجعة.",
+    paymentAcceptedInTicketTitle: "تم قبول الحوالة",
+    paymentAcceptedInTicketDescription: "تم قبول الحوالة وجار استكمال الشراء.",
     paymentApprovedMessage: (ticketId, url) => `تم تأكيد الحوالة من الإدارة العليا. أصبحت تذكرة الطلب ${ticketId} مفتوحة؛ تواصل مع البائع لإكمال التسليم: ${url}`,
     paymentRejectedMessage: (ticketId) => `لم تُقبل الحوالة للطلب ${ticketId} لأنها غير مطابقة للمتطلبات. راجع لوحة الطلبات أو تواصل مع الدعم، وستُغلق التذكرة عند انتهاء المهلة المتبقية.`,
     paymentApprovedDm: (ticketId, url) => `تم تأكيد حوالة الطلب ${ticketId} وفتح تذكرة التسليم. تابع الطلب وتواصل مع الطرف الآخر هنا: ${url}`,
@@ -273,6 +275,8 @@ const T = {
     paymentApprovedTitle: "Transfer approved and delivery ticket opened",
     paymentRejectedTitle: "Transfer rejected",
     paymentReceiptDm: "Your transfer receipt was received and sent to the senior team for review.",
+    paymentAcceptedInTicketTitle: "Transfer accepted",
+    paymentAcceptedInTicketDescription: "The transfer was accepted and the purchase is being completed.",
     paymentApprovedMessage: (ticketId, url) => `The transfer for order ${ticketId} was approved. Its delivery ticket is now open; contact the seller to complete delivery: ${url}`,
     paymentRejectedMessage: (ticketId) => `The transfer for order ${ticketId} was not approved because it does not match the requirements. Review your order or contact support; the ticket will close when the remaining time expires.`,
     paymentAwaitingConfirmationTitle: "Waiting for transfer confirmation",
@@ -956,8 +960,9 @@ async function syncSubmittedDiscordPayments(client) {
           sentMessage = recent?.find((message) => message.embeds[0]?.footer?.text?.startsWith(marker)) || null;
         }
 
-        const reviewMarker = isReviewed ? `${marker} • reviewed:${order.status}` : marker;
-        const alreadyReviewed = isReviewed && sentMessage?.embeds[0]?.footer?.text?.includes(`reviewed:${order.status}`);
+        const decisionLabel = isApproved ? "مقبولة" : "مرفوضة";
+        const reviewMarker = isReviewed ? `${marker} • ${decisionLabel}` : marker;
+        const alreadyReviewed = isReviewed && sentMessage?.embeds[0]?.footer?.text?.endsWith(decisionLabel);
         if (!sentMessage || (isReviewed && !alreadyReviewed)) {
           const embed = new EmbedBuilder()
             .setColor(isApproved ? 0x22c55e : isRejected ? 0xef4444 : 0xf59e0b)
@@ -1028,7 +1033,7 @@ async function syncSubmittedDiscordPayments(client) {
               ? T[lang].paymentApprovedMessage(payment.ticket_id, ticketUrl)
               : T[lang].paymentRejectedMessage(payment.ticket_id);
             const ticketChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
-            if (ticketChannel?.isTextBased?.()) await ticketChannel.send(notice).catch(() => {});
+            if (ticketChannel?.isTextBased?.()) await showPaymentDecisionInTicket(ticketChannel, payment, ticket, isApproved).catch(() => {});
             if (ticket) await recordTicketLifecycle(client, ticket, "payment-review", notice);
             for (const discordId of [payment.buyer_discord_id, payment.seller_discord_id].filter(Boolean)) {
               try {
@@ -1557,11 +1562,38 @@ async function handlePaymentReviewDecision(interaction) {
   }
 }
 
+async function setParticipantsWriteAccess(channel, ticket, canWrite) {
+  const participantIds = new Set([ticket?.buyerId, ticket?.sellerDiscordId].filter(Boolean));
+  for (const userId of participantIds) {
+    await channel.permissionOverwrites.edit(userId, { SendMessages: canWrite }).catch(() => {});
+  }
+}
+
+async function showPaymentDecisionInTicket(channel, payment, ticket, approved) {
+  const lang = ticket?.lang || "ar";
+  const awaitingFooter = `SwiftRBX • receipt-awaiting • ${payment.id}`;
+  const decisionFooter = `SwiftRBX • receipt-decision • ${payment.id}`;
+  const recent = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+  const alreadyShown = recent?.some((message) => message.embeds[0]?.footer?.text === decisionFooter);
+  if (!alreadyShown) {
+    const awaitingMessage = recent?.find((message) => message.embeds[0]?.footer?.text === awaitingFooter) || null;
+    const decisionEmbed = new EmbedBuilder()
+      .setColor(approved ? 0x22c55e : 0xef4444)
+      .setTitle(approved ? T[lang].paymentAcceptedInTicketTitle : T[lang].paymentRejectedTitle)
+      .setDescription(approved ? T[lang].paymentAcceptedInTicketDescription : T[lang].paymentRejectedMessage(payment.ticket_id))
+      .setFooter({ text: decisionFooter });
+    if (awaitingMessage) await awaitingMessage.edit({ embeds: [decisionEmbed] }).catch(() => {});
+    else await channel.send({ embeds: [decisionEmbed] }).catch(() => {});
+  }
+  await setParticipantsWriteAccess(channel, ticket, approved);
+}
+
 async function showReceiptAwaitingInTicket(client, payment) {
   const ticket = activeTickets.get(payment.channel_id);
   const lang = ticket?.lang || "ar";
   const channel = await client.channels.fetch(payment.channel_id).catch(() => null);
   if (!channel?.isTextBased?.() || !channel.messages) return;
+  await setParticipantsWriteAccess(channel, ticket, false);
 
   const awaitingFooter = `SwiftRBX • receipt-awaiting • ${payment.id}`;
   const paymentFooter = `SwiftRBX • one-time payment • ${payment.ticket_id}`;
