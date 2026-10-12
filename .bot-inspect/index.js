@@ -896,6 +896,15 @@ async function issueTicketPaymentOnce(client, channel, ticket, { resendToBuyer =
   if (resendToBuyer && paymentDmError) throw paymentDmError;
 }
 
+function toHttpUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    return url.protocol === "https:" || url.protocol === "http:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 let syncingDiscordPaymentReceipts = false;
 
 async function syncSubmittedDiscordPayments(client) {
@@ -911,169 +920,174 @@ async function syncSubmittedDiscordPayments(client) {
     const reviewIds = new Set(reviewRows.map((payment) => payment.id));
     const paymentsById = new Map([...submissionRows, ...reviewRows].map((payment) => [payment.id, payment]));
     for (const payment of paymentsById.values()) {
-      const shouldNotifyReceipt = submissionIds.has(payment.id);
-      const hasPendingReview = reviewIds.has(payment.id);
-      const archive = await client.channels.fetch(TRANSFER_CONFIRMATIONS_CHANNEL_ID).catch(() => null);
-      if (!archive?.isTextBased?.() || !archive.messages) {
-        console.error("قناة تأكيد التحويلات غير صالحة أو لا تدعم الرسائل.");
-        return;
-      }
-
-      const orderRows = payment.order_id
-        ? await supabaseRequest(`orders?id=eq.${encodeURIComponent(payment.order_id)}&select=id,status&limit=1`)
-        : [];
-      const order = orderRows[0] || null;
-      const isApproved = order?.status === "processing";
-      const isRejected = order?.status === "rejected";
-      const isReviewed = isApproved || isRejected;
-      if (hasPendingReview && !isReviewed) continue;
-      if (!shouldNotifyReceipt && !hasPendingReview) continue;
-      const ticketRows = isReviewed && payment.order_id
-        ? await supabaseRequest(`tickets?order_id=eq.${encodeURIComponent(payment.order_id)}&select=id,status&limit=1`)
-        : [];
-      const siteTicket = ticketRows[0] || null;
-      const ticketUrl = siteTicket?.id
-        ? `${SITE_URL}/tickets/${encodeURIComponent(siteTicket.id)}`
-        : `${SITE_URL}/dashboard`;
-      const marker = `SwiftRBX • receipt • ${payment.id}`;
-
-      let sentMessage = payment.discord_message_id
-        ? await archive.messages.fetch(payment.discord_message_id).catch(() => null)
-        : null;
-      if (!sentMessage) {
-        const recent = await archive.messages.fetch({ limit: 100 }).catch(() => null);
-        sentMessage = recent?.find((message) => message.embeds[0]?.footer?.text?.startsWith(marker)) || null;
-      }
-
-      const reviewMarker = isReviewed ? `${marker} • reviewed:${order.status}` : marker;
-      const alreadyReviewed = isReviewed && sentMessage?.embeds[0]?.footer?.text?.includes(`reviewed:${order.status}`);
-      if (!sentMessage || (isReviewed && !alreadyReviewed)) {
-        const embed = new EmbedBuilder()
-          .setColor(isApproved ? 0x22c55e : isRejected ? 0xef4444 : 0xf59e0b)
-          .setTitle(isApproved ? T.ar.paymentApprovedTitle : isRejected ? T.ar.paymentRejectedTitle : T.ar.paymentReceiptTitle)
-          .setDescription([
-            `طلب Discord **${payment.ticket_id}** • رقم الطلب **${String(payment.order_id || "").slice(0, 8)}**`,
-            isApproved
-              ? "أكدت الإدارة العليا الحوالة وأصبحت تذكرة التسليم مفتوحة."
-              : isRejected
-                ? "رفضت الإدارة العليا الحوالة لأنها غير مطابقة للمتطلبات؛ ستُغلق التذكرة عند انتهاء المهلة المتبقية."
-                : "أُرسل إيصال المشتري. الحوالة بانتظار تأكيد الإدارة العليا قبل بدء التسليم.",
-          ].join("\n\n"))
-          .addFields(
-            { name: "المشت��ي", value: `<@${payment.buyer_discord_id}>`, inline: true },
-            { name: "البائع", value: `<@${payment.seller_discord_id}> (${payment.seller_name})`, inline: true },
-            { name: "حساب روبلوكس", value: payment.roblox_username, inline: true },
-            { name: "الكمية", value: `${Number(payment.robux_amount).toLocaleString("en-US")} R$`, inline: true },
-            { name: "نوع التسليم", value: DELIVERY_LABELS[payment.delivery_method]?.ar || payment.delivery_method, inline: true },
-            { name: "قيمة الحوالة", value: `${Number(payment.total_sar).toFixed(2)} ريال`, inline: true },
-            { name: "البنك المحوّل له", value: payment.bank_name || payment.bank_key || "—", inline: true },
-            { name: "الحساب / IBAN", value: [payment.bank_account, payment.bank_iban].filter(Boolean).join("\n") || "—", inline: true },
-            { name: "اسم المحوّل", value: payment.sender_name || "—", inline: true }
-          )
-          .setFooter({ text: reviewMarker })
-          .setTimestamp();
-        const buttons = [];
-        if (payment.receipt_url) buttons.push(new ButtonBuilder().setLabel(T.ar.receiptButton).setStyle(ButtonStyle.Link).setURL(payment.receipt_url));
-        if (!isReviewed) {
-          buttons.push(new ButtonBuilder().setCustomId(`payment:review:approve:${payment.id}`).setLabel(T.ar.paymentApproveButton).setStyle(ButtonStyle.Success));
-          buttons.push(new ButtonBuilder().setCustomId(`payment:review:reject:${payment.id}`).setLabel(T.ar.paymentRejectButton).setStyle(ButtonStyle.Danger));
+      try {
+        const shouldNotifyReceipt = submissionIds.has(payment.id);
+        const hasPendingReview = reviewIds.has(payment.id);
+        const archive = await client.channels.fetch(TRANSFER_CONFIRMATIONS_CHANNEL_ID).catch(() => null);
+        if (!archive?.isTextBased?.() || !archive.messages) {
+          console.error("قناة تأكيد التحويلات غير صالحة أو لا تدعم الرسائل.");
+          return;
         }
-        buttons.push(new ButtonBuilder()
-          .setLabel(isReviewed && siteTicket ? T.ar.viewOrderTicket : T.ar.paymentReviewButton)
-          .setStyle(ButtonStyle.Link)
-          .setURL(isReviewed && siteTicket ? ticketUrl : `${SITE_URL}/dashboard`));
-        const components = [new ActionRowBuilder().addComponents(buttons)];
 
-        if (sentMessage) {
-          await sentMessage.edit({ embeds: [embed], components });
-        } else {
-          sentMessage = await archive.send({
-            content: `<@${payment.buyer_discord_id}> <@${payment.seller_discord_id}>`,
-            embeds: [embed],
-            components,
-            allowedMentions: { users: [payment.buyer_discord_id, payment.seller_discord_id] },
-          });
+        const orderRows = payment.order_id
+          ? await supabaseRequest(`orders?id=eq.${encodeURIComponent(payment.order_id)}&select=id,status&limit=1`)
+          : [];
+        const order = orderRows[0] || null;
+        const isApproved = order?.status === "processing";
+        const isRejected = order?.status === "rejected";
+        const isReviewed = isApproved || isRejected;
+        if (hasPendingReview && !isReviewed) continue;
+        if (!shouldNotifyReceipt && !hasPendingReview) continue;
+        const ticketRows = isReviewed && payment.order_id
+          ? await supabaseRequest(`tickets?order_id=eq.${encodeURIComponent(payment.order_id)}&select=id,status&limit=1`)
+          : [];
+        const siteTicket = ticketRows[0] || null;
+        const ticketUrl = siteTicket?.id
+          ? `${SITE_URL}/tickets/${encodeURIComponent(siteTicket.id)}`
+          : `${SITE_URL}/dashboard`;
+        const marker = `SwiftRBX • receipt • ${payment.id}`;
+
+        let sentMessage = payment.discord_message_id
+          ? await archive.messages.fetch(payment.discord_message_id).catch(() => null)
+          : null;
+        if (!sentMessage) {
+          const recent = await archive.messages.fetch({ limit: 100 }).catch(() => null);
+          sentMessage = recent?.find((message) => message.embeds[0]?.footer?.text?.startsWith(marker)) || null;
         }
-      }
 
-      const ticket = activeTickets.get(payment.channel_id);
-      if (isReviewed) {
-        if (ticket?.id === payment.ticket_id && ticket.paymentStatus !== (isApproved ? "approved" : "rejected")) {
-          const reviewedChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
-          ticket.paymentStatus = isApproved ? "approved" : "rejected";
+        const reviewMarker = isReviewed ? `${marker} • reviewed:${order.status}` : marker;
+        const alreadyReviewed = isReviewed && sentMessage?.embeds[0]?.footer?.text?.includes(`reviewed:${order.status}`);
+        if (!sentMessage || (isReviewed && !alreadyReviewed)) {
+          const embed = new EmbedBuilder()
+            .setColor(isApproved ? 0x22c55e : isRejected ? 0xef4444 : 0xf59e0b)
+            .setTitle(isApproved ? T.ar.paymentApprovedTitle : isRejected ? T.ar.paymentRejectedTitle : T.ar.paymentReceiptTitle)
+            .setDescription([
+              `طلب Discord **${payment.ticket_id}** • رقم الطلب **${String(payment.order_id || "").slice(0, 8)}**`,
+              isApproved
+                ? "أكدت الإدارة العليا الحوالة وأصبحت تذكرة التسليم مفتوحة."
+                : isRejected
+                  ? "رفضت الإدارة العليا الحوالة لأنها غير مطابقة للمتطلبات؛ ستُغلق التذكرة عند انتهاء المهلة المتبقية."
+                  : "أُرسل إيصال المشتري. الحوالة بانتظار تأكيد الإدارة العليا قبل بدء التسليم.",
+            ].join("\n\n"))
+            .addFields(
+              { name: "المشتري", value: `<@${payment.buyer_discord_id}>`, inline: true },
+              { name: "البائع", value: `<@${payment.seller_discord_id}> (${payment.seller_name})`, inline: true },
+              { name: "حساب روبلوكس", value: payment.roblox_username, inline: true },
+              { name: "الكمية", value: `${Number(payment.robux_amount).toLocaleString("en-US")} R$`, inline: true },
+              { name: "نوع التسليم", value: DELIVERY_LABELS[payment.delivery_method]?.ar || payment.delivery_method, inline: true },
+              { name: "قيمة الحوالة", value: `${Number(payment.total_sar).toFixed(2)} ريال`, inline: true },
+              { name: "البنك المحوّل له", value: payment.bank_name || payment.bank_key || "—", inline: true },
+              { name: "الحساب / IBAN", value: [payment.bank_account, payment.bank_iban].filter(Boolean).join("\n") || "—", inline: true },
+              { name: "اسم المحوّل", value: payment.sender_name || "—", inline: true }
+            )
+            .setFooter({ text: reviewMarker })
+            .setTimestamp();
+          const buttons = [];
+          const receiptUrl = toHttpUrl(payment.receipt_url);
+          if (receiptUrl) buttons.push(new ButtonBuilder().setLabel(T.ar.receiptButton).setStyle(ButtonStyle.Link).setURL(receiptUrl));
+          if (!isReviewed) {
+            buttons.push(new ButtonBuilder().setCustomId(`payment:review:approve:${payment.id}`).setLabel(T.ar.paymentApproveButton).setStyle(ButtonStyle.Success));
+            buttons.push(new ButtonBuilder().setCustomId(`payment:review:reject:${payment.id}`).setLabel(T.ar.paymentRejectButton).setStyle(ButtonStyle.Danger));
+          }
+          buttons.push(new ButtonBuilder()
+            .setLabel(isReviewed && siteTicket ? T.ar.viewOrderTicket : T.ar.paymentReviewButton)
+            .setStyle(ButtonStyle.Link)
+            .setURL(isReviewed && siteTicket ? ticketUrl : `${SITE_URL}/dashboard`));
+          const components = [new ActionRowBuilder().addComponents(buttons)];
+
+          if (sentMessage) {
+            await sentMessage.edit({ embeds: [embed], components });
+          } else {
+            sentMessage = await archive.send({
+              content: `<@${payment.buyer_discord_id}> <@${payment.seller_discord_id}>`,
+              embeds: [embed],
+              components,
+              allowedMentions: { users: [payment.buyer_discord_id, payment.seller_discord_id] },
+            });
+          }
+        }
+
+        const ticket = activeTickets.get(payment.channel_id);
+        if (isReviewed) {
+          if (ticket?.id === payment.ticket_id && ticket.paymentStatus !== (isApproved ? "approved" : "rejected")) {
+            const reviewedChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
+            ticket.paymentStatus = isApproved ? "approved" : "rejected";
+            ticket.paymentToken = null;
+            if (ticket.timeout) clearTimeout(ticket.timeout);
+            ticket.timeout = null;
+            ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
+            if (isRejected && reviewedChannel) scheduleRejectedTicketClose(reviewedChannel, ticket);
+            if (reviewedChannel) await persistTicket(reviewedChannel, ticket).catch(() => {});
+          }
+
+          if (hasPendingReview || shouldNotifyReceipt) {
+            const lang = ticket?.lang || "ar";
+            const notice = isApproved
+              ? T[lang].paymentApprovedMessage(payment.ticket_id, ticketUrl)
+              : T[lang].paymentRejectedMessage(payment.ticket_id);
+            const ticketChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
+            if (ticketChannel?.isTextBased?.()) await ticketChannel.send(notice).catch(() => {});
+            if (ticket) await recordTicketLifecycle(client, ticket, "payment-review", notice);
+            for (const discordId of [payment.buyer_discord_id, payment.seller_discord_id].filter(Boolean)) {
+              try {
+                const user = await client.users.fetch(discordId);
+                await user.send(isApproved
+                  ? T[lang].paymentApprovedDm(payment.ticket_id, ticketUrl)
+                  : T[lang].paymentRejectedDm(payment.ticket_id));
+              } catch (error) {
+                console.log(`تعذّر إرسال تحديث مراجعة الحوالة في الخاص لـ ${discordId}: ${error.message}`);
+              }
+            }
+          }
+        } else if (ticket?.id === payment.ticket_id && ticket.paymentStatus !== "submitted") {
+          clearPaymentRecovery(ticket.id);
+          ticket.paymentStatus = "submitted";
           ticket.paymentToken = null;
           if (ticket.timeout) clearTimeout(ticket.timeout);
           ticket.timeout = null;
           ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
-          if (isRejected && reviewedChannel) scheduleRejectedTicketClose(reviewedChannel, ticket);
-          if (reviewedChannel) await persistTicket(reviewedChannel, ticket).catch(() => {});
-        }
-
-        if (hasPendingReview || shouldNotifyReceipt) {
-          const lang = ticket?.lang || "ar";
-          const notice = isApproved
-            ? T[lang].paymentApprovedMessage(payment.ticket_id, ticketUrl)
-            : T[lang].paymentRejectedMessage(payment.ticket_id);
+          await persistTicket(await client.channels.fetch(payment.channel_id), ticket).catch(() => {});
+          if (ticket.paymentMessageId) {
+            const ticketChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
+            const oldPaymentMessage = await ticketChannel?.messages.fetch(ticket.paymentMessageId).catch(() => null);
+            await oldPaymentMessage?.delete().catch(() => {});
+            ticket.paymentMessageId = null;
+            if (ticketChannel?.isTextBased?.()) {
+              const awaitingMessage = await ticketChannel.send({
+                embeds: [new EmbedBuilder()
+                  .setColor(0xf59e0b)
+                  .setTitle(T[ticket.lang].paymentAwaitingConfirmationTitle)
+                  .setDescription(T[ticket.lang].paymentAwaitingConfirmationDescription)],
+              }).catch(() => null);
+              ticket.paymentMessageId = awaitingMessage?.id ?? null;
+              await persistTicket(ticketChannel, ticket).catch(() => {});
+            }
+          }
           const ticketChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
-          if (ticketChannel?.isTextBased?.()) await ticketChannel.send(notice).catch(() => {});
-          if (ticket) await recordTicketLifecycle(client, ticket, "payment-review", notice);
-          for (const discordId of [payment.buyer_discord_id, payment.seller_discord_id].filter(Boolean)) {
+          if (ticketChannel?.isTextBased?.()) await ticketChannel.send(T[ticket.lang].paymentSubmitted).catch(() => {});
+          await recordTicketLifecycle(client, ticket, "payment", T[ticket.lang].paymentSubmitted);
+          for (const discordId of [ticket.buyerId, ticket.sellerDiscordId].filter(Boolean)) {
             try {
               const user = await client.users.fetch(discordId);
-              await user.send(isApproved
-                ? T[lang].paymentApprovedDm(payment.ticket_id, ticketUrl)
-                : T[lang].paymentRejectedDm(payment.ticket_id));
+              await user.send(T[ticket.lang].paymentReceiptDm);
             } catch (error) {
-              console.log(`تعذّر إرسال تحديث مراجعة الحوالة في الخاص لـ ${discordId}: ${error.message}`);
+              console.log(`تعذّر إرسال تأكيد الإيصال في الخاص لـ ${discordId}: ${error.message}`);
             }
           }
         }
-      } else if (ticket?.id === payment.ticket_id && ticket.paymentStatus !== "submitted") {
-        clearPaymentRecovery(ticket.id);
-        ticket.paymentStatus = "submitted";
-        ticket.paymentToken = null;
-        if (ticket.timeout) clearTimeout(ticket.timeout);
-        ticket.timeout = null;
-        ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
-        await persistTicket(await client.channels.fetch(payment.channel_id), ticket).catch(() => {});
-        if (ticket.paymentMessageId) {
-          const ticketChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
-          const oldPaymentMessage = await ticketChannel?.messages.fetch(ticket.paymentMessageId).catch(() => null);
-          await oldPaymentMessage?.delete().catch(() => {});
-          ticket.paymentMessageId = null;
-          if (ticketChannel?.isTextBased?.()) {
-            const awaitingMessage = await ticketChannel.send({
-              embeds: [new EmbedBuilder()
-                .setColor(0xf59e0b)
-                .setTitle(T[ticket.lang].paymentAwaitingConfirmationTitle)
-                .setDescription(T[ticket.lang].paymentAwaitingConfirmationDescription)],
-            }).catch(() => null);
-            ticket.paymentMessageId = awaitingMessage?.id ?? null;
-            await persistTicket(ticketChannel, ticket).catch(() => {});
-          }
-        }
-        const ticketChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
-        if (ticketChannel?.isTextBased?.()) await ticketChannel.send(T[ticket.lang].paymentSubmitted).catch(() => {});
-        await recordTicketLifecycle(client, ticket, "payment", T[ticket.lang].paymentSubmitted);
-        for (const discordId of [ticket.buyerId, ticket.sellerDiscordId].filter(Boolean)) {
-          try {
-            const user = await client.users.fetch(discordId);
-            await user.send(T[ticket.lang].paymentReceiptDm);
-          } catch (error) {
-            console.log(`تعذّر إرسال تأكيد الإيصال في الخاص لـ ${discordId}: ${error.message}`);
-          }
-        }
-      }
 
-      const notifiedAt = new Date().toISOString();
-      const notificationUpdate = { discord_message_id: sentMessage.id, updated_at: notifiedAt };
-      if (shouldNotifyReceipt) notificationUpdate.discord_notified_at = notifiedAt;
-      if (hasPendingReview && isReviewed) notificationUpdate.discord_review_notified_at = notifiedAt;
-      await supabaseRequest(`discord_ticket_payments?id=eq.${encodeURIComponent(payment.id)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", Prefer: "return=representation" },
-        body: JSON.stringify(notificationUpdate),
-      });
+        const notifiedAt = new Date().toISOString();
+        const notificationUpdate = { discord_message_id: sentMessage.id, updated_at: notifiedAt };
+        if (shouldNotifyReceipt) notificationUpdate.discord_notified_at = notifiedAt;
+        if (hasPendingReview && isReviewed) notificationUpdate.discord_review_notified_at = notifiedAt;
+        await supabaseRequest(`discord_ticket_payments?id=eq.${encodeURIComponent(payment.id)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+          body: JSON.stringify(notificationUpdate),
+        });
+      } catch (error) {
+        console.error(`تعذّر إرسال إيصال الحوالة ${payment.id}:`, error.message);
+      }
     }
   } catch (error) {
     console.error("تعذّر إرسال إيصال تحويل Discord:", error.message);
