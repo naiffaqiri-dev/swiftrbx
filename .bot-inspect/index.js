@@ -622,7 +622,8 @@ async function supabaseRequest(path, options = {}) {
     },
   });
   if (!response.ok) throw new Error(`Supabase request failed with status ${response.status}`);
-  return response.json();
+  const body = await response.text();
+  return body ? JSON.parse(body) : null;
 }
 
 function robuxTicketTotal(ticket) {
@@ -1007,6 +1008,7 @@ async function syncSubmittedDiscordPayments(client) {
           }
         }
 
+        if (shouldNotifyReceipt && !isReviewed) await showReceiptAwaitingInTicket(client, payment);
         const ticket = activeTickets.get(payment.channel_id);
         if (isReviewed) {
           if (ticket?.id === payment.ticket_id && ticket.paymentStatus !== (isApproved ? "approved" : "rejected")) {
@@ -1047,22 +1049,6 @@ async function syncSubmittedDiscordPayments(client) {
           ticket.timeout = null;
           ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
           await persistTicket(await client.channels.fetch(payment.channel_id), ticket).catch(() => {});
-          if (ticket.paymentMessageId) {
-            const ticketChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
-            const oldPaymentMessage = await ticketChannel?.messages.fetch(ticket.paymentMessageId).catch(() => null);
-            await oldPaymentMessage?.delete().catch(() => {});
-            ticket.paymentMessageId = null;
-            if (ticketChannel?.isTextBased?.()) {
-              const awaitingMessage = await ticketChannel.send({
-                embeds: [new EmbedBuilder()
-                  .setColor(0xf59e0b)
-                  .setTitle(T[ticket.lang].paymentAwaitingConfirmationTitle)
-                  .setDescription(T[ticket.lang].paymentAwaitingConfirmationDescription)],
-              }).catch(() => null);
-              ticket.paymentMessageId = awaitingMessage?.id ?? null;
-              await persistTicket(ticketChannel, ticket).catch(() => {});
-            }
-          }
           const ticketChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
           if (ticketChannel?.isTextBased?.()) await ticketChannel.send(T[ticket.lang].paymentSubmitted).catch(() => {});
           await recordTicketLifecycle(client, ticket, "payment", T[ticket.lang].paymentSubmitted);
@@ -1490,6 +1476,64 @@ function scheduleRejectedTicketClose(channel, ticket) {
   }, Math.max(0, deadline - Date.now()));
 }
 
+const PAYMENT_REJECTED_CLOSE_REASON = "تم إغلاق التذكرة لعدم تطابق الحوالة البنكية / فشل عملية الدفع";
+
+async function activatePaymentOrder(order, now) {
+  if (order.offer_id) {
+    const [offer] = await supabaseRequest(`offers?id=eq.${encodeURIComponent(order.offer_id)}&select=available&limit=1`);
+    if (offer) {
+      const remaining = Math.max(0, Number(offer.available) - Number(order.robux_amount));
+      await supabaseRequest(`offers?id=eq.${encodeURIComponent(order.offer_id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+        body: JSON.stringify({ available: remaining }),
+      });
+    }
+  }
+  await supabaseRequest(`tickets?order_id=eq.${encodeURIComponent(order.id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ status: "open", updated_at: now }),
+  });
+}
+
+async function closePaymentRejectedTicket(orderId, now) {
+  await supabaseRequest(`tickets?order_id=eq.${encodeURIComponent(orderId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ status: "closed", close_reason: PAYMENT_REJECTED_CLOSE_REASON, updated_at: now }),
+  });
+}
+
+async function applyPaymentReviewDecision(paymentId, approved) {
+  const [payment] = await supabaseRequest(`discord_ticket_payments?id=eq.${encodeURIComponent(paymentId)}&select=id,status,order_id,discord_reviewed_at&limit=1`);
+  if (!payment?.order_id || payment.status !== "submitted" || payment.discord_reviewed_at) return "already";
+
+  const now = new Date().toISOString();
+  // Claim the order atomically: only a pending order can move to a decision.
+  const [order] = await supabaseRequest(
+    `orders?id=eq.${encodeURIComponent(payment.order_id)}&status=in.(confirming,pending_payment)&select=id,offer_id,robux_amount`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+      body: JSON.stringify(approved
+        ? { status: "processing", updated_at: now }
+        : { status: "rejected", close_reason: PAYMENT_REJECTED_CLOSE_REASON, updated_at: now }),
+    },
+  );
+  if (!order) return "already";
+
+  if (approved) await activatePaymentOrder(order, now);
+  else await closePaymentRejectedTicket(order.id, now);
+
+  await supabaseRequest(`discord_ticket_payments?id=eq.${encodeURIComponent(payment.id)}&status=eq.submitted`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ discord_reviewed_at: now, discord_review_notified_at: null, updated_at: now }),
+  });
+  return approved ? "approved" : "rejected";
+}
+
 async function handlePaymentReviewDecision(interaction) {
   const [, , decision, paymentId] = interaction.customId.split(":");
   if (!["approve", "reject"].includes(decision) || !paymentId) return;
@@ -1500,34 +1544,46 @@ async function handlePaymentReviewDecision(interaction) {
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   try {
-    const [payment] = await supabaseRequest(`discord_ticket_payments?id=eq.${encodeURIComponent(paymentId)}&select=id,status,order_id,discord_reviewed_at&limit=1`);
-    const [order] = payment?.order_id
-      ? await supabaseRequest(`orders?id=eq.${encodeURIComponent(payment.order_id)}&select=id,status&limit=1`)
-      : [];
-    const alreadyReviewed = !payment || !order || payment.status !== "submitted" || Boolean(payment.discord_reviewed_at)
-      || order.status === "processing" || order.status === "rejected";
-    if (alreadyReviewed) {
-      await interaction.editReply({ content: T.ar.paymentReviewAlreadyHandled });
-      return;
-    }
-
-    const reviewedAt = new Date().toISOString();
-    const approved = decision === "approve";
-    await supabaseRequest(`orders?id=eq.${encodeURIComponent(order.id)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
-      body: JSON.stringify({ status: approved ? "processing" : "rejected" }),
-    });
-    await supabaseRequest(`discord_ticket_payments?id=eq.${encodeURIComponent(payment.id)}&status=eq.submitted`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", Prefer: "return=minimal" },
-      body: JSON.stringify({ discord_reviewed_at: reviewedAt, updated_at: reviewedAt }),
-    });
-    await interaction.editReply({ content: approved ? T.ar.paymentApprovedByReviewer : T.ar.paymentRejectedByReviewer });
+    const outcome = await applyPaymentReviewDecision(paymentId, decision === "approve");
+    const replies = {
+      approved: T.ar.paymentApprovedByReviewer,
+      rejected: T.ar.paymentRejectedByReviewer,
+      already: T.ar.paymentReviewAlreadyHandled,
+    };
+    await interaction.editReply({ content: replies[outcome] });
   } catch (error) {
     console.error("تعذّر تسجيل قرار مراجعة الحوالة:", paymentId, error.message);
     await interaction.editReply({ content: T.ar.paymentReviewFailed }).catch(() => {});
   }
+}
+
+async function showReceiptAwaitingInTicket(client, payment) {
+  const ticket = activeTickets.get(payment.channel_id);
+  const lang = ticket?.lang || "ar";
+  const channel = await client.channels.fetch(payment.channel_id).catch(() => null);
+  if (!channel?.isTextBased?.() || !channel.messages) return;
+
+  const awaitingFooter = `SwiftRBX • receipt-awaiting • ${payment.id}`;
+  const paymentFooter = `SwiftRBX • one-time payment • ${payment.ticket_id}`;
+  const recent = await channel.messages.fetch({ limit: 50 }).catch(() => null);
+  if (recent?.some((message) => message.embeds[0]?.footer?.text === awaitingFooter)) return;
+
+  const knownPaymentMessage = ticket?.paymentMessageId
+    ? await channel.messages.fetch(ticket.paymentMessageId).catch(() => null)
+    : null;
+  const paymentMessage = knownPaymentMessage
+    || recent?.find((message) => message.embeds[0]?.footer?.text === paymentFooter)
+    || null;
+  await paymentMessage?.delete().catch(() => {});
+  if (ticket) ticket.paymentMessageId = null;
+
+  await channel.send({
+    embeds: [new EmbedBuilder()
+      .setColor(0xf59e0b)
+      .setTitle(T[lang].paymentAwaitingConfirmationTitle)
+      .setDescription(T[lang].paymentAwaitingConfirmationDescription)
+      .setFooter({ text: awaitingFooter })],
+  }).catch(() => {});
 }
 
 function scheduleRobuxTicketTimeout(channel, ticket) {
