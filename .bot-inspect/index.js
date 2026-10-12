@@ -149,7 +149,7 @@ const T = {
     accountDisabled: "⛔ حسابك بالموقع موقوف. تواصل مع الدعم.",
     sellerUnlinked: "⚠️ البائع المختار لم يربط حساب ديسكورد. اختر بائعاً آخر.",
     noSellers: (quantity, delivery) => `😔 لا يوجد بائع آخر متاح لكمية **${quantity}** بطريقة **${DELIVERY_LABELS[delivery].ar}** حالياً.`,
-    ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المط����بقين.`,
+    ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المط������بقين.`,
     onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل الطلب وبيانات البائع أو ��لغاء الطلب متاح للمشتري فقط.",
     alreadyConfirmed: "تم تأكيد الطلب بالكامل ولا يمكن تعديله.",
     cancelled: "❌ ألغى المشتري الطلب. سيتم إغلاق التذكرة.",
@@ -219,7 +219,7 @@ const T = {
     ticketOwner: "صاحب التذكرة",
     closeTicket: "إغلاق التذكرة",
     ticketClosed: "تم إغلاق التذكرة مع الاحتفاظ بسجل المحادثة.",
-    onlyTicketStaff: "يمكن لصاحب التذكرة أو فري�� الدعم إغلاقها.",
+    onlyTicketStaff: "يمكن لصاحب التذكرة أو ��ري�� الدعم إغلاقها.",
     ticketAlreadyOpen: "لديك تذكرة مفتوحة من هذا النوع بالفعل.",
   },
   en: {
@@ -914,6 +914,7 @@ let syncingDiscordPaymentReceipts = false;
 
 let paymentSyncStartedAt = 0;
 const PAYMENT_SYNC_STALE_MS = 120_000;
+const RECEIPT_BACKLOG_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 async function syncSubmittedDiscordPayments(client) {
   if (syncingDiscordPaymentReceipts && Date.now() - paymentSyncStartedAt < PAYMENT_SYNC_STALE_MS) return;
@@ -922,7 +923,7 @@ async function syncSubmittedDiscordPayments(client) {
   try {
     const paymentSelect = "select=id,ticket_id,guild_id,channel_id,buyer_discord_id,seller_discord_id,roblox_username,robux_amount,delivery_method,seller_name,total_sar,bank_key,bank_name,bank_account,bank_iban,bank_holder,receipt_url,sender_name,order_id,discord_message_id,discord_notified_at,discord_reviewed_at,discord_review_notified_at";
     const [submissionRows, reviewRows] = await Promise.all([
-      supabaseRequest(`discord_ticket_payments?status=eq.submitted&discord_notified_at=is.null&${paymentSelect}&order=created_at.asc&limit=50`),
+      supabaseRequest(`discord_ticket_payments?status=eq.submitted&discord_notified_at=is.null&created_at=gte.${encodeURIComponent(new Date(Date.now() - RECEIPT_BACKLOG_WINDOW_MS).toISOString())}&${paymentSelect}&order=created_at.asc&limit=50`),
       supabaseRequest(`discord_ticket_payments?status=eq.submitted&discord_reviewed_at=not.is.null&discord_review_notified_at=is.null&${paymentSelect}&order=discord_reviewed_at.asc&limit=50`),
     ]);
     const submissionIds = new Set(submissionRows.map((payment) => payment.id));
@@ -1028,6 +1029,17 @@ async function syncSubmittedDiscordPayments(client) {
           }
         }
 
+        const notifiedAt = new Date().toISOString();
+        const notificationUpdate = { discord_message_id: sentMessage.id, updated_at: notifiedAt };
+        if (shouldNotifyReceipt) notificationUpdate.discord_notified_at = notifiedAt;
+        if (hasPendingReview && isReviewed) notificationUpdate.discord_review_notified_at = notifiedAt;
+        await supabaseRequest(`discord_ticket_payments?id=eq.${encodeURIComponent(payment.id)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json", Prefer: "return=representation" },
+          body: JSON.stringify(notificationUpdate),
+        });
+        console.log(`[receipt-sync] recorded payment=${payment.id} message=${sentMessage.id}`);
+
         const ticket = activeTickets.get(payment.channel_id);
         if (isReviewed) {
           if (ticket?.id === payment.ticket_id && ticket.paymentStatus !== (isApproved ? "approved" : "rejected")) {
@@ -1067,8 +1079,8 @@ async function syncSubmittedDiscordPayments(client) {
           if (ticket.timeout) clearTimeout(ticket.timeout);
           ticket.timeout = null;
           ticket.timeoutGeneration = (Number(ticket.timeoutGeneration) || 0) + 1;
-          await persistTicket(await client.channels.fetch(payment.channel_id), ticket).catch(() => {});
           const ticketChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
+          if (ticketChannel) await persistTicket(ticketChannel, ticket).catch(() => {});
           if (ticketChannel?.isTextBased?.()) await ticketChannel.send(T[ticket.lang].paymentSubmitted).catch(() => {});
           await recordTicketLifecycle(client, ticket, "payment", T[ticket.lang].paymentSubmitted);
           for (const discordId of [ticket.buyerId, ticket.sellerDiscordId].filter(Boolean)) {
@@ -1081,16 +1093,7 @@ async function syncSubmittedDiscordPayments(client) {
           }
         }
 
-        const notifiedAt = new Date().toISOString();
-        const notificationUpdate = { discord_message_id: sentMessage.id, updated_at: notifiedAt };
-        if (shouldNotifyReceipt) notificationUpdate.discord_notified_at = notifiedAt;
-        if (hasPendingReview && isReviewed) notificationUpdate.discord_review_notified_at = notifiedAt;
-        await supabaseRequest(`discord_ticket_payments?id=eq.${encodeURIComponent(payment.id)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json", Prefer: "return=representation" },
-          body: JSON.stringify(notificationUpdate),
-        });
-        console.log(`[receipt-sync] done payment=${payment.id} ticket=${payment.ticket_id} notifyReceipt=${shouldNotifyReceipt} patched=${JSON.stringify(notificationUpdate)}`);
+        console.log(`[receipt-sync] done payment=${payment.id} ticket=${payment.ticket_id}`);
       } catch (error) {
         console.error(`[receipt-sync] failed payment=${payment.id} ticket=${payment.ticket_id} channel=${payment.channel_id}:`, error.stack || error.message);
       }
