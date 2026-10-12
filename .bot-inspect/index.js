@@ -149,7 +149,7 @@ const T = {
     accountDisabled: "⛔ حسابك بالموقع موقوف. تواصل مع الدعم.",
     sellerUnlinked: "⚠️ البائع المختار لم يربط حساب ديسكورد. اختر بائعاً آخر.",
     noSellers: (quantity, delivery) => `😔 لا يوجد بائع آخر متاح لكمية **${quantity}** بطريقة **${DELIVERY_LABELS[delivery].ar}** حالياً.`,
-    ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المط��بقين.`,
+    ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المط����بقين.`,
     onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل الطلب وبيانات البائع أو ��لغاء الطلب متاح للمشتري فقط.",
     alreadyConfirmed: "تم تأكيد الطلب بالكامل ولا يمكن تعديله.",
     cancelled: "❌ ألغى المشتري الطلب. سيتم إغلاق التذكرة.",
@@ -219,7 +219,7 @@ const T = {
     ticketOwner: "صاحب التذكرة",
     closeTicket: "إغلاق التذكرة",
     ticketClosed: "تم إغلاق التذكرة مع الاحتفاظ بسجل المحادثة.",
-    onlyTicketStaff: "يمكن لصاحب التذكرة أو فريق الدعم إغلاقها.",
+    onlyTicketStaff: "يمكن لصاحب التذكرة أو فري�� الدعم إغلاقها.",
     ticketAlreadyOpen: "لديك تذكرة مفتوحة من هذا النوع بالفعل.",
   },
   en: {
@@ -928,16 +928,21 @@ async function syncSubmittedDiscordPayments(client) {
     const submissionIds = new Set(submissionRows.map((payment) => payment.id));
     const reviewIds = new Set(reviewRows.map((payment) => payment.id));
     const paymentsById = new Map([...submissionRows, ...reviewRows].map((payment) => [payment.id, payment]));
-    if (paymentsById.size) console.log(`مزامنة الحوالات: ${submissionRows.length} إيصال جديد و${reviewRows.length} مراجعة بانتظار الإرسال.`);
+    if (paymentsById.size) console.log(`مزامنة الحوالات: ${submissionRows.length} إيصال جديد و${reviewRows.length} مراجعة بانتظار ��لإرسال.`);
     for (const payment of paymentsById.values()) {
       try {
         const shouldNotifyReceipt = submissionIds.has(payment.id);
         const hasPendingReview = reviewIds.has(payment.id);
-        const archive = await client.channels.fetch(TRANSFER_CONFIRMATIONS_CHANNEL_ID).catch(() => null);
+        console.log(`[receipt-sync] start payment=${payment.id} ticket=${payment.ticket_id} channel=${payment.channel_id} order=${payment.order_id} notifyReceipt=${shouldNotifyReceipt} pendingReview=${hasPendingReview} discordNotifiedAt=${payment.discord_notified_at}`);
+        const archive = await client.channels.fetch(TRANSFER_CONFIRMATIONS_CHANNEL_ID).catch((error) => {
+          console.error(`[receipt-sync] archive channel fetch failed: ${error.message}`);
+          return null;
+        });
         if (!archive?.isTextBased?.() || !archive.messages) {
-          console.error("قناة تأكيد التحويلات غير صالحة أو لا تدعم الرسائل.");
+          console.error("[receipt-sync] archive channel is missing, not text-based, or has no message manager. Aborting this sync cycle.");
           return;
         }
+        console.log(`[receipt-sync] archive channel ok: ${archive.id}`);
 
         const orderRows = payment.order_id
           ? await supabaseRequest(`orders?id=eq.${encodeURIComponent(payment.order_id)}&select=id,status&limit=1`)
@@ -949,7 +954,7 @@ async function syncSubmittedDiscordPayments(client) {
         if (hasPendingReview && !isReviewed) continue;
         if (!shouldNotifyReceipt && !hasPendingReview) continue;
         if (shouldNotifyReceipt && !isReviewed) {
-          await showReceiptAwaitingInTicket(client, payment).catch((error) => console.error("تعذّر تحديث تذكرة الحوالة:", payment.ticket_id, error.message));
+          await showReceiptAwaitingInTicket(client, payment).catch((error) => console.error(`[receipt-sync] showReceiptAwaitingInTicket failed ticket=${payment.ticket_id} channel=${payment.channel_id}`, error.stack || error.message));
         }
         const ticketRows = isReviewed && payment.order_id
           ? await supabaseRequest(`tickets?order_id=eq.${encodeURIComponent(payment.order_id)}&select=id,status&limit=1`)
@@ -1010,8 +1015,10 @@ async function syncSubmittedDiscordPayments(client) {
           const components = [new ActionRowBuilder().addComponents(buttons)];
 
           if (sentMessage) {
+            console.log(`[receipt-sync] editing archive card message=${sentMessage.id} payment=${payment.id}`);
             await sentMessage.edit({ embeds: [embed], components });
           } else {
+            console.log(`[receipt-sync] sending new archive card payment=${payment.id}`);
             sentMessage = await archive.send({
               content: `<@${payment.buyer_discord_id}> <@${payment.seller_discord_id}>`,
               embeds: [embed],
@@ -1083,9 +1090,9 @@ async function syncSubmittedDiscordPayments(client) {
           headers: { "Content-Type": "application/json", Prefer: "return=representation" },
           body: JSON.stringify(notificationUpdate),
         });
-        if (shouldNotifyReceipt) console.log(`تم إرسال إيصال الحوالة للطلب ${payment.ticket_id} إلى قناة التأكيد.`);
+        console.log(`[receipt-sync] done payment=${payment.id} ticket=${payment.ticket_id} notifyReceipt=${shouldNotifyReceipt} patched=${JSON.stringify(notificationUpdate)}`);
       } catch (error) {
-        console.error(`تعذّر إرسال إيصال الحوالة ${payment.id}:`, error.message);
+        console.error(`[receipt-sync] failed payment=${payment.id} ticket=${payment.ticket_id} channel=${payment.channel_id}:`, error.stack || error.message);
       }
     }
   } catch (error) {
@@ -1599,10 +1606,18 @@ async function showPaymentDecisionInTicket(channel, payment, ticket, approved) {
 async function showReceiptAwaitingInTicket(client, payment) {
   const ticket = activeTickets.get(payment.channel_id);
   const lang = ticket?.lang || "ar";
-  const channel = await client.channels.fetch(payment.channel_id).catch(() => null);
-  if (!channel?.isTextBased?.() || !channel.messages) return;
+  const channel = await client.channels.fetch(payment.channel_id).catch((error) => {
+    console.error(`[receipt-sync] ticket channel fetch failed channel=${payment.channel_id} ticket=${payment.ticket_id}: ${error.message} (code=${error.code})`);
+    return null;
+  });
+  if (!channel?.isTextBased?.() || !channel.messages) {
+    console.error(`[receipt-sync] ticket channel unusable channel=${payment.channel_id} type=${channel?.type} textBased=${channel?.isTextBased?.()}`);
+    return;
+  }
+  console.log(`[receipt-sync] ticket channel ok name=${channel.name} id=${channel.id}`);
   await setParticipantsWriteAccess(channel, ticket, false);
-
+  console.log(`[receipt-sync] write access updated for ${channel.id}`);
+  
   const awaitingFooter = `SwiftRBX • receipt-awaiting • ${payment.id}`;
   const paymentFooter = `SwiftRBX • one-time payment • ${payment.ticket_id}`;
   const recent = await channel.messages.fetch({ limit: 50 }).catch(() => null);
