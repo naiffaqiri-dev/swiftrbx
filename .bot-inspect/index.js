@@ -194,7 +194,7 @@ const T = {
     paymentAwaitingConfirmationDescription: "استلمنا إيصال التحويل وأُرسل للإدارة العليا للمراجعة. ستُحدَّث التذكرة فور صدور القرار.",
     paymentReceiptDm: "استلمنا إيصال التحويل وأرسلناه إلى الإدارة العليا للمراجعة.",
     paymentAcceptedInTicketTitle: "تم قبول الحوالة",
-    paymentAcceptedInTicketDescription: "تم قبول الحوالة وجار استكمال الشراء.",
+    paymentAcceptedInTicketDescription: "تم قبول الحوالة وجارٍ استكمال الشراء.",
     paymentApprovedMessage: (ticketId, url) => `تم تأكيد الحوالة من الإدارة العليا. أصبحت تذكرة الطلب ${ticketId} مفتوحة؛ تواصل مع البائع لإكمال التسليم: ${url}`,
     paymentRejectedMessage: (ticketId) => `لم تُقبل الحوالة للطلب ${ticketId} لأنها غير مطابقة للمتطلبات. راجع لوحة الطلبات أو تواصل مع الدعم، وستُغلق التذكرة عند انتهاء المهلة المتبقية.`,
     paymentApprovedDm: (ticketId, url) => `تم تأكيد حوالة الطلب ${ticketId} وفتح تذكرة التسليم. تابع الطلب وتواصل مع الطرف الآخر هنا: ${url}`,
@@ -912,9 +912,13 @@ function toHttpUrl(value) {
 
 let syncingDiscordPaymentReceipts = false;
 
+let paymentSyncStartedAt = 0;
+const PAYMENT_SYNC_STALE_MS = 120_000;
+
 async function syncSubmittedDiscordPayments(client) {
-  if (syncingDiscordPaymentReceipts) return;
+  if (syncingDiscordPaymentReceipts && Date.now() - paymentSyncStartedAt < PAYMENT_SYNC_STALE_MS) return;
   syncingDiscordPaymentReceipts = true;
+  paymentSyncStartedAt = Date.now();
   try {
     const paymentSelect = "select=id,ticket_id,guild_id,channel_id,buyer_discord_id,seller_discord_id,roblox_username,robux_amount,delivery_method,seller_name,total_sar,bank_key,bank_name,bank_account,bank_iban,bank_holder,receipt_url,sender_name,order_id,discord_message_id,discord_notified_at,discord_reviewed_at,discord_review_notified_at";
     const [submissionRows, reviewRows] = await Promise.all([
@@ -924,6 +928,7 @@ async function syncSubmittedDiscordPayments(client) {
     const submissionIds = new Set(submissionRows.map((payment) => payment.id));
     const reviewIds = new Set(reviewRows.map((payment) => payment.id));
     const paymentsById = new Map([...submissionRows, ...reviewRows].map((payment) => [payment.id, payment]));
+    if (paymentsById.size) console.log(`مزامنة الحوالات: ${submissionRows.length} إيصال جديد و${reviewRows.length} مراجعة بانتظار الإرسال.`);
     for (const payment of paymentsById.values()) {
       try {
         const shouldNotifyReceipt = submissionIds.has(payment.id);
@@ -943,6 +948,9 @@ async function syncSubmittedDiscordPayments(client) {
         const isReviewed = isApproved || isRejected;
         if (hasPendingReview && !isReviewed) continue;
         if (!shouldNotifyReceipt && !hasPendingReview) continue;
+        if (shouldNotifyReceipt && !isReviewed) {
+          await showReceiptAwaitingInTicket(client, payment).catch((error) => console.error("تعذّر تحديث تذكرة الحوالة:", payment.ticket_id, error.message));
+        }
         const ticketRows = isReviewed && payment.order_id
           ? await supabaseRequest(`tickets?order_id=eq.${encodeURIComponent(payment.order_id)}&select=id,status&limit=1`)
           : [];
@@ -1013,7 +1021,6 @@ async function syncSubmittedDiscordPayments(client) {
           }
         }
 
-        if (shouldNotifyReceipt && !isReviewed) await showReceiptAwaitingInTicket(client, payment);
         const ticket = activeTickets.get(payment.channel_id);
         if (isReviewed) {
           if (ticket?.id === payment.ticket_id && ticket.paymentStatus !== (isApproved ? "approved" : "rejected")) {
@@ -1076,6 +1083,7 @@ async function syncSubmittedDiscordPayments(client) {
           headers: { "Content-Type": "application/json", Prefer: "return=representation" },
           body: JSON.stringify(notificationUpdate),
         });
+        if (shouldNotifyReceipt) console.log(`تم إرسال إيصال الحوالة للطلب ${payment.ticket_id} إلى قناة التأكيد.`);
       } catch (error) {
         console.error(`تعذّر إرسال إيصال الحوالة ${payment.id}:`, error.message);
       }
