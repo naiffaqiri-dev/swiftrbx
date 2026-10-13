@@ -55,7 +55,7 @@ const TRANSFER_CONFIRMATIONS_CHANNEL_ID = "1558441717743751169";
 const PAYMENT_REVIEWER_ROLE_ID = "1426122928348594197";
   const ORDER_CONFIRMATION_TIMEOUT_MS = 10 * 60 * 1000;
 const PAYMENT_TIMEOUT_MS = 60 * 60 * 1000;
-const PAYMENT_RECEIPT_POLL_MS = 15_000;
+const PAYMENT_RECEIPT_POLL_MS = 3_000;
 const PENDING_ORDER_TIMEOUT_MS = 15 * 60 * 1000;
 
 if (!DISCORD_TOKEN) {
@@ -149,8 +149,8 @@ const T = {
     accountDisabled: "⛔ حسابك بالموقع موقوف. تواصل مع الدعم.",
     sellerUnlinked: "⚠️ البائع المختار لم يربط حساب ديسكورد. اختر بائعاً آخر.",
     noSellers: (quantity, delivery) => `😔 لا يوجد بائع آخر متاح لكمية **${quantity}** بطريقة **${DELIVERY_LABELS[delivery].ar}** حالياً.`,
-    ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المط��������بقين.`,
-    onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل الطلب وبيانات البائع أو ��لغاء الطلب متاح للمشتري فقط.",
+    ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المطابقين.`,
+    onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل الطلب وبيانات البائع أو إلغاء الطلب متاح للمشتري فقط.",
     alreadyConfirmed: "تم تأكيد الطلب بالكامل ولا يمكن تعديله.",
     cancelled: "❌ ألغى المشتري الطلب. سيتم إغلاق التذكرة.",
     pickNewSeller: "اختر البائع الجديد:",
@@ -166,7 +166,7 @@ const T = {
     cancelButton: "❌ إلغاء",
     changeSellerButton: "🔄 تغيير البائع",
     confirmed: "✅ تم التأكيد",
-    pleaseConfirm: "⚠️ يرجى تأكيد البيانات أعلاه ��بل إرسال رسائل بالتذكرة.",
+    pleaseConfirm: "⚠️ يرجى تأكيد البيانات أعلاه قبل إرسال رسائل التذكرة.",
     confirmationDeadline: (unix) => `⏳ تنتهي مهلة التأكيد <t:${unix}:R>. أكّد تفاصيل الطلب وبيانات البائع قبل انتهاء الوقت.`,
     paymentPreparing: "✅ تم تأكيد التفاصيل. يجري تجهيز رابط الدفع الآن؛ ستبدأ مهلة الساعة بعد إصدار الرابط.",
     confirmationComplete: "✅ تم تأكيد تفاصيل الطلب وبيانات البائع وإرسال رابط الدفع. تنتهي المهلة بعد ساعة من إصدار الرابط.",
@@ -219,7 +219,7 @@ const T = {
     ticketOwner: "صاحب التذكرة",
     closeTicket: "إغلاق التذكرة",
     ticketClosed: "تم إغلاق التذكرة مع الاحتفاظ بسجل المحادثة.",
-    onlyTicketStaff: "يمكن لصاحب التذكرة أو ��ري�� الدعم إغلاقها.",
+    onlyTicketStaff: "يمكن لصاحب التذكرة أو فريق الدعم إغلاقها.",
     ticketAlreadyOpen: "لديك تذكرة مفتوحة من هذا النوع بالفعل.",
   },
   en: {
@@ -601,7 +601,7 @@ async function recordTicketLifecycle(client, ticket, key, description, sourceCha
         const html = buildTicketTranscriptHtml(ticket, sourceChannel, messages);
         files.push(new AttachmentBuilder(Buffer.from(html, "utf8"), { name: `transcript-${ticket.id}.html` }));
       } catch (error) {
-        console.error("تعذّر إنشاء م��ف transcript كامل للتذكرة:", ticket.id, error.message);
+        console.error("تعذّر إنشاء ملف transcript كامل للتذكرة:", ticket.id, error.message);
         embed.addFields({ name: ticket.lang === "ar" ? "حالة السجل" : "Transcript status", value: ticket.lang === "ar" ? "تعذّر جلب كامل سجل الرسائل." : "The complete message history could not be fetched." });
       }
     }
@@ -911,13 +911,28 @@ function toHttpUrl(value) {
 }
 
 let syncingDiscordPaymentReceipts = false;
+let paymentSyncQueued = false;
 
 let paymentSyncStartedAt = 0;
+
+function withTimeout(promise, timeoutMs, label) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
 const PAYMENT_SYNC_STALE_MS = 120_000;
 const RECEIPT_BACKLOG_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 async function syncSubmittedDiscordPayments(client) {
-  if (syncingDiscordPaymentReceipts && Date.now() - paymentSyncStartedAt < PAYMENT_SYNC_STALE_MS) return;
+  if (syncingDiscordPaymentReceipts) {
+    paymentSyncQueued = true;
+    console.log("[receipt-sync] sync already running; queued another pass");
+    return;
+  }
   syncingDiscordPaymentReceipts = true;
   paymentSyncStartedAt = Date.now();
   try {
@@ -929,7 +944,7 @@ async function syncSubmittedDiscordPayments(client) {
     const submissionIds = new Set(submissionRows.map((payment) => payment.id));
     const reviewIds = new Set(reviewRows.map((payment) => payment.id));
     const paymentsById = new Map([...submissionRows, ...reviewRows].map((payment) => [payment.id, payment]));
-    if (paymentsById.size) console.log(`مزامنة الحوالات: ${submissionRows.length} إيصال جديد و${reviewRows.length} مراجعة بانتظار ��لإرسال.`);
+    if (paymentsById.size) console.log(`مزامنة الحوالات: ${submissionRows.length} إيصال جديد و${reviewRows.length} مراجعة بانتظار الإرسال.`);
     for (const payment of paymentsById.values()) {
       try {
         const shouldNotifyReceipt = submissionIds.has(payment.id);
@@ -1112,6 +1127,10 @@ async function syncSubmittedDiscordPayments(client) {
     console.error("تعذّر إرسال إيصال تحويل Discord:", error.message);
   } finally {
     syncingDiscordPaymentReceipts = false;
+    if (paymentSyncQueued) {
+      paymentSyncQueued = false;
+      setTimeout(() => void syncSubmittedDiscordPayments(client), 0);
+    }
   }
 }
 
@@ -1509,7 +1528,7 @@ function scheduleRejectedTicketClose(channel, ticket) {
   }, Math.max(0, deadline - Date.now()));
 }
 
-const PAYMENT_REJECTED_CLOSE_REASON = "تم إغلاق التذكرة لعدم تطابق الحوالة البنكية / فشل عملية الدفع";
+const PAYMENT_REJECTED_CLOSE_REASON = "تم إغلاق التذكرة لعدم تطابق الحوالة البنكية أو فشل عملية الدفع";
 
 async function activatePaymentOrder(order, now) {
   if (order.offer_id) {
@@ -1599,7 +1618,9 @@ async function handlePaymentReviewDecision(interaction) {
 async function setParticipantsWriteAccess(channel, ticket, canWrite) {
   const participantIds = new Set([ticket?.buyerId, ticket?.sellerDiscordId].filter(Boolean));
   for (const userId of participantIds) {
-    await channel.permissionOverwrites.edit(userId, { SendMessages: canWrite }).catch(() => {});
+    await withTimeout(channel.permissionOverwrites.edit(userId, { SendMessages: canWrite }), 10_000, `permission update ${userId}`).catch((error) => {
+      console.error(`[receipt-sync] permission update failed channel=${channel.id} user=${userId}: ${error.message}`);
+    });
   }
 }
 
@@ -1938,7 +1959,7 @@ function stockFieldValue(lines) {
   }
 
   const remaining = lines.length - visible.length;
-  if (remaining > 0) visible.push(`و${remaining} ب��ئعين آخرين`);
+  if (remaining > 0) visible.push(`و${remaining} بائعين آخرين`);
   return visible.join("\n");
 }
 
@@ -2066,7 +2087,7 @@ const NOTIFICATION_ROLES = [
   { id: "1432719713586249789", name: "Robux Stock alert", description: "إشعار بتوفر كميات روبكس جديدة." },
   { id: "1558416839170596988", name: "Account Alert", description: "إشعار بإضافة حسابات جديدة." },
   { id: "1558416938529726464", name: "Limiteds Alert", description: "إشعار بإضافة أغراض ليمتد جديدة." },
-  { id: "1558416980204195870", name: "Games Alert", description: "إشعار بإضا��ة أغراض مابات جديدة." },
+  { id: "1558416980204195870", name: "Games Alert", description: "إشعار بإضافة أغراض مابات جديدة." },
 ];
 
 function buildSelectRolesPanel() {
@@ -2124,7 +2145,7 @@ async function ensureSelectRolesPanel(client) {
       console.log("تم التحقق من رسالة اختيار الرتب في Discord.");
     } else {
       await channel.send(payload);
-      console.log("تم نشر رس��لة اختيار الرتب في Discord.");
+      console.log("تم نشر رسالة اختيار الرتب في Discord.");
     }
   } catch (error) {
     console.error("تعذّر تجهيز رسالة اختيار الرتب:", error.message);
@@ -2299,7 +2320,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     // ------------------------------------------------------------------
-    // 2) اختيار اللغ�� -> عرض نوع التسليم
+    // 2) اختيار اللغة -> عرض نوع التسليم
     // ------------------------------------------------------------------
     if (interaction.isButton() && interaction.customId.startsWith("order:lang:")) {
       const lang = interaction.customId.split(":")[2] === "en" ? "en" : "ar";
@@ -2473,7 +2494,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       } catch (error) {
         console.error("تعذّر البحث عن عروض الروبكس:", error.message);
-        await interaction.editReply("تعذّر البحث عن البائعين حال��اً. حاول مرة أخرى بعد قليل.");
+        await interaction.editReply("تعذّر البحث عن البائعين حالياً. حاول مرة أخرى بعد قليل.");
       } finally {
         openingTickets.delete(openingKey);
       }
@@ -2799,6 +2820,6 @@ client.on(Events.ChannelDelete, (channel) => {
 process.on("unhandledRejection", (err) => console.error("unhandledRejection:", err));
 
 client.login(DISCORD_TOKEN).catch((error) => {
-  console.error("فشل تسجيل دخول الب��ت إلى Discord:", error.message);
+  console.error("فشل تسجيل دخول البوت إلى Discord:", error.message);
   process.exitCode = 1;
 });
