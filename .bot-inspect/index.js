@@ -45,6 +45,7 @@ const SELECT_ROLES_CHANNEL_ID = "1558413533300006952";
 const SELECT_ROLES_MARKER = "SwiftRBX • select roles • v1";
 const LIVE_STOCK_CHANNEL_ID = (process.env.LIVE_STOCK_CHANNEL_ID || "1481253146209681478").trim();
 const STOCK_ALERT_CHANNEL_ID = "1552723726179766416";
+const STOCK_ALERT_ROLE_ID = "1432719713586249789";
 const LIVE_STOCK_MARKER = "SwiftRBX • المخزون المباشر";
 const LIVE_STOCK_REFRESH_MS = 30_000;
 const SITE_URL = (process.env.SITE_URL || "https://www.swiftrbx.site").trim().replace(/\/+$/, "");
@@ -219,7 +220,7 @@ const T = {
     ticketEmbedTitle: (type) => `🎫 ${TICKET_TYPES[type].label}`,
     ticketOwner: "صاحب التذكرة",
     closeTicket: "إغلاق التذكرة",
-    ticketClosed: "تم إغلاق التذكرة مع الاحت��اظ بسجل المحادثة.",
+    ticketClosed: "تم إغلاق التذكرة مع الاحت����اظ بسجل المحادثة.",
     onlyTicketStaff: "يمكن لصاحب التذكرة أو فريق الدعم إغلاقها.",
     ticketAlreadyOpen: "لديك تذكرة مفتوحة من هذا النوع بالفعل.",
   },
@@ -2057,9 +2058,15 @@ async function notifyRobuxStockIncreases(client, offers) {
     const addedStock = Math.floor(added).toLocaleString("en-US");
 
     await channel.send({
-      content: `${mention} قام بإضافة كمية إلى مخزونه.\nالنوع: **${deliveryNames || "غير محدد"}**\nالكمية السابقة: **${previousStock}**\nالكمية الجديدة: **${newStock}**\nالكمية المضافة: **${addedStock}**`,
-      allowedMentions: sellerId ? { users: [sellerId] } : { parse: [] },
-    }).catch((error) => console.error(`تعذّر إرسال تنبيه زيادة المخزون للبائع ${sellerName}:`, error.message));
+      content: `<@&${STOCK_ALERT_ROLE_ID}>\n${mention} قام بإضافة كمية إلى مخزونه.\nالنوع: **${deliveryNames || "غير محدد"}**\nالكمية السابقة: **${previousStock}**\nالكمية الجديدة: **${newStock}**\nالكمية المضافة: **${addedStock}**`,
+      allowedMentions: {
+        roles: [STOCK_ALERT_ROLE_ID],
+        users: /^\\d{17,20}$/.test(String(sellerId || "")) ? [sellerId] : [],
+      },
+    }).then(async (message) => {
+      await message.react("✅");
+      await message.react("❌");
+    }).catch((error) => console.error(`تعذّر إرسال تنبيه زيادة المخزون أو إضافة التفاعلات للبائع ${sellerName}:`, error.message));
   }
 
   previousRobuxStock = current;
