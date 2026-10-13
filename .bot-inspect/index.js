@@ -44,8 +44,9 @@ const PANEL_CHANNEL_ID = (process.env.PANEL_CHANNEL_ID || "").trim();
 const SELECT_ROLES_CHANNEL_ID = "1558413533300006952";
 const SELECT_ROLES_MARKER = "SwiftRBX • select roles • v1";
 const LIVE_STOCK_CHANNEL_ID = (process.env.LIVE_STOCK_CHANNEL_ID || "1481253146209681478").trim();
+const STOCK_ALERT_CHANNEL_ID = "1552723726179766416";
 const LIVE_STOCK_MARKER = "SwiftRBX • المخزون المباشر";
-const LIVE_STOCK_REFRESH_MS = 2 * 60_000;
+const LIVE_STOCK_REFRESH_MS = 30_000;
 const SITE_URL = (process.env.SITE_URL || "https://www.swiftrbx.site").trim().replace(/\/+$/, "");
 const SUPPORT_ROLE_ID = (process.env.SUPPORT_ROLE_ID || "").trim();
 const SALER_ROLE_ID = (process.env.SALER_ROLE_ID || process.env.SALES_ROLE_ID || "").trim();
@@ -1889,6 +1890,8 @@ const LIVE_STOCK_CATEGORIES = [
 
 let liveStockMessageId = "";
 let liveStockRefreshing = false;
+let previousRobuxStock = new Map();
+let stockSnapshotInitialized = false;
 
 async function getActiveCatalogSellerNames() {
   const items = await supabaseRequest(
@@ -2015,6 +2018,49 @@ function buildLiveStockEmbed(offers, catalogSellers) {
   return embed;
 }
 
+async function notifyRobuxStockIncreases(client, offers) {
+  const current = new Map();
+  for (const offer of Array.isArray(offers) ? offers : []) {
+    const available = Number(offer.available);
+    if (!offer.id || !Number.isFinite(available) || available < 0) continue;
+    const delivery = Array.isArray(offer.delivery) ? offer.delivery : [];
+    current.set(String(offer.id), { offer, available, delivery });
+  }
+
+  if (!stockSnapshotInitialized) {
+    previousRobuxStock = current;
+    stockSnapshotInitialized = true;
+    return;
+  }
+
+  const channel = await client.channels.fetch(STOCK_ALERT_CHANNEL_ID).catch((error) => {
+    console.error("تعذّر الوصول إلى قناة تنبيهات المخزون:", error.message);
+    return null;
+  });
+  if (!channel?.isTextBased?.() || !channel.send) return;
+
+  for (const [offerId, next] of current) {
+    const previous = previousRobuxStock.get(offerId);
+    const added = next.available - (previous?.available ?? next.available);
+    if (!previous || added <= 0) continue;
+
+    const sellerName = next.offer.username || "البائع";
+    const sellerId = next.offer.seller_discord_id || next.offer.discord_id || next.offer.sellerDiscordId;
+    const mention = /^\\d{17,20}$/.test(String(sellerId || "")) ? `<@${sellerId}>` : `**${escapeStockName(sellerName)}**`;
+    const deliveryNames = next.delivery.map((key) => DELIVERY_LABELS[key]?.ar || key).join("، ");
+    const previousStock = Math.floor(previous.available).toLocaleString("en-US");
+    const newStock = Math.floor(next.available).toLocaleString("en-US");
+    const addedStock = Math.floor(added).toLocaleString("en-US");
+
+    await channel.send({
+      content: `${mention} قام بإضافة كمية إلى مخزونه.\nالنوع: **${deliveryNames || "غير محدد"}**\nالكمية السابقة: **${previousStock}**\nالكمية الجديدة: **${newStock}**\nالكمية المضافة: **${addedStock}**`,
+      allowedMentions: sellerId ? { users: [sellerId] } : { parse: [] },
+    }).catch((error) => console.error(`تعذّر إرسال تنبيه زيادة المخزون للبائع ${sellerName}:`, error.message));
+  }
+
+  previousRobuxStock = current;
+}
+
 function liveStockEmbedsMatch(current, next) {
   const comparable = (embed) => {
     const json = embed.toJSON();
@@ -2039,6 +2085,7 @@ async function refreshLiveStock(client) {
       getActiveCatalogSellerNames(),
     ]);
     const offers = await addRobuxSellerDisplayNames(activeOffers);
+    await notifyRobuxStockIncreases(client, offers);
     const channel = await client.channels.fetch(LIVE_STOCK_CHANNEL_ID);
     if (!channel || !channel.isTextBased() || !channel.messages) {
       throw new Error("قناة المخزون المباشر غير صالحة أو لا تدعم الرسائل.");
