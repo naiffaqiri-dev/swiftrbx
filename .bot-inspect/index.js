@@ -954,9 +954,6 @@ async function syncSubmittedDiscordPayments(client) {
         const isReviewed = isApproved || isRejected;
         if (hasPendingReview && !isReviewed) continue;
         if (!shouldNotifyReceipt && !hasPendingReview) continue;
-        if (shouldNotifyReceipt && !isReviewed) {
-          await showReceiptAwaitingInTicket(client, payment).catch((error) => console.error(`[receipt-sync] showReceiptAwaitingInTicket failed ticket=${payment.ticket_id} channel=${payment.channel_id}`, error.stack || error.message));
-        }
         const ticketRows = isReviewed && payment.order_id
           ? await supabaseRequest(`tickets?order_id=eq.${encodeURIComponent(payment.order_id)}&select=id,status&limit=1`)
           : [];
@@ -1039,6 +1036,10 @@ async function syncSubmittedDiscordPayments(client) {
           body: JSON.stringify(notificationUpdate),
         });
         console.log(`[receipt-sync] recorded payment=${payment.id} message=${sentMessage.id}`);
+
+        if (shouldNotifyReceipt && !isReviewed) {
+          void showReceiptAwaitingInTicket(client, payment).catch((error) => console.error(`[receipt-sync] showReceiptAwaitingInTicket failed ticket=${payment.ticket_id} channel=${payment.channel_id}`, error.stack || error.message));
+        }
 
         const ticket = activeTickets.get(payment.channel_id);
         if (isReviewed) {
