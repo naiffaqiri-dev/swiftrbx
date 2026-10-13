@@ -219,7 +219,7 @@ const T = {
     ticketEmbedTitle: (type) => `🎫 ${TICKET_TYPES[type].label}`,
     ticketOwner: "صاحب التذكرة",
     closeTicket: "إغلاق التذكرة",
-    ticketClosed: "تم إغلاق التذكرة مع الاحتفاظ بسجل المحادثة.",
+    ticketClosed: "تم إغلاق التذكرة مع الاحت��اظ بسجل المحادثة.",
     onlyTicketStaff: "يمكن لصاحب التذكرة أو فريق الدعم إغلاقها.",
     ticketAlreadyOpen: "لديك تذكرة مفتوحة من هذا النوع بالفعل.",
   },
@@ -2020,11 +2020,15 @@ function buildLiveStockEmbed(offers, catalogSellers) {
 
 async function notifyRobuxStockIncreases(client, offers) {
   const current = new Map();
+  for (const [offerId, previous] of previousRobuxStock) {
+    current.set(offerId, { ...previous, available: 0 });
+  }
   for (const offer of Array.isArray(offers) ? offers : []) {
     const available = Number(offer.available);
     if (!offer.id || !Number.isFinite(available) || available < 0) continue;
+    const offerId = String(offer.id);
     const delivery = Array.isArray(offer.delivery) ? offer.delivery : [];
-    current.set(String(offer.id), { offer, available, delivery });
+    current.set(offerId, { offer, available, delivery });
   }
 
   if (!stockSnapshotInitialized) {
