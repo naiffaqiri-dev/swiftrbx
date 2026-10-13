@@ -55,7 +55,7 @@ const TRANSFER_CONFIRMATIONS_CHANNEL_ID = "1558441717743751169";
 const PAYMENT_REVIEWER_ROLE_ID = "1426122928348594197";
   const ORDER_CONFIRMATION_TIMEOUT_MS = 10 * 60 * 1000;
 const PAYMENT_TIMEOUT_MS = 60 * 60 * 1000;
-const PAYMENT_RECEIPT_POLL_MS = 3_000;
+const PAYMENT_RECEIPT_POLL_MS = 15_000;
 const PENDING_ORDER_TIMEOUT_MS = 15 * 60 * 1000;
 
 if (!DISCORD_TOKEN) {
@@ -192,7 +192,7 @@ const T = {
     paymentRejectedByReviewer: "تم رفض الحوالة، وسيُبلَّغ المشتري وتُغلق التذكرة عند انتهاء المهلة المتبقية.",
     paymentAwaitingConfirmationTitle: "في انتظار تأكيد التحويل",
     paymentAwaitingConfirmationDescription: "استلمنا إيصال التحويل وأُرسل للإدارة العليا للمراجعة. ستُحدَّث التذكرة فور صدور القرار.",
-    paymentReceiptDm: "استلمنا إيصال التحويل وأرسلناه إلى الإدارة العليا للمراجعة.",
+    paymentReceiptDm: "استلمنا إيصال التحويل وأرسلناه إلى الإدارة العليا للمراجعة. ستصلك رسالة أخرى عند القبول أو الرفض.",
     paymentAcceptedInTicketTitle: "تم قبول الحوالة",
     paymentAcceptedInTicketDescription: "تم قبول الحوالة وجارٍ استكمال الشراء.",
     paymentApprovedMessage: (ticketId, url) => `تم تأكيد الحوالة من الإدارة العليا. أصبحت تذكرة الطلب ${ticketId} مفتوحة؛ تواصل مع البائع لإكمال التسليم: ${url}`,
@@ -274,7 +274,7 @@ const T = {
     paymentReceiptTitle: "New transfer awaiting senior admin review",
     paymentApprovedTitle: "Transfer approved and delivery ticket opened",
     paymentRejectedTitle: "Transfer rejected",
-    paymentReceiptDm: "Your transfer receipt was received and sent to the senior team for review.",
+    paymentReceiptDm: "Your transfer receipt was received and sent to the senior team for review. You will receive another message when it is approved or rejected.",
     paymentAcceptedInTicketTitle: "Transfer accepted",
     paymentAcceptedInTicketDescription: "The transfer was accepted and the purchase is being completed.",
     paymentApprovedMessage: (ticketId, url) => `The transfer for order ${ticketId} was approved. Its delivery ticket is now open; contact the seller to complete delivery: ${url}`,
@@ -895,7 +895,6 @@ async function issueTicketPaymentOnce(client, channel, ticket, { resendToBuyer =
       console.error("تعذّر إرسال رابط الدفع في الخاص للمشتري:", ticket.id, error.message);
     }
   }
-  await sendTicketConfirmationDms(client, channel, ticket);
   await persistTicket(channel, ticket);
   scheduleRobuxTicketTimeout(channel, ticket);
   if (resendToBuyer && paymentDmError) throw paymentDmError;
@@ -939,7 +938,7 @@ async function syncSubmittedDiscordPayments(client) {
     const paymentSelect = "select=id,ticket_id,guild_id,channel_id,buyer_discord_id,seller_discord_id,roblox_username,robux_amount,delivery_method,seller_name,total_sar,bank_key,bank_name,bank_account,bank_iban,bank_holder,receipt_url,sender_name,order_id,discord_message_id,discord_notified_at,discord_reviewed_at,discord_review_notified_at";
     const [submissionRows, reviewRows] = await Promise.all([
       supabaseRequest(`discord_ticket_payments?status=eq.submitted&discord_notified_at=is.null&created_at=gte.${encodeURIComponent(new Date(Date.now() - RECEIPT_BACKLOG_WINDOW_MS).toISOString())}&${paymentSelect}&order=created_at.asc&limit=50`),
-      supabaseRequest(`discord_ticket_payments?status=eq.submitted&discord_reviewed_at=not.is.null&discord_review_notified_at=is.null&${paymentSelect}&order=discord_reviewed_at.asc&limit=50`),
+      supabaseRequest(`discord_ticket_payments?status=eq.submitted&discord_notified_at=not.is.null&discord_review_notified_at=is.null&${paymentSelect}&order=created_at.asc&limit=50`),
     ]);
     const submissionIds = new Set(submissionRows.map((payment) => payment.id));
     const reviewIds = new Set(reviewRows.map((payment) => payment.id));
@@ -2068,7 +2067,7 @@ async function refreshLiveStock(client) {
       console.log("تم نشر رسالة المخزون المباشر في Discord.");
     } else if (!liveStockEmbedsMatch(message.embeds[0], embed)) {
       await message.edit({ embeds: [embed] });
-      console.log("تم تحديث رسالة المخزون المباشر في Discord.");
+      console.log("تم ت��ديث رسالة المخزون المباشر في Discord.");
     }
 
     liveStockMessageId = message.id;
@@ -2114,7 +2113,7 @@ function buildSelectRolesPanel() {
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId("notification-role-toggle")
-    .setPlaceholder("اختر رتبة لإضافة الإشعار أو إزالته")
+    .setPlaceholder("اختر رتبة لإضافة الإشعار أو إزالت��")
     .setMinValues(1)
     .setMaxValues(1)
     .addOptions(
