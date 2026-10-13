@@ -149,7 +149,7 @@ const T = {
     accountDisabled: "⛔ حسابك بالموقع موقوف. تواصل مع الدعم.",
     sellerUnlinked: "⚠️ البائع المختار لم يربط حساب ديسكورد. اختر بائعاً آخر.",
     noSellers: (quantity, delivery) => `😔 لا يوجد بائع آخر متاح لكمية **${quantity}** بطريقة **${DELIVERY_LABELS[delivery].ar}** حالياً.`,
-    ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المط������بقين.`,
+    ownOfferOnly: (name, rate, stock, minimum, maximum) => `✅ يوجد عرضك في الموقع: **${name}** — السعر **${rate} ريال/1,000**، المتاح **${stock}** والحدود **${minimum}–${maximum}**. لم أظهره كبائع لأن حساب Discord هذا هو صاحب العرض ولا يمكن شراء عرضك بنفسك. سيظهر للمشترين الآخرين عند اختيار الكمية ونوع التسليم المط��������بقين.`,
     onlyBuyerCanConfirm: "⚠️ تأكيد تفاصيل الطلب وبيانات البائع أو ��لغاء الطلب متاح للمشتري فقط.",
     alreadyConfirmed: "تم تأكيد الطلب بالكامل ولا يمكن تعديله.",
     cancelled: "❌ ألغى المشتري الطلب. سيتم إغلاق التذكرة.",
@@ -1060,7 +1060,15 @@ async function syncSubmittedDiscordPayments(client) {
               ? T[lang].paymentApprovedMessage(payment.ticket_id, ticketUrl)
               : T[lang].paymentRejectedMessage(payment.ticket_id);
             const ticketChannel = await client.channels.fetch(payment.channel_id).catch(() => null);
-            if (ticketChannel?.isTextBased?.()) await showPaymentDecisionInTicket(ticketChannel, payment, ticket, isApproved).catch(() => {});
+            if (ticketChannel?.isTextBased?.()) {
+              await showPaymentDecisionInTicket(ticketChannel, payment, ticket, isApproved).then(() => {
+                console.log(`[receipt-sync] decision message updated ticket=${payment.ticket_id} channel=${payment.channel_id} approved=${isApproved}`);
+              }).catch((error) => {
+                console.error(`[receipt-sync] decision message update failed ticket=${payment.ticket_id} channel=${payment.channel_id}`, error.stack || error.message);
+              });
+            } else {
+              console.error(`[receipt-sync] decision ticket channel unavailable ticket=${payment.ticket_id} channel=${payment.channel_id}`);
+            }
             if (ticket) await recordTicketLifecycle(client, ticket, "payment-review", notice);
             for (const discordId of [payment.buyer_discord_id, payment.seller_discord_id].filter(Boolean)) {
               try {
@@ -1068,8 +1076,9 @@ async function syncSubmittedDiscordPayments(client) {
                 await user.send(isApproved
                   ? T[lang].paymentApprovedDm(payment.ticket_id, ticketUrl)
                   : T[lang].paymentRejectedDm(payment.ticket_id));
+                console.log(`[receipt-sync] decision DM sent user=${discordId} payment=${payment.id} approved=${isApproved}`);
               } catch (error) {
-                console.log(`تعذّر إرسال تحديث مراجعة الحوالة في الخاص لـ ${discordId}: ${error.message}`);
+                console.error(`[receipt-sync] decision DM failed user=${discordId} payment=${payment.id}: ${error.message}`);
               }
             }
           }
@@ -1575,6 +1584,12 @@ async function handlePaymentReviewDecision(interaction) {
       already: T.ar.paymentReviewAlreadyHandled,
     };
     await interaction.editReply({ content: replies[outcome] });
+    if (outcome === "approved" || outcome === "rejected") {
+      console.log(`[payment-review] decision=${decision} payment=${paymentId}; running immediate Discord notification sync`);
+      void syncSubmittedDiscordPayments(interaction.client).catch((error) => {
+        console.error(`[payment-review] immediate sync failed payment=${paymentId}`, error.stack || error.message);
+      });
+    }
   } catch (error) {
     console.error("تعذّر تسجيل قرار مراجعة الحوالة:", paymentId, error.message);
     await interaction.editReply({ content: T.ar.paymentReviewFailed }).catch(() => {});
@@ -2458,7 +2473,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         });
       } catch (error) {
         console.error("تعذّر البحث عن عروض الروبكس:", error.message);
-        await interaction.editReply("تعذّر البحث عن البائعين حالياً. حاول مرة أخرى بعد قليل.");
+        await interaction.editReply("تعذّر البحث عن البائعين حال��اً. حاول مرة أخرى بعد قليل.");
       } finally {
         openingTickets.delete(openingKey);
       }
