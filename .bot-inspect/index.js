@@ -1893,6 +1893,9 @@ let liveStockMessageId = "";
 let liveStockRefreshing = false;
 let previousRobuxStock = new Map();
 let stockSnapshotInitialized = false;
+const stockAlertQueue = [];
+let stockAlertSending = false;
+const STOCK_ALERT_DELAY_MS = 5 * 60_000;
 
 async function getActiveCatalogSellerNames() {
   const items = await supabaseRequest(
@@ -2019,6 +2022,32 @@ function buildLiveStockEmbed(offers, catalogSellers) {
   return embed;
 }
 
+async function sendNextStockAlert(client) {
+  if (stockAlertSending || stockAlertQueue.length === 0) return;
+  stockAlertSending = true;
+  const alert = stockAlertQueue.shift();
+  try {
+    const channel = await client.channels.fetch(STOCK_ALERT_CHANNEL_ID);
+    if (!channel?.isTextBased?.() || !channel.send) throw new Error("قناة تنبيهات المخزون غير صالحة");
+    const message = await channel.send({
+      content: `<@&${STOCK_ALERT_ROLE_ID}>\\n${alert.mention} قام بإضافة كمية إلى مخزونه.\\nالنوع: **${alert.deliveryNames || "غير محدد"}**\\nالكمية السابقة: **${alert.previousStock}**\\nالكمية الجديدة: **${alert.newStock}**\\nالكمية المضافة: **${alert.addedStock}**`,
+      allowedMentions: {
+        roles: [STOCK_ALERT_ROLE_ID],
+        users: alert.sellerId ? [alert.sellerId] : [],
+      },
+    });
+    await message.react("✅");
+    await message.react("❌");
+  } catch (error) {
+    console.error(`تعذّر إرسال تنبيه زيادة المخزون للبائع ${alert.sellerName}:`, error.message);
+  } finally {
+    stockAlertSending = false;
+    if (stockAlertQueue.length > 0) {
+      setTimeout(() => void sendNextStockAlert(client), STOCK_ALERT_DELAY_MS);
+    }
+  }
+}
+
 async function notifyRobuxStockIncreases(client, offers) {
   const current = new Map();
   for (const [offerId, previous] of previousRobuxStock) {
@@ -2038,12 +2067,7 @@ async function notifyRobuxStockIncreases(client, offers) {
     return;
   }
 
-  const channel = await client.channels.fetch(STOCK_ALERT_CHANNEL_ID).catch((error) => {
-    console.error("تعذّر الوصول إلى قناة تنبيهات المخزون:", error.message);
-    return null;
-  });
-  if (!channel?.isTextBased?.() || !channel.send) return;
-
+  const changes = [];
   for (const [offerId, next] of current) {
     const previous = previousRobuxStock.get(offerId);
     const added = next.available - (previous?.available ?? next.available);
@@ -2051,23 +2075,22 @@ async function notifyRobuxStockIncreases(client, offers) {
 
     const sellerName = next.offer.username || "البائع";
     const sellerId = next.offer.seller_discord_id || next.offer.discord_id || next.offer.sellerDiscordId;
-    const mention = /^\\d{17,20}$/.test(String(sellerId || "")) ? `<@${sellerId}>` : `**${escapeStockName(sellerName)}**`;
-    const deliveryNames = next.delivery.map((key) => DELIVERY_LABELS[key]?.ar || key).join("، ");
-    const previousStock = Math.floor(previous.available).toLocaleString("en-US");
-    const newStock = Math.floor(next.available).toLocaleString("en-US");
-    const addedStock = Math.floor(added).toLocaleString("en-US");
-
-    await channel.send({
-      content: `<@&${STOCK_ALERT_ROLE_ID}>\n${mention} قام بإضافة كمية إلى مخزونه.\nالنوع: **${deliveryNames || "غير محدد"}**\nالكمية السابقة: **${previousStock}**\nالكمية الجديدة: **${newStock}**\nالكمية المضافة: **${addedStock}**`,
-      allowedMentions: {
-        roles: [STOCK_ALERT_ROLE_ID],
-        users: /^\\d{17,20}$/.test(String(sellerId || "")) ? [sellerId] : [],
-      },
-    }).then(async (message) => {
-      await message.react("✅");
-      await message.react("❌");
-    }).catch((error) => console.error(`تعذّر إرسال تنبيه زيادة المخزون أو إضافة التفاعلات للبائع ${sellerName}:`, error.message));
+    const validSellerId = /^\\d{17,20}$/.test(String(sellerId || "")) ? String(sellerId) : "";
+    changes.push({
+      sortTime: Date.parse(next.offer.updated_at || next.offer.modified_at || "") || Date.now(),
+      sellerName,
+      sellerId: validSellerId,
+      mention: validSellerId ? `<@${validSellerId}>` : `**${escapeStockName(sellerName)}**`,
+      deliveryNames: next.delivery.map((key) => DELIVERY_LABELS[key]?.ar || key).join("، "),
+      previousStock: Math.floor(previous.available).toLocaleString("en-US"),
+      newStock: Math.floor(next.available).toLocaleString("en-US"),
+      addedStock: Math.floor(added).toLocaleString("en-US"),
+    });
   }
+
+  changes.sort((a, b) => a.sortTime - b.sortTime);
+  stockAlertQueue.push(...changes);
+  void sendNextStockAlert(client);
 
   previousRobuxStock = current;
 }
