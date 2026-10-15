@@ -43,8 +43,39 @@ async function runTicketReviewMaintenance(): Promise<MaintenanceCounts> {
   let completed = 0
   for (const order of dueOrders ?? []) {
     const { data, error } = await admin.rpc('auto_complete_delivered_order', { p_order_id: order.id })
-    if (error) continue
-    if (data?.length) completed += 1
+    if (!error && data?.length) {
+      completed += 1
+      continue
+    }
+
+    // Keep the 30-minute guarantee even if the database helper is unavailable or
+    // returns no row. The delivered-to-completed guard makes this retry-safe.
+    const now = new Date().toISOString()
+    const { data: completedOrder, error: fallbackError } = await admin
+      .from('orders')
+      .update({
+        status: 'completed',
+        completed_at: now,
+        updated_at: now,
+      })
+      .eq('id', order.id)
+      .eq('status', 'delivered')
+      .select('id')
+      .maybeSingle()
+
+    if (fallbackError || !completedOrder) continue
+
+    await admin
+      .from('tickets')
+      .update({
+        status: 'completed',
+        closed_at: now,
+        close_reason: 'auto_completed_after_30_minutes_without_buyer_confirmation',
+        updated_at: now,
+      })
+      .eq('order_id', order.id)
+      .eq('status', 'delivered')
+    completed += 1
   }
 
   const { data: dueCatalogTickets, error: catalogError } = await admin
